@@ -2,7 +2,7 @@ import { duration, previewLine, relativeTime } from '../format'
 
 describe('previewLine', () => {
   it('removes terminal prompt glyphs and box drawing from pasted output', () => {
-    expect(previewLine('╭─   ~/Developer ────╮\n  NameError: CASES')).toBe('~/Developer NameError: CASES')
+    expect(previewLine('\u256D\u2500 \uE0B6 \uF115 ~/Developer \uE0B4\u2500\u2500\u2500\u2500\u256E\n  NameError: CASES')).toBe('~/Developer NameError: CASES')
   })
 
   it('leaves ordinary text, accents and emoji alone', () => {

@@ -46,7 +46,7 @@ export function duration(seconds: number): string {
 
 // Private-use glyphs (terminal prompt icons), box drawing and block elements:
 // decoration from pasted terminal output that a phone font cannot draw.
-const TERMINAL_DECORATION = /[-─-▟]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g
+const TERMINAL_DECORATION = /[\uE000-\uF8FF\u2500-\u259F]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g
 
 /** One readable line for a list row, from text that may be pasted terminal output. */
 export function previewLine(text: string): string {
