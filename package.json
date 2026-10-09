@@ -10,13 +10,15 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "verify": "npm run typecheck && npm run lint && npm run test"
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "postinstall": "node scripts/patch-expo-jsi.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@nanostores/react": "^1.0.0",
     "expo": "~57.0.26",
     "expo-constants": "~57.0.20",
+    "expo-dev-client": "~57.0.19",
     "expo-font": "~57.0.4",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.24",
@@ -26,6 +28,7 @@
     "expo-system-ui": "~57.0.4",
     "nanostores": "^1.0.1",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
