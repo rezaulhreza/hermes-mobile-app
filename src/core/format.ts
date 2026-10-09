@@ -43,3 +43,12 @@ export function duration(seconds: number): string {
 
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
 }
+
+// Private-use glyphs (terminal prompt icons), box drawing and block elements:
+// decoration from pasted terminal output that a phone font cannot draw.
+const TERMINAL_DECORATION = /[-─-▟]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g
+
+/** One readable line for a list row, from text that may be pasted terminal output. */
+export function previewLine(text: string): string {
+  return text.replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim()
+}

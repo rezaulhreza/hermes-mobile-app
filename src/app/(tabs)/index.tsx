@@ -6,7 +6,7 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View 
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { IconButton, Notice } from '@/components/ui'
-import { greeting, relativeTime } from '@/core/format'
+import { greeting, previewLine, relativeTime } from '@/core/format'
 import type { SessionListRow } from '@/core/gateway/gateway-contract.generated'
 import { requestSummary } from '@/core/requests'
 import { createConversation } from '@/store/chat'
@@ -139,7 +139,8 @@ export default function Chats() {
 
 function SessionRow({ row }: { row: SessionListRow }) {
   const t = useTheme()
-  const title = row.title?.trim() || row.preview?.trim() || 'Untitled conversation'
+  const preview = previewLine(row.preview ?? '')
+  const title = row.title?.trim() || preview || 'Untitled conversation'
 
   return (
     <Pressable
@@ -151,9 +152,9 @@ function SessionRow({ row }: { row: SessionListRow }) {
         <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
           {title}
         </Text>
-        {row.title && row.preview ? (
+        {row.title && preview ? (
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {row.preview}
+            {preview}
           </Text>
         ) : null}
       </View>
