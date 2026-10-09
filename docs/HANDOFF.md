@@ -108,8 +108,15 @@ Done and checked (`npm run verify` green, iOS bundle exports):
   default), tool rows, status line, send, stop.
 - Requests inbox: all request kinds, in the chat and in the Activity tab.
 
-Builds and starts in the iOS Simulator (iPhone 17, Xcode 26.3). The sign-in
-screen renders. Sign-in against a real backend is NOT yet checked.
+Checked in the iOS Simulator (iPhone 17, Xcode 26.3) against the owner's real
+Hermes on 2026-10-09: sign-in through the Cloudflare address, the ticket and
+socket, the session list, opening a stored chat (history, tool rows, Markdown),
+sending a message and the streamed answer.
+
+Not checked yet: the request cards (no approval came up), stop, new chat,
+workspace switching, sign-out, dark mode, tablet width, a Tailscale or LAN
+address on a real phone (the backend listens on 127.0.0.1:9130 only; the
+Simulator reaches it as `127.0.0.1:9130`).
 
 Build notes:
 
@@ -121,22 +128,16 @@ Build notes:
 - `expo-dev-client` is installed, so a build on a phone can load JS from the
   Mac over Wi-Fi or Tailscale.
 - `react-dom` is pinned only to stop npm resolving a mismatched optional peer.
+- To open a screen without a tap: `xcrun simctl openurl <device> "hermes://settings"`
+  (expo-router deep link, scheme `hermes`).
 - Synthetic taps do not reach the Simulator on this Mac. Check screens with
   `xcrun simctl io <device> screenshot`; the owner does the typing.
-
-Device check:
-
-1. `npx expo run:ios --port 8082` (generates `ios/`, builds, starts).
-2. Add a workspace. Confirm the session list loads.
-3. Open a chat, send a message, confirm streaming.
-4. If the socket fails behind Cloudflare Access, look at the headers argument
-   in `store/link.ts` first.
 
 ## Remaining work, in order
 
 Each item is one or more commits. Check the contract file for the RPC names.
 
-1. **Device check and fixes** from the list above.
+1. **Finish the device check**: the "Not checked yet" list above.
 2. **Chat quality**: Markdown tables (the parser in `core/markdown.ts` has no
    table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
