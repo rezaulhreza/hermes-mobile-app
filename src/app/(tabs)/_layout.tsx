@@ -1,0 +1,130 @@
+import { Feather } from '@expo/vector-icons'
+import { useStore } from '@nanostores/react'
+import { Redirect, Tabs } from 'expo-router'
+import type { ComponentProps } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import type { IconName } from '@/components/ui'
+import { $requests } from '@/store/requests'
+import { $workspaces, $workspacesLoaded } from '@/store/workspaces'
+import { radius, space } from '@/theme/tokens'
+import { useTheme } from '@/theme/use-theme'
+
+type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0]
+
+const TABS: Record<string, { label: string; icon: IconName }> = {
+  index: { label: 'Chats', icon: 'message-circle' },
+  bots: { label: 'Bots', icon: 'users' },
+  activity: { label: 'Activity', icon: 'activity' },
+  workspace: { label: 'Workspace', icon: 'folder' },
+  settings: { label: 'Settings', icon: 'settings' }
+}
+
+export default function TabsLayout() {
+  const loaded = useStore($workspacesLoaded)
+  const hasWorkspace = useStore($workspaces).workspaces.length > 0
+
+  if (!loaded) {
+    return null
+  }
+
+  if (!hasWorkspace) {
+    return <Redirect href="/sign-in" />
+  }
+
+  return (
+    <Tabs screenOptions={{ headerShown: false }} tabBar={props => <FloatingTabBar {...props} />}>
+      {Object.keys(TABS).map(name => (
+        <Tabs.Screen key={name} name={name} />
+      ))}
+    </Tabs>
+  )
+}
+
+/** The bar floats above the page, so content scrolls behind it. */
+function FloatingTabBar({ state, navigation }: TabBarProps) {
+  const t = useTheme()
+  const insets = useSafeAreaInsets()
+  const waiting = useStore($requests).length
+
+  return (
+    <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
+      <View style={[styles.bar, { backgroundColor: t.paper, borderColor: t.line }]}>
+        {state.routes.map((route, index) => {
+          const tab = TABS[route.name]
+
+          if (!tab) {
+            return null
+          }
+
+          const focused = state.index === index
+          const colour = focused ? t.accent : t.muted
+
+          return (
+            <Pressable
+              accessibilityLabel={tab.label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: focused }}
+              key={route.key}
+              onPress={() => {
+                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true })
+
+                if (!focused && !event.defaultPrevented) {
+                  navigation.navigate(route.name)
+                }
+              }}
+              style={[styles.tab, focused && { backgroundColor: t.accentBg }]}
+            >
+              <View>
+                <Feather color={colour} name={tab.icon} size={20} />
+                {route.name === 'activity' && waiting > 0 ? (
+                  <View style={[styles.badge, { backgroundColor: t.accent }]}>
+                    <Text style={[styles.badgeText, { color: t.onAccent }]}>{waiting}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text numberOfLines={1} style={[styles.label, { color: colour }]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+/** Space a scrolling screen must leave at its end so the last row clears the bar. */
+export const TAB_BAR_CLEARANCE = 96
+
+const styles = StyleSheet.create({
+  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md, alignItems: 'center' },
+  bar: {
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 520,
+    padding: 6,
+    borderRadius: radius.lg + 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6
+  },
+  tab: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: radius.lg },
+  label: { fontSize: 11, fontWeight: '600' },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  badgeText: { fontSize: 10, fontWeight: '700' }
+})
