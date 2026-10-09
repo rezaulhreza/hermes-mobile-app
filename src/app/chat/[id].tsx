@@ -16,9 +16,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Markdown } from '@/components/markdown'
+import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, Notice } from '@/components/ui'
 import { duration } from '@/core/format'
+import { modelLabel } from '@/core/models'
 import type { TranscriptItem } from '@/core/transcript'
 import { $conversations, resumeConversation, sendMessage, stopTurn } from '@/store/chat'
 import { $linkState } from '@/store/link'
@@ -34,6 +36,7 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string | null>(params.live ? params.id : null)
   const [failure, setFailure] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [pickingModel, setPickingModel] = useState(false)
   const linkState = useStore($linkState)
   const conversation = useStore($conversations)[sessionId ?? '']
   const requests = useStore($requests).filter(r => r.sessionId === sessionId)
@@ -77,9 +80,24 @@ export default function Chat() {
             {conversation?.title || params.title || 'New chat'}
           </Text>
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {transcript?.status ?? (running ? 'Working…' : (conversation?.info.model ?? ''))}
+            {transcript?.status ?? (running ? 'Working…' : ' ')}
           </Text>
         </View>
+        {conversation?.info.model ? (
+          <Pressable
+            accessibilityHint="Changes the model and the reasoning level"
+            accessibilityLabel={`Model: ${modelLabel(conversation.info.model)}`}
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={() => setPickingModel(true)}
+            style={[styles.pill, { backgroundColor: t.soft }]}
+          >
+            <Text numberOfLines={1} style={[type.small, styles.pillText, { color: t.ink }]}>
+              {modelLabel(conversation.info.model)}
+            </Text>
+            <Feather color={t.muted} name="chevron-down" size={14} />
+          </Pressable>
+        ) : null}
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
@@ -125,6 +143,15 @@ export default function Chat() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {sessionId ? (
+        <ModelSheet
+          onClose={() => setPickingModel(false)}
+          reasoning={conversation?.info.reasoning_effort}
+          sessionId={sessionId}
+          visible={pickingModel}
+        />
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -211,6 +238,16 @@ const styles = StyleSheet.create({
     paddingBottom: space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth
   },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: 150,
+    minHeight: 32,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill
+  },
+  pillText: { fontWeight: '600', flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   bubble: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
   tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
