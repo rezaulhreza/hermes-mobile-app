@@ -80,6 +80,14 @@ event and payload shape. Grep it before writing a store.
 - Proxy headers must go on REST calls AND on the WebSocket upgrade. React
   Native's `WebSocket` takes headers as a third constructor argument; see
   `store/link.ts`. UNVERIFIED on a device.
+- Any non-loopback bind of the backend turns the sign-in gate on, so Cloudflare,
+  Tailscale and same-network connections all use the same username and
+  password. The connection kind only changes the address hints, the default
+  scheme (`http` on a private network) and whether proxy headers apply.
+- iOS allows plain `http` through the ATS keys in `app.json`. Android needs
+  `usesCleartextTraffic` (expo-build-properties). NOT done yet.
+- The backend checks the WebSocket Host against `dashboard.public_url`. A
+  Tailscale or LAN address may be refused there. UNVERIFIED.
 - React Native keeps cookies in the native cookie store, per host. Two
   workspaces on the SAME host with different accounts share one cookie jar.
   Not handled yet.

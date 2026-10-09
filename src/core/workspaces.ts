@@ -7,8 +7,68 @@
  * are credentials and belong in the Keychain / Keystore.
  */
 
+/** How this phone reaches the Hermes host. The account is the same in every case. */
+export type ConnectionKind = 'cloudflare' | 'tailscale' | 'lan' | 'other'
+
+export interface ConnectionKindInfo {
+  kind: ConnectionKind
+  label: string
+  detail: string
+  placeholder: string
+  /** Scheme given to an address typed without one. */
+  defaultScheme: 'https' | 'http'
+  /** Shown under the address field. */
+  hint: string
+  /** An access proxy can stand in front of this kind of address. */
+  proxyHeaders: boolean
+}
+
+export const CONNECTION_KINDS: readonly ConnectionKindInfo[] = [
+  {
+    kind: 'cloudflare',
+    label: 'Cloudflare',
+    detail: 'A server reached through your Cloudflare hostname.',
+    placeholder: 'hermes.example.com',
+    defaultScheme: 'https',
+    hint: 'The public hostname of your tunnel.',
+    proxyHeaders: true
+  },
+  {
+    kind: 'tailscale',
+    label: 'Tailscale / compatible',
+    detail: 'A private network, such as Tailscale, Headscale or another VPN.',
+    placeholder: 'my-mac.tailnet.ts.net:9130',
+    defaultScheme: 'http',
+    hint: 'The MagicDNS name or the 100.x address of the host, with the port. This phone must be on the same tailnet.',
+    proxyHeaders: false
+  },
+  {
+    kind: 'lan',
+    label: 'Same network',
+    detail: 'Your phone and the Hermes host share the same Wi-Fi or LAN.',
+    placeholder: '192.168.1.20:9130',
+    defaultScheme: 'http',
+    hint: 'The LAN address of the host, with the port. Hermes must listen on that address, not only on localhost.',
+    proxyHeaders: false
+  },
+  {
+    kind: 'other',
+    label: 'Other server',
+    detail: 'A direct address or a different reverse proxy.',
+    placeholder: 'https://hermes.example.com',
+    defaultScheme: 'https',
+    hint: 'Any address that reaches your Hermes.',
+    proxyHeaders: true
+  }
+]
+
+export function connectionKindInfo(kind: ConnectionKind): ConnectionKindInfo {
+  return CONNECTION_KINDS.find(info => info.kind === kind) ?? CONNECTION_KINDS[0]
+}
+
 export interface Workspace {
   id: string
+  kind: ConnectionKind
   /** Name shown in the workspace switcher. */
   label: string
   /** Base URL with no trailing slash, e.g. https://hermes.example.com */
@@ -31,6 +91,7 @@ export interface WorkspaceList {
 export const EMPTY_WORKSPACES: WorkspaceList = { activeId: null, workspaces: [] }
 
 export interface WorkspaceDraft {
+  kind: ConnectionKind
   label?: string
   baseUrl: string
   username: string
@@ -42,18 +103,19 @@ export interface WorkspaceDraft {
 export type DraftResult = { ok: true; workspace: Workspace } | { ok: false; field: keyof WorkspaceDraft; message: string }
 
 /**
- * Normalise what the user typed into a base URL. A bare host gets `https://`,
- * because a phone almost always reaches Hermes through a tunnel or a proxy.
+ * Normalise what the user typed into a base URL. A bare host gets the default
+ * scheme of its connection kind: `https` behind a tunnel or a proxy, `http`
+ * on a private network, where Hermes usually has no certificate.
  * Returns null when the text is not a usable http(s) URL.
  */
-export function normaliseBaseUrl(input: string): string | null {
+export function normaliseBaseUrl(input: string, defaultScheme: 'https' | 'http' = 'https'): string | null {
   const trimmed = input.trim()
 
   if (!trimmed) {
     return null
   }
 
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `${defaultScheme}://${trimmed}`
 
   try {
     const url = new URL(withScheme)
@@ -76,10 +138,11 @@ export function wsOriginFor(baseUrl: string): string {
 }
 
 export function workspaceFromDraft(draft: WorkspaceDraft, id: string): DraftResult {
-  const baseUrl = normaliseBaseUrl(draft.baseUrl)
+  const info = connectionKindInfo(draft.kind)
+  const baseUrl = normaliseBaseUrl(draft.baseUrl, info.defaultScheme)
 
   if (!baseUrl) {
-    return { ok: false, field: 'baseUrl', message: 'Enter the address of your Hermes, for example hermes.example.com' }
+    return { ok: false, field: 'baseUrl', message: `Enter the address of your Hermes, for example ${info.placeholder}` }
   }
 
   const username = draft.username.trim()
@@ -92,8 +155,9 @@ export function workspaceFromDraft(draft: WorkspaceDraft, id: string): DraftResu
     return { ok: false, field: 'password', message: 'Enter your Hermes password' }
   }
 
-  const clientId = draft.accessClientId?.trim() ?? ''
-  const clientSecret = draft.accessClientSecret?.trim() ?? ''
+  // Proxy fields typed under another connection kind do not follow the user to a kind without a proxy.
+  const clientId = info.proxyHeaders ? (draft.accessClientId?.trim() ?? '') : ''
+  const clientSecret = info.proxyHeaders ? (draft.accessClientSecret?.trim() ?? '') : ''
 
   // A service token is a pair. One half alone is always refused by the proxy.
   if (Boolean(clientId) !== Boolean(clientSecret)) {
@@ -112,6 +176,7 @@ export function workspaceFromDraft(draft: WorkspaceDraft, id: string): DraftResu
     ok: true,
     workspace: {
       id,
+      kind: draft.kind,
       label: draft.label?.trim() || new URL(baseUrl).host,
       baseUrl,
       username,
@@ -199,6 +264,7 @@ function parseWorkspace(entry: unknown): Workspace | null {
 
   return {
     id: entry.id,
+    kind: CONNECTION_KINDS.some(info => info.kind === entry.kind) ? (entry.kind as ConnectionKind) : 'other',
     label: typeof entry.label === 'string' && entry.label ? entry.label : new URL(baseUrl).host,
     baseUrl,
     username: typeof entry.username === 'string' ? entry.username : '',

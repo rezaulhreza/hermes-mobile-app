@@ -9,7 +9,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.hermesnative"
+      "bundleIdentifier": "com.example.hermesnative",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Hermes connects to a Hermes host on your Wi-Fi or private network when you choose that connection."
+      }
     },
     "android": {
       "package": "com.example.hermesnative",
@@ -20,9 +27,18 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-splash-screen", { "backgroundColor": "#F8F7F4", "image": "./assets/images/icon.png", "imageWidth": 96 }],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F8F7F4",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 96
+        }
+      ],
       "expo-secure-store"
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

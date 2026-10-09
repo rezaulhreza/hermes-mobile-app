@@ -3,6 +3,7 @@ import type { Workspace } from '../workspaces'
 
 const workspace: Workspace = {
   id: 'a',
+  kind: 'cloudflare',
   label: 'a',
   baseUrl: 'https://hermes.example.com',
   username: 'reza',

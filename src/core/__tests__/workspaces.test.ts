@@ -9,7 +9,7 @@ import {
   wsOriginFor
 } from '../workspaces'
 
-const draft = { baseUrl: 'hermes.example.com/', username: ' reza ', password: 'pw' }
+const draft = { kind: 'cloudflare' as const, baseUrl: 'hermes.example.com/', username: ' reza ', password: 'pw' }
 
 describe('normaliseBaseUrl', () => {
   it('adds https to a bare host and drops the trailing slash', () => {
@@ -32,7 +32,7 @@ describe('workspaceFromDraft', () => {
 
     expect(result).toEqual({
       ok: true,
-      workspace: { id: 'a', label: 'hermes.example.com', baseUrl: 'https://hermes.example.com', username: 'reza', password: 'pw', headers: {} }
+      workspace: { id: 'a', kind: 'cloudflare', label: 'hermes.example.com', baseUrl: 'https://hermes.example.com', username: 'reza', password: 'pw', headers: {} }
     })
   })
 
@@ -44,6 +44,26 @@ describe('workspaceFromDraft', () => {
 
   it('refuses half of a service token and names the missing field', () => {
     expect(workspaceFromDraft({ ...draft, accessClientId: 'id' }, 'a')).toMatchObject({ ok: false, field: 'accessClientSecret' })
+  })
+
+  it('gives a private-network address http, because Hermes has no certificate there', () => {
+    const lan = workspaceFromDraft({ ...draft, kind: 'lan', baseUrl: '192.168.1.20:9130' }, 'a')
+    const tail = workspaceFromDraft({ ...draft, kind: 'tailscale', baseUrl: 'my-mac.tailnet.ts.net:9130' }, 'a')
+
+    expect(lan.ok && lan.workspace.baseUrl).toBe('http://192.168.1.20:9130')
+    expect(tail.ok && tail.workspace.baseUrl).toBe('http://my-mac.tailnet.ts.net:9130')
+  })
+
+  it('keeps a scheme the user typed, whatever the connection kind', () => {
+    const result = workspaceFromDraft({ ...draft, kind: 'tailscale', baseUrl: 'https://my-mac.tailnet.ts.net' }, 'a')
+
+    expect(result.ok && result.workspace.baseUrl).toBe('https://my-mac.tailnet.ts.net')
+  })
+
+  it('does not carry proxy headers to a connection kind that has no proxy', () => {
+    const result = workspaceFromDraft({ ...draft, kind: 'lan', baseUrl: '10.0.0.2:9130', accessClientId: 'id', accessClientSecret: 's' }, 'a')
+
+    expect(result.ok && result.workspace.headers).toEqual({})
   })
 
   it('names the first missing field', () => {
@@ -86,13 +106,14 @@ describe('workspace list', () => {
   it('drops malformed stored entries instead of dialling them', () => {
     const raw = JSON.stringify({
       activeId: 'gone',
-      workspaces: [{ id: 'a', baseUrl: 'javascript:alert(1)' }, { id: 'b', baseUrl: 'https://ok.example', headers: { X: 1, Y: 'y' } }, 7]
+      workspaces: [{ id: 'a', baseUrl: 'javascript:alert(1)' }, { id: 'b', kind: 'nonsense', baseUrl: 'https://ok.example', headers: { X: 1, Y: 'y' } }, 7]
     })
 
     const list = parseWorkspaceList(raw)
 
     expect(list.workspaces.map(w => w.id)).toEqual(['b'])
     expect(list.workspaces[0].headers).toEqual({ Y: 'y' })
+    expect(list.workspaces[0].kind).toBe('other')
     expect(list.activeId).toBe('b')
     expect(parseWorkspaceList('not json')).toEqual(EMPTY_WORKSPACES)
   })
