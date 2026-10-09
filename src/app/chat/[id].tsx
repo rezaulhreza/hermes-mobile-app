@@ -7,6 +7,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +15,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { Markdown } from '@/components/markdown'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, Notice } from '@/components/ui'
 import { duration } from '@/core/format'
@@ -142,11 +144,11 @@ function Row({ item }: { item: TranscriptItem }) {
 
     case 'assistant':
       return (
-        <Text selectable style={[type.body, { color: t.ink }]}>
-          {item.text}
-          {item.streaming ? ' ▍' : ''}
-        </Text>
+        <Markdown text={item.text} />
       )
+
+    case 'thinking':
+      return <Thinking streaming={item.streaming} text={item.text} />
 
     case 'tool':
       return (
@@ -175,7 +177,30 @@ function Row({ item }: { item: TranscriptItem }) {
   }
 }
 
+/** The model's reasoning. Closed by default: it is context, not the answer. */
+function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
+  const t = useTheme()
+  const [open, setOpen] = useState(false)
+
+  return (
+    <View style={styles.thinking}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        hitSlop={8}
+        onPress={() => setOpen(value => !value)}
+        style={styles.tool}
+      >
+        <Feather color={t.muted} name={open ? 'chevron-down' : 'chevron-right'} size={15} />
+        <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>{streaming ? 'Thinking…' : 'Thought'}</Text>
+      </Pressable>
+      {open ? <Markdown muted text={text} /> : null}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  thinking: { gap: space.sm },
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {

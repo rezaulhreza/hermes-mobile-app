@@ -29,6 +29,17 @@ describe('transcript', () => {
     expect(t.running).toBe(true)
   })
 
+  it('keeps thinking apart from the answer and closes it when the answer starts', () => {
+    const t = run([
+      { type: 'reasoning.delta', payload: { text: 'Let me ' } },
+      { type: 'reasoning.delta', payload: { text: 'check.' } },
+      delta('It is 4.')
+    ])
+
+    expect(shape(t)).toEqual(['thinking:Let me check.', 'assistant:It is 4.'])
+    expect(t.items[0]).toMatchObject({ streaming: false })
+  })
+
   it('shows the final text of a turn that sent no deltas', () => {
     const t = run([{ type: 'message.complete', payload: { text: 'Cached answer', status: 'complete' } }])
 

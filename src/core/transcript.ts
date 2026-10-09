@@ -13,6 +13,7 @@ import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 export type TranscriptItem =
   | { kind: 'user'; key: string; text: string }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
+  | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
   | { kind: 'notice'; key: string; text: string; tone: 'info' | 'error' }
 
@@ -68,7 +69,14 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
     case 'message.delta': {
       const text = (event as GatewayEvent<'message.delta'>).payload?.text ?? ''
 
-      return text ? appendAssistant(transcript, text) : transcript
+      return text ? appendStream(transcript, 'assistant', text) : transcript
+    }
+
+    case 'reasoning.delta':
+    case 'thinking.delta': {
+      const text = (event.payload as { text?: unknown } | undefined)?.text
+
+      return typeof text === 'string' && text ? appendStream(transcript, 'thinking', text) : transcript
     }
 
     case 'tool.start': {
@@ -78,7 +86,7 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
         return transcript
       }
 
-      return push(settleAssistant(transcript), key => ({
+      return push(settleStream(transcript), key => ({
         kind: 'tool',
         key,
         toolId: payload.tool_id,
@@ -118,7 +126,7 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
       const payload = (event as GatewayEvent<'error'>).payload as { message?: unknown } | undefined
       const text = typeof payload?.message === 'string' ? payload.message : 'Hermes reported an error.'
 
-      return { ...push(settleAssistant(transcript), key => ({ kind: 'notice', key, text, tone: 'error' })), running: false }
+      return { ...push(settleStream(transcript), key => ({ kind: 'notice', key, text, tone: 'error' })), running: false }
     }
 
     default:
@@ -130,7 +138,7 @@ function completeTurn(
   transcript: Transcript,
   payload: GatewayEvent<'message.complete'>['payload']
 ): Transcript {
-  let next = settleAssistant(transcript)
+  let next = settleStream(transcript)
   const finalText = typeof payload?.text === 'string' ? payload.text : ''
   const last = next.items[next.items.length - 1]
 
@@ -156,10 +164,11 @@ function completeTurn(
   }
 }
 
-function appendAssistant(transcript: Transcript, text: string): Transcript {
+/** Grow the open row of this kind, or open one. A row of the other kind closes first. */
+function appendStream(transcript: Transcript, kind: 'assistant' | 'thinking', text: string): Transcript {
   const last = transcript.items[transcript.items.length - 1]
 
-  if (last?.kind === 'assistant' && last.streaming) {
+  if (last?.kind === kind && last.streaming) {
     return {
       ...transcript,
       running: true,
@@ -167,13 +176,13 @@ function appendAssistant(transcript: Transcript, text: string): Transcript {
     }
   }
 
-  return { ...push(transcript, key => ({ kind: 'assistant', key, text, streaming: true })), running: true }
+  return { ...push(settleStream(transcript), key => ({ kind, key, text, streaming: true })), running: true }
 }
 
-function settleAssistant(transcript: Transcript): Transcript {
+function settleStream(transcript: Transcript): Transcript {
   const last = transcript.items[transcript.items.length - 1]
 
-  if (last?.kind !== 'assistant' || !last.streaming) {
+  if ((last?.kind !== 'assistant' && last?.kind !== 'thinking') || !last.streaming) {
     return transcript
   }
 
