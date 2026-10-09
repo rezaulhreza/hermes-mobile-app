@@ -72,11 +72,18 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
       return text ? appendStream(transcript, 'assistant', text) : transcript
     }
 
-    case 'reasoning.delta':
-    case 'thinking.delta': {
+    case 'reasoning.delta': {
       const text = (event.payload as { text?: unknown } | undefined)?.text
 
       return typeof text === 'string' && text ? appendStream(transcript, 'thinking', text) : transcript
+    }
+
+    // Not reasoning: the backend's "working" line (a face and a verb). It is
+    // status, it replaces itself, and it never belongs in the transcript.
+    case 'thinking.delta': {
+      const text = (event.payload as { text?: unknown } | undefined)?.text
+
+      return typeof text === 'string' && text.trim() ? { ...transcript, running: true, status: text.trim() } : transcript
     }
 
     case 'tool.start': {

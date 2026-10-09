@@ -40,6 +40,13 @@ describe('transcript', () => {
     expect(t.items[0]).toMatchObject({ streaming: false })
   })
 
+  it('shows the working line as status, never as a transcript row', () => {
+    const t = run([{ type: 'thinking.delta', payload: { text: ' pondering... ' } }])
+
+    expect(t.items).toHaveLength(0)
+    expect(t.status).toBe('pondering...')
+  })
+
   it('shows the final text of a turn that sent no deltas', () => {
     const t = run([{ type: 'message.complete', payload: { text: 'Cached answer', status: 'complete' } }])
 
