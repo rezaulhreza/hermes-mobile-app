@@ -100,9 +100,25 @@ Done and checked (`npm run verify` green, iOS bundle exports):
   default), tool rows, status line, send, stop.
 - Requests inbox: all request kinds, in the chat and in the Activity tab.
 
-NOT yet run on a device or simulator. First device check:
+Builds and starts in the iOS Simulator (iPhone 17, Xcode 26.3). The sign-in
+screen renders. Sign-in against a real backend is NOT yet checked.
 
-1. `npx expo run:ios` (generates `ios/`, builds, starts).
+Build notes:
+
+- `scripts/patch-expo-jsi.mjs` runs on `postinstall`. Expo SDK 57's
+  `expo-modules-jsi` targets Swift 6.3; this Mac has Swift 6.2 (Xcode 26.3).
+  The script makes that one module build. Delete it after an Xcode upgrade.
+- Another project often holds Metro's port 8081 on this Mac. Use
+  `npx expo run:ios --port 8082`. Do not stop the other Metro server.
+- `expo-dev-client` is installed, so a build on a phone can load JS from the
+  Mac over Wi-Fi or Tailscale.
+- `react-dom` is pinned only to stop npm resolving a mismatched optional peer.
+- Synthetic taps do not reach the Simulator on this Mac. Check screens with
+  `xcrun simctl io <device> screenshot`; the owner does the typing.
+
+Device check:
+
+1. `npx expo run:ios --port 8082` (generates `ios/`, builds, starts).
 2. Add a workspace. Confirm the session list loads.
 3. Open a chat, send a message, confirm streaming.
 4. If the socket fails behind Cloudflare Access, look at the headers argument
