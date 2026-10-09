@@ -96,7 +96,8 @@ Done and checked (`npm run verify` green, iOS bundle exports):
 - Sign-in screen with Cloudflare Access fields.
 - Link: ticket, socket, redial with backoff, redial on foreground.
 - Chats tab: session list, search, pull to refresh, new chat, link status banner.
-- Chat: resume history, streaming text, tool rows, status line, send, stop.
+- Chat: resume history, streaming text as Markdown, reasoning rows (closed by
+  default), tool rows, status line, send, stop.
 - Requests inbox: all request kinds, in the chat and in the Activity tab.
 
 NOT yet run on a device or simulator. First device check:
@@ -112,8 +113,8 @@ NOT yet run on a device or simulator. First device check:
 Each item is one or more commits. Check the contract file for the RPC names.
 
 1. **Device check and fixes** from the list above.
-2. **Chat quality**: Markdown rendering (code blocks, lists, links, tables),
-   reasoning/thinking rows (`reasoning.delta`, `thinking.delta`), tool row
+2. **Chat quality**: Markdown tables (the parser in `core/markdown.ts` has no
+   table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
    button, keep position when reading history, haptics.
 3. **Composer**: model picker and reasoning picker (`model.options`,
