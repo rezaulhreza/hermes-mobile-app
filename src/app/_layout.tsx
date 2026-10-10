@@ -15,6 +15,11 @@ import { clearSessions, refreshSessions } from '@/store/sessions'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
+if (__DEV__) {
+  // Lets scripts/drive.mjs press and type in the Simulator. Not in a release bundle.
+  void import('@/dev/driver')
+}
+
 export default function RootLayout() {
   const t = useTheme()
   const workspace = useStore($activeWorkspace)
