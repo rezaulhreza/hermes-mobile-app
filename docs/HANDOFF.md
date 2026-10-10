@@ -111,10 +111,12 @@ Done and checked (`npm run verify` green, iOS bundle exports):
 Checked in the iOS Simulator (iPhone 17, Xcode 26.3) against the owner's real
 Hermes on 2026-10-09: sign-in through the Cloudflare address, the ticket and
 socket, the session list, opening a stored chat (history, tool rows, Markdown),
-sending a message and the streamed answer.
+sending a message and the streamed answer, new chat, dark mode on the Chats
+tab.
 
-Not checked yet: the request cards (no approval came up), stop, new chat,
-workspace switching, sign-out, dark mode, tablet width, a Tailscale or LAN
+Not checked yet: the model and reasoning sheet (built, tests pass, not seen
+on screen), the request cards (no approval came up), stop, workspace
+switching, sign-out, tablet width, a Tailscale or LAN
 address on a real phone (the backend listens on 127.0.0.1:9130 only; the
 Simulator reaches it as `127.0.0.1:9130`).
 
@@ -128,8 +130,9 @@ Build notes:
 - `expo-dev-client` is installed, so a build on a phone can load JS from the
   Mac over Wi-Fi or Tailscale.
 - `react-dom` is pinned only to stop npm resolving a mismatched optional peer.
-- To open a screen without a tap: `xcrun simctl openurl <device> "hermes://settings"`
-  (expo-router deep link, scheme `hermes`).
+- `xcrun simctl openurl <device> "hermes://settings"` opens a screen by deep
+  link, but iOS shows an "Open in Hermes?" dialog that needs a tap. Dark mode
+  needs no tap: `xcrun simctl ui <device> appearance dark`.
 - Synthetic taps do not reach the Simulator on this Mac. Check screens with
   `xcrun simctl io <device> screenshot`; the owner does the typing.
 
@@ -142,8 +145,7 @@ Each item is one or more commits. Check the contract file for the RPC names.
    table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
    button, keep position when reading history, haptics.
-3. **Composer**: model picker and reasoning picker (`model.options`,
-   `config.set`), slash commands (`complete.slash`, `slash.exec`,
+3. **Composer**: slash commands (`complete.slash`, `slash.exec`,
    `command.dispatch`), `@` file references (`complete.path`), queue + steer
    (`prompt.submit` status `queued` / `steered`, `queued` param), attachments
    (`image.attach_bytes`, `file.attach`, `pdf.attach`; expo-image-picker,
