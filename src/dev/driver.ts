@@ -97,6 +97,20 @@ function nameOf(fiber: Fiber): string {
   return String(labelOf(fiber) ?? textOf(fiber))
 }
 
+function pressOne(hit: Fiber | undefined, what: string): string {
+  if (!hit) {
+    return `not found: ${what}`
+  }
+
+  if (props(hit).disabled) {
+    return `disabled: ${what}`
+  }
+
+  ;(props(hit).onPress as (event: unknown) => void)({ nativeEvent: {} })
+
+  return `pressed: ${nameOf(hit)}`
+}
+
 const helpers = {
   router,
   rpc,
@@ -111,25 +125,15 @@ const helpers = {
   /** The name of every control that can be pressed. */
   labels: () => pressables().map(nameOf).filter(Boolean),
 
-  /** Press the control with this accessibility label, or the first one whose text contains it. */
-  press: (what: string, nth = 0) => {
-    const all = pressables()
-    // A whole name wins over a part of one: "Archive" must not press "Archived".
-    const exact = all.filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what)
-    const hit = (exact.length ? exact : all.filter(fiber => nameOf(fiber).includes(what)))[nth]
+  /**
+   * Press the control whose accessibility label or text is exactly this. A
+   * part of a name never matches here: "Send" must not press a list row named
+   * "Send message to ...". Use `pressLike` to press by a part of a name.
+   */
+  press: (what: string, nth = 0) => pressOne(pressables().filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what)[nth], what),
 
-    if (!hit) {
-      return `not found: ${what}`
-    }
-
-    if (props(hit).disabled) {
-      return `disabled: ${what}`
-    }
-
-    ;(props(hit).onPress as (event: unknown) => void)({ nativeEvent: {} })
-
-    return `pressed: ${nameOf(hit)}`
-  },
+  /** Press the first control whose name contains this. For a long title; never for a button. */
+  pressLike: (what: string, nth = 0) => pressOne(pressables().filter(fiber => nameOf(fiber).includes(what))[nth], what),
 
   /** Hold the first control that has a long press and this name. */
   longPress: (what: string) => {

@@ -264,7 +264,8 @@ Build notes:
   needs no tap: `xcrun simctl ui <device> appearance dark`.
 - Synthetic taps do not reach the Simulator on this Mac. Use the driver:
   `node scripts/drive.mjs '<expression>' ...`. Each argument is one JavaScript
-  expression with `h` in scope: `h.press("Send")`, `h.longPress("a title")`,
+  expression with `h` in scope: `h.press("Send")` (the exact name only),
+  `h.pressLike("part of a title")`, `h.longPress("a title")`,
   `h.type("text")` (or `h.type("text", "Title")` for another input),
   `h.labels()`, `h.texts()`, `h.wait(ms)`, `h.rpc(method, params)`,
   `h.api()`, `h.stores.$sessions.get()`, `h.stage(sessionId, { uri, name, mimeType })`.

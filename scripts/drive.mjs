@@ -5,6 +5,7 @@
  *   node scripts/drive.mjs 'h.labels()'
  *   node scripts/drive.mjs 'h.type("/he")' 'h.wait(800)' 'h.texts().slice(-20)'
  *   node scripts/drive.mjs 'h.press("Send")'
+ *   node scripts/drive.mjs 'h.pressLike("a part of a long title")'
  *
  * Each argument is one JavaScript expression. `h` is the helper object from
  * `src/dev/driver.ts`. The app (development build only) dials this script on
