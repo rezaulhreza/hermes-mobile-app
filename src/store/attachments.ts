@@ -143,13 +143,18 @@ async function upload(sessionId: string, entry: Attachment, file: PickedFile): P
   }
 
   if (entry.kind === 'pdf') {
-    const result = await rpc<PdfAttachResult>(
-      'pdf.attach',
-      { session_id: sessionId, content_base64: base64, filename: file.name },
-      UPLOAD_TIMEOUT_MS
-    )
+    try {
+      const result = await rpc<PdfAttachResult>(
+        'pdf.attach',
+        { session_id: sessionId, content_base64: base64, filename: file.name },
+        UPLOAD_TIMEOUT_MS
+      )
 
-    return { heldPaths: (result.pages ?? []).map(page => page.path), promptText: result.text ?? '', size }
+      return { heldPaths: (result.pages ?? []).map(page => page.path), promptText: result.text ?? '', size }
+    } catch {
+      // The host cannot draw PDF pages without poppler. The agent can still
+      // read the PDF with its own tools when it has the file, so send that.
+    }
   }
 
   const result = await rpc<FileAttachResult>(
