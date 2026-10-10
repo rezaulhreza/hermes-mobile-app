@@ -113,8 +113,23 @@ Hermes on 2026-10-09: sign-in through the Cloudflare address, the ticket and
 socket, the session list, opening a stored chat (history, tool rows, Markdown),
 sending a message and the streamed answer, new chat, the model and reasoning sheet, dark mode on the Chats tab.
 
-Built with tests but not seen on screen: slash commands and `@` file
-references in the composer (`core/composer.ts`).
+Also seen on screen by the owner: the slash command list, `/help` output, an
+`@file:` reference that the agent then read, the status line under the title,
+the Stop button during a turn.
+
+Known rough edges, not fixed:
+
+- The slash list shows commands that mean nothing on a phone (`/quit`,
+  `/redraw`, `/compose`, `/paste`). Filter them; the desktop has a list of
+  surface restrictions to copy (`apps/desktop/src/app/session/hooks/use-prompt-actions/slash.ts`).
+- `/help` is terminal text. A native command sheet built from
+  `complete.slash` would be better than printing it.
+- `/new`, `/title`, `/branch` and similar commands change the session. The app
+  does not react to that yet (no navigation to the new session).
+- A message sent during a turn shows as a normal user row. It is queued by the
+  backend (`prompt.submit` returns `status: queued`), and the row must say so.
+- The gap under the composer is large when the keyboard is closed.
+- `Menlo` is an iOS font name; Android needs `monospace` (see `components/markdown.tsx`).
 
 Not checked yet: the request cards (no approval came up), stop, workspace
 switching, sign-out, tablet width, a Tailscale or LAN
