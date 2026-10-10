@@ -22,6 +22,7 @@ import type {
 } from '@/core/gateway/gateway-contract.generated'
 import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
+import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
 import {
@@ -39,7 +40,7 @@ import {
 
 import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
-import { onGatewayEvent, rpc } from './link'
+import { currentApi, onGatewayEvent, rpc } from './link'
 import { $sessionQuery } from './sessions'
 
 export interface Conversation {
@@ -503,7 +504,38 @@ export function setConversationTitle(sessionId: string, title: string): void {
   patch(sessionId, c => ({ ...c, title }))
 }
 
+// One request per conversation serves every tool row the user opens in it.
+const storedMessages = new Map<string, Promise<{ role?: string; tool_call_id?: string | null; content?: unknown }[]>>()
+
+/**
+ * The output of a tool call from stored history. `session.resume` leaves it
+ * out to keep the first paint small; the REST messages route has it.
+ */
+export async function loadToolOutput(storedId: string, toolId: string): Promise<string | undefined> {
+  const api = currentApi()
+
+  if (!api) {
+    return undefined
+  }
+
+  let pending = storedMessages.get(storedId)
+
+  if (!pending) {
+    pending = api
+      .request<{ messages?: { role?: string; tool_call_id?: string | null; content?: unknown }[] }>({
+        path: `/api/sessions/${encodeURIComponent(storedId)}/messages`
+      })
+      .then(result => result.messages ?? [])
+    storedMessages.set(storedId, pending)
+    // A failed request must not be the answer for the rest of the run.
+    pending.catch(() => storedMessages.delete(storedId))
+  }
+
+  return storedToolOutput((await pending).find(message => message.role === 'tool' && message.tool_call_id === toolId)?.content)
+}
+
 export function clearConversations(): void {
+  storedMessages.clear()
   $conversations.set({})
 }
 

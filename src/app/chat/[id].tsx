@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -7,10 +8,13 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -25,11 +29,13 @@ import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { SessionActionsSheet } from '@/components/session-actions'
+import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
+import { finalAnswerKeys, hasToolDetail } from '@/core/tools'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
 import { $attachments, addAttachments, type AttachSource, clipboardHasImage, removeAttachment } from '@/store/attachments'
 import {
@@ -62,6 +68,10 @@ export default function Chat() {
   const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
   const [modelQuery, setModelQuery] = useState('')
   const [acting, setActing] = useState(false)
+  const [tool, setTool] = useState<ToolTarget | null>(null)
+  // The list follows new text only while the user is at the end. A user who scrolled up is reading.
+  const atEnd = useRef(true)
+  const [awayFromEnd, setAwayFromEnd] = useState(false)
   const sessions = useStore($sessions)
   const insets = useSafeAreaInsets()
   const keyboardOpen = useKeyboardOpen()
@@ -90,6 +100,23 @@ export default function Chat() {
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
+  const finals = useMemo(() => finalAnswerKeys(transcript?.items ?? [], running), [transcript?.items, running])
+
+  // Read the position only after the user moved the list. The list also moves while its rows
+  // are measured, and that must not count as "the user scrolled up".
+  const onUserScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const away = contentSize.height - layoutMeasurement.height - contentOffset.y > END_SLACK
+
+    atEnd.current = !away
+    setAwayFromEnd(away)
+  }
+
+  const toEnd = () => {
+    atEnd.current = true
+    setAwayFromEnd(false)
+    list.current?.scrollToEnd({ animated: true })
+  }
   const attachments = useStore($attachments)[sessionId ?? '']
   const staged = attachments ?? NO_ATTACHMENTS
   const [adding, setAdding] = useState(false)
@@ -159,6 +186,9 @@ export default function Chat() {
 
     setDraft('')
     setCompletions(null)
+    // The user's own message is the newest row. Show it, wherever the list was.
+    atEnd.current = true
+    setAwayFromEnd(false)
     void sendDraft(sessionId, text, mode).then(apply)
   }
 
@@ -223,16 +253,25 @@ export default function Chat() {
             <ActivityIndicator color={t.muted} />
           </View>
         ) : (
-          <FlatList
-            ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
-            contentContainerStyle={styles.transcript}
-            data={transcript.items}
-            keyExtractor={item => item.key}
-            keyboardDismissMode="interactive"
-            onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
-            ref={list}
-            renderItem={({ item }) => <Row item={item} onOpen={setViewing} />}
-          />
+          <View style={styles.fill}>
+            <FlatList
+              ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
+              contentContainerStyle={styles.transcript}
+              data={transcript.items}
+              keyExtractor={item => item.key}
+              keyboardDismissMode="interactive"
+              onContentSizeChange={() => atEnd.current && list.current?.scrollToEnd({ animated: false })}
+              onMomentumScrollEnd={onUserScroll}
+              onScrollEndDrag={onUserScroll}
+              ref={list}
+              renderItem={({ item }) => <Row final={finals.has(item.key)} item={item} onOpen={setViewing} onTool={setTool} />}
+            />
+            {awayFromEnd ? (
+              <View style={styles.toEnd}>
+                <IconButton icon="arrow-down" label="Go to the newest message" onPress={toEnd} />
+              </View>
+            ) : null}
+          </View>
         )}
 
         {requests.map(request => (
@@ -366,6 +405,7 @@ export default function Chat() {
             visible={sheet === 'model'}
           />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
+          <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           <SessionActionsSheet
             onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId } })}
             onClose={() => setActing(false)}
@@ -394,6 +434,8 @@ export default function Chat() {
 }
 
 const NO_ATTACHMENTS: Attachment[] = []
+// Closer to the end than this still counts as the end: a streamed line must not show the button.
+const END_SLACK = 160
 
 const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
   { id: 'photos', label: 'Photo library', icon: 'image' },
@@ -423,7 +465,15 @@ const DELIVERY_LABEL: Record<Delivery, string> = {
   dropped: 'Not sent. The turn was stopped first.'
 }
 
-function Row({ item, onOpen }: { item: TranscriptItem; onOpen: (target: ViewerTarget) => void }) {
+interface RowProps {
+  item: TranscriptItem
+  /** This row is the answer that ends a turn. Copy and share sit under it. */
+  final: boolean
+  onOpen: (target: ViewerTarget) => void
+  onTool: (tool: ToolTarget) => void
+}
+
+function Row({ item, final, onOpen, onTool }: RowProps) {
   const t = useTheme()
 
   switch (item.kind) {
@@ -443,16 +493,31 @@ function Row({ item, onOpen }: { item: TranscriptItem; onOpen: (target: ViewerTa
       )
 
     case 'assistant':
-      return (
+      return final ? (
+        <View style={styles.answer}>
+          <Markdown text={item.text} />
+          <AnswerActions text={item.text} />
+        </View>
+      ) : (
         <Markdown text={item.text} />
       )
 
     case 'thinking':
       return <Thinking streaming={item.streaming} text={item.text} />
 
-    case 'tool':
+    case 'tool': {
+      const opens = hasToolDetail(item)
+
       return (
-        <View style={styles.tool}>
+        <Pressable
+          accessibilityHint={opens ? 'Opens the input and the output' : undefined}
+          accessibilityLabel={`${item.name} ${item.detail}`.trim()}
+          accessibilityRole="button"
+          disabled={!opens && item.state !== 'done'}
+          hitSlop={6}
+          onPress={() => onTool(item)}
+          style={({ pressed }) => [styles.tool, pressed && styles.dim]}
+        >
           {item.state === 'running' ? (
             <ActivityIndicator color={t.muted} size="small" />
           ) : (
@@ -465,8 +530,10 @@ function Row({ item, onOpen }: { item: TranscriptItem; onOpen: (target: ViewerTa
           {item.durationS !== undefined ? (
             <Text style={[type.small, { color: t.muted }]}>{duration(item.durationS)}</Text>
           ) : null}
-        </View>
+          {opens || item.state === 'done' ? <Feather color={t.muted} name="chevron-right" size={15} /> : null}
+        </Pressable>
       )
+    }
 
     case 'output':
       return <CommandOutput command={item.command} text={item.text} />
@@ -478,6 +545,31 @@ function Row({ item, onOpen }: { item: TranscriptItem; onOpen: (target: ViewerTa
         </Text>
       )
   }
+}
+
+/** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
+function AnswerActions({ text }: { text: string }) {
+  const t = useTheme()
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    void Clipboard.setStringAsync(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  return (
+    <View style={styles.answerActions}>
+      <Pressable accessibilityLabel={copied ? 'Copied' : 'Copy the answer'} accessibilityRole="button" hitSlop={10} onPress={copy} style={styles.tool}>
+        <Feather color={copied ? t.green : t.muted} name={copied ? 'check' : 'copy'} size={15} />
+        {copied ? <Text style={[type.small, { color: t.green }]}>Copied</Text> : null}
+      </Pressable>
+      <Pressable accessibilityLabel="Share the answer" accessibilityRole="button" hitSlop={10} onPress={() => void Share.share({ message: text }).catch(() => undefined)}>
+        <Feather color={t.muted} name="share" size={15} />
+      </Pressable>
+    </View>
+  )
 }
 
 const OUTPUT_PREVIEW_LINES = 12
@@ -534,6 +626,9 @@ function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
 
 const styles = StyleSheet.create({
   thinking: { gap: space.sm },
+  answer: { gap: space.sm },
+  answerActions: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 24 },
+  toEnd: { position: 'absolute', right: space.lg, bottom: space.sm },
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {

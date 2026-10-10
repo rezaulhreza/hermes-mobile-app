@@ -9,6 +9,7 @@
 
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
+import { type ToolDetail, toolDetail, toolInput, toolOutput } from './tools'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 
 /**
@@ -24,7 +25,7 @@ export type TranscriptItem =
   | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: SentAttachment[] }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
-  | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
+  | ({ kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number } & ToolDetail)
   /** What a slash command printed. Not part of the conversation with the model. */
   | { kind: 'output'; key: string; command: string; text: string }
   | { kind: 'notice'; key: string; text: string; tone: 'info' | 'error' }
@@ -67,7 +68,8 @@ export function transcriptFromHistory(
         toolId: message.tool_call_id ?? key,
         name,
         detail: message.context ?? '',
-        state: 'done'
+        state: 'done',
+        ...toolDetail({ input: toolInput(message.args), output: toolOutput(text) })
       }))
     }
   }
@@ -171,7 +173,8 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
         toolId: payload.tool_id,
         name: payload.name,
         detail: payload.preview ?? payload.context ?? payload.args_text ?? '',
-        state: 'running'
+        state: 'running',
+        ...toolDetail({ input: toolInput(payload.args, payload.args_text) })
       }))
     }
 
@@ -186,7 +189,17 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
         ...transcript,
         items: transcript.items.map(item =>
           item.kind === 'tool' && item.toolId === payload.tool_id
-            ? { ...item, state: 'done', durationS: payload.duration_s ?? undefined, detail: payload.summary ?? item.detail }
+            ? {
+                ...item,
+                state: 'done',
+                durationS: payload.duration_s ?? undefined,
+                detail: payload.summary ?? item.detail,
+                ...toolDetail({
+                  input: toolInput(payload.args) ?? item.input,
+                  output: toolOutput(payload.result_text, payload.result),
+                  diff: payload.inline_diff ?? undefined
+                })
+              }
             : item
         )
       }
