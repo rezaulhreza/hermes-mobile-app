@@ -24,6 +24,7 @@ import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
+import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
@@ -39,11 +40,13 @@ import {
   liveSessionId,
   resumeConversation,
   sendDraft,
+  setConversationTitle,
   type SendMode,
   stopTurn
 } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
+import { $sessions } from '@/store/sessions'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -58,6 +61,8 @@ export default function Chat() {
   const [draft, setDraft] = useState('')
   const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
   const [modelQuery, setModelQuery] = useState('')
+  const [acting, setActing] = useState(false)
+  const sessions = useStore($sessions)
   const insets = useSafeAreaInsets()
   const keyboardOpen = useKeyboardOpen()
   const linkState = useStore($linkState)
@@ -172,14 +177,24 @@ export default function Chat() {
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={[styles.header, { borderBottomColor: t.line }]}>
         <IconButton icon="chevron-left" label="Back" onPress={() => router.back()} />
-        <View style={styles.fill}>
-          <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
-            {conversation?.title || params.title || 'New chat'}
-          </Text>
+        <Pressable
+          accessibilityHint="Opens rename, pin, branch, export, archive and delete"
+          accessibilityLabel="Conversation actions"
+          accessibilityRole="button"
+          disabled={!conversation}
+          onPress={() => setActing(true)}
+          style={styles.fill}
+        >
+          <View style={styles.titleRow}>
+            <Text numberOfLines={1} style={[type.label, styles.pillText, { color: t.ink }]}>
+              {conversation?.title || params.title || 'New chat'}
+            </Text>
+            {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
+          </View>
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
             {transcript?.status ?? (running ? 'Working…' : ' ')}
           </Text>
-        </View>
+        </Pressable>
         {conversation?.info.model ? (
           <Pressable
             accessibilityHint="Changes the model and the reasoning level"
@@ -351,6 +366,18 @@ export default function Chat() {
             visible={sheet === 'model'}
           />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
+          <SessionActionsSheet
+            onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId } })}
+            onClose={() => setActing(false)}
+            onRemoved={() => router.back()}
+            onRenamed={title => setConversationTitle(sessionId, title)}
+            // The list row knows the flags (pinned, archived). A chat not in the list yet still has its id and title.
+            row={
+              acting && conversation
+                ? { ...(sessions.find(row => row.id === conversation.storedId) ?? { id: conversation.storedId }), title: conversation.title }
+                : null
+            }
+          />
           <CommandsSheet
             onClose={() => setSheet(null)}
             onPick={command => {
@@ -527,6 +554,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill
   },
   pillText: { fontWeight: '600', flexShrink: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
   bubble: { padding: space.md, borderRadius: radius.lg, gap: space.sm },

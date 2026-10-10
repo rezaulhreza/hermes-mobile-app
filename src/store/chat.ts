@@ -498,6 +498,11 @@ export async function setReasoning(sessionId: string, level: ReasoningLevel): Pr
   patch(sessionId, c => ({ ...c, info: { ...c.info, reasoning_effort: applied } }))
 }
 
+/** The user renamed the conversation outside a turn. The backend sends no event for that. */
+export function setConversationTitle(sessionId: string, title: string): void {
+  patch(sessionId, c => ({ ...c, title }))
+}
+
 export function clearConversations(): void {
   $conversations.set({})
 }
