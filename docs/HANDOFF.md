@@ -208,9 +208,21 @@ Each item is one or more commits. Check the contract file for the RPC names.
    table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
    button, keep position when reading history, haptics.
-3. **Composer**: DONE in code (queue + steer, attachments). Left: the device
-   check, image thumbnails in the chips and in the user row, paste an image
-   from the clipboard, a way to see and cancel the backend queue.
+3. **Composer**: DONE in code (queue + steer, attachments). Left, in order:
+   - The device check.
+   - Thumbnails (the owner asked for this): a small image preview in the
+     staged chip and in the sent user row; for a file, an icon by type with
+     the name and the size. The picker already gives a local `uri` for the
+     image, so the chip needs no download. Keep the `uri` on the `Attachment`
+     and on the user row. A resumed conversation has no local `uri`; show the
+     file name there.
+   - Large files: a file over 12 MB is refused with a red chip. Shrink large
+     images on the phone before upload (long side about 2048 px,
+     `expo-image-manipulator`, needs a native rebuild), and say the limit in
+     the attach menu. A REST upload would remove the limit; check first if
+     the backend has such a route.
+   - Paste an image from the clipboard.
+   - A way to see and cancel the backend queue.
 4. **Session actions**: rename (`session.title`), pin, archive
    (`session.archive`), delete (`session.delete`), export, branch
    (`session.branch_stored`), projects and filters, source/channel filter.
