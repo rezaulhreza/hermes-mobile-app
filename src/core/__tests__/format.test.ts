@@ -1,4 +1,4 @@
-import { duration, previewLine, relativeTime } from '../format'
+import { duration, headLines, previewLine, relativeTime } from '../format'
 
 describe('previewLine', () => {
   it('removes terminal prompt glyphs and box drawing from pasted output', () => {
@@ -21,4 +21,9 @@ it('gives a short age for a list row', () => {
 it('formats a tool duration', () => {
   expect(duration(0.42)).toBe('0.4s')
   expect(duration(125)).toBe('2m 5s')
+})
+
+it('cuts a long output to its first lines and counts the rest', () => {
+  expect(headLines('a\nb\nc\nd\n\n', 2)).toEqual({ head: 'a\nb', hidden: 2 })
+  expect(headLines('a\nb\n', 2)).toEqual({ head: 'a\nb', hidden: 0 })
 })

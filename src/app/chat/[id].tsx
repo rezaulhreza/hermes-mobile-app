@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,7 +21,7 @@ import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, Notice } from '@/components/ui'
 import { activeTrigger, applyCompletion } from '@/core/composer'
-import { duration } from '@/core/format'
+import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import type { TranscriptItem } from '@/core/transcript'
 import { $conversations, completeDraft, type Completions, resumeConversation, sendDraft, stopTurn } from '@/store/chat'
@@ -251,14 +252,7 @@ function Row({ item }: { item: TranscriptItem }) {
       )
 
     case 'output':
-      return (
-        <View style={[styles.output, { backgroundColor: t.soft }]}>
-          <Text style={[type.small, { color: t.muted, fontWeight: '700' }]}>{item.command}</Text>
-          <Text selectable style={[styles.outputText, { color: t.ink }]}>
-            {item.text}
-          </Text>
-        </View>
-      )
+      return <CommandOutput command={item.command} text={item.text} />
 
     case 'notice':
       return (
@@ -267,6 +261,36 @@ function Row({ item }: { item: TranscriptItem }) {
         </Text>
       )
   }
+}
+
+const OUTPUT_PREVIEW_LINES = 12
+
+/**
+ * What a slash command printed. Commands format for an 80-column terminal, so
+ * the text scrolls sideways instead of wrapping, and a long output starts cut.
+ */
+function CommandOutput({ command, text }: { command: string; text: string }) {
+  const t = useTheme()
+  const [open, setOpen] = useState(false)
+  const { head, hidden } = headLines(text, OUTPUT_PREVIEW_LINES)
+
+  return (
+    <View style={[styles.output, { backgroundColor: t.soft }]}>
+      <Text style={[type.small, { color: t.muted, fontWeight: '700' }]}>{command}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <Text selectable style={[styles.outputText, { color: t.ink }]}>
+          {open ? text.replace(/\s+$/, '') : head}
+        </Text>
+      </ScrollView>
+      {hidden > 0 ? (
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setOpen(value => !value)}>
+          <Text style={[type.small, { color: t.accent, fontWeight: '700' }]}>
+            {open ? 'Show less' : `Show ${hidden} more lines`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  )
 }
 
 /** The model's reasoning. Closed by default: it is context, not the answer. */
@@ -325,7 +349,7 @@ const styles = StyleSheet.create({
   },
   completion: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
-  outputText: { fontFamily: 'Menlo', fontSize: 13, lineHeight: 19 },
+  outputText: { fontFamily: 'Menlo', fontSize: 12, lineHeight: 17 },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

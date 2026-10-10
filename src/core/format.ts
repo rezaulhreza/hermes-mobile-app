@@ -52,3 +52,14 @@ const TERMINAL_DECORATION = /[\uE000-\uF8FF\u2500-\u259F]|[\uDB80-\uDBFF][\uDC00
 export function previewLine(text: string): string {
   return text.replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim()
 }
+
+/** The first lines of a long text, and how many lines were left out. */
+export function headLines(text: string, limit: number): { head: string; hidden: number } {
+  const lines = text.replace(/\s+$/, '').split('\n')
+
+  if (lines.length <= limit) {
+    return { head: lines.join('\n'), hidden: 0 }
+  }
+
+  return { head: lines.slice(0, limit).join('\n'), hidden: lines.length - limit }
+}
