@@ -23,7 +23,7 @@ import {
 } from '@/core/attachments'
 import type { AttachedImageResult, FileAttachResult, PdfAttachResult } from '@/core/gateway/gateway-contract.generated'
 
-import { rpc } from './link'
+import { $linkState, rpc } from './link'
 
 export const $attachments = map<Record<string, Attachment[]>>({})
 
@@ -152,8 +152,8 @@ export async function stage(sessionId: string, file: PickedFile): Promise<void> 
     settled = { state: 'failed', error: error instanceof Error ? error.message : String(error) }
   }
 
-  // The user can remove the chip while the upload runs. The backend must then let go of what it took.
-  if (!($attachments.get()[sessionId] ?? []).some(item => item.id === id)) {
+  // The user can remove the chip while the upload runs, and a dropped link fails it. The backend must then let go of what it took.
+  if (!($attachments.get()[sessionId] ?? []).some(item => item.id === id && item.state === 'uploading')) {
     return release(sessionId, settled.heldPaths ?? [])
   }
 
@@ -237,6 +237,22 @@ export function takeAttachments(sessionId: string): Attachment[] {
 
   return ready
 }
+
+// A request in flight when the link drops gets no answer. Without this the chip would spin until the request times out.
+$linkState.listen(state => {
+  if (state === 'open') {
+    return
+  }
+
+  for (const [sessionId, list] of Object.entries($attachments.get())) {
+    if (list.some(item => item.state === 'uploading')) {
+      $attachments.setKey(
+        sessionId,
+        list.map(item => (item.state === 'uploading' ? { ...item, state: 'failed', error: 'The connection dropped. Add it again.' } : item))
+      )
+    }
+  }
+})
 
 export function clearAttachments(): void {
   $attachments.set({})
