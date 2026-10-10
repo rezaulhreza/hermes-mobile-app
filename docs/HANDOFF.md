@@ -53,10 +53,15 @@ src/core/                pure logic, no React, no native modules. Tested.
   workspaces.ts          workspace model, validation, storage parsing
   transcript.ts          gateway events -> chat rows (reducer)
   requests.ts            agent -> user requests (approval, clarify, secret, sudo, code, vault)
+  commands.ts            slash commands on a phone: blocked ones, the app's own actions, the sheet
+  composer.ts            completion triggers, what a slash answer means
+  attachments.ts         kinds, the size limit, the prompt text an attachment adds
 src/store/               nanostores atoms + side effects
   workspaces.ts          SecureStore persistence
   link.ts                the ONE live link (REST + socket), redial with backoff
   sessions.ts, chat.ts, requests.ts
+  commands.ts            the backend command catalog, one copy per link
+  attachments.ts         pickers + upload; the staged list per conversation
 src/components/          shared UI
 src/theme/               tokens + useTheme / useIsTablet
 ```
@@ -92,6 +97,26 @@ event and payload shape. Grep it before writing a store.
   workspaces on the SAME host with different accounts share one cookie jar.
   Not handled yet.
 - The backend runs `hermes dashboard`, not `hermes serve`.
+- A `prompt.submit` during a turn does NOT queue by default. The backend's
+  `display.busy_input_mode` default is `interrupt`: it redirects or stops the
+  running turn. Send `queued: true` to force the queue. The app does that
+  whenever it believes a turn runs, and reads the label from the reply
+  (`queued` / `steered` / `redirected`), because the backend decides.
+- `session.steer` answers `status: "queued"` when it ACCEPTS the steer, and
+  `"rejected"` when no turn runs. On `rejected` the app sends a normal prompt.
+- A queued prompt's turn starts with `message.start`. No event names the
+  prompt. The reducer takes the oldest queued row.
+- `/compress`, `/btw`, `/bg` must use `session.compress`, `prompt.btw`,
+  `prompt.background`. Through `slash.exec` they time out or lose the answer.
+  The answers to the last two arrive as `btw.complete` / `background.complete`.
+- An attach request is ONE WebSocket frame, capped at 16 MiB. Base64 adds a
+  third, so the app refuses a file over 12 MiB. Images: `image.attach_bytes`
+  holds the image on the session for the next prompt (`image.detach` with the
+  returned `path` takes it back). PDFs: `pdf.attach` holds page images and
+  returns a text line for the prompt. Other files: `file.attach` with a
+  `data_url` returns `ref_text` (`@file:...`), which must be in the prompt.
+- `commands.catalog` keys carry the leading slash. `commands[name].desktop`
+  is null for a command that runs, else the reason it has no UI surface.
 - More: `~/.hermes/hermes-mobile-handover.md` (sections "Auth contract" and
   "Traps that cost time").
 
@@ -117,21 +142,39 @@ Also seen on screen by the owner: the slash command list, `/help` output, an
 `@file:` reference that the agent then read, the status line under the title,
 the Stop button during a turn.
 
+Done on 2026-10-09 (second session), `npm run verify` green, NOT yet seen on
+a screen by the owner:
+
+- The slash list hides commands with no phone surface. Typing one gives the
+  reason as a notice.
+- `/help` opens a command sheet built from `commands.catalog`; a tap puts the
+  command in the composer.
+- `/new`, `/branch` switch the screen to the new conversation. `/title` renames.
+  `/model` opens the model sheet. `/resume` goes back to the list.
+- Queue + steer: during a turn the send button queues and a Steer button
+  appears. The user row says what the backend did.
+- Attachments: a plus button offers photo library, camera, file. Chips show
+  upload state. Needs the native build with expo-image-picker,
+  expo-document-picker, expo-file-system.
+- Composer gap closed; one `MONO` font token for both platforms.
+
 Known rough edges, not fixed:
 
-- The slash list shows commands that mean nothing on a phone (`/quit`,
-  `/redraw`, `/compose`, `/paste`). Filter them; the desktop has a list of
-  surface restrictions to copy (`apps/desktop/src/app/session/hooks/use-prompt-actions/slash.ts`).
-- `/help` is terminal text. A native command sheet built from
-  `complete.slash` would be better than printing it.
-- `/new`, `/title`, `/branch` and similar commands change the session. The app
-  does not react to that yet (no navigation to the new session).
-- A message sent during a turn shows as a normal user row. It is queued by the
-  backend (`prompt.submit` returns `status: queued`), and the row must say so.
-- The gap under the composer is large when the keyboard is closed.
-- `Menlo` is an iOS font name; Android needs `monospace` (see `components/markdown.tsx`).
+- A chat opened with `live=1` whose conversation is no longer in the store
+  (the stores reset on a JS reload) shows a spinner forever. Resume it by its
+  stored id, or go back.
+- A resumed conversation shows the raw prompt of an old message with
+  attachments (`@file:...` lines), not the file names.
+- `/model <name>` ignores the name and opens the sheet. `/resume <query>`
+  ignores the query.
+- `/compress` only prints a notice. The rows on screen stay as they were.
+- Stop during a turn with queued messages: UNVERIFIED whether the backend
+  still runs the queue. The rows keep their "Queued" label until a turn starts.
+- An attachment staged while the link drops stays "uploading" until the
+  request times out (180 s).
 
-Not checked yet: the request cards (no approval came up), stop, workspace
+Not checked yet: everything in the "second session" list above, the request
+cards (no approval came up), workspace
 switching, sign-out, tablet width, a Tailscale or LAN
 address on a real phone (the backend listens on 127.0.0.1:9130 only; the
 Simulator reaches it as `127.0.0.1:9130`).
@@ -145,6 +188,10 @@ Build notes:
   `npx expo run:ios --port 8082`. Do not stop the other Metro server.
 - `expo-dev-client` is installed, so a build on a phone can load JS from the
   Mac over Wi-Fi or Tailscale.
+- `ios/` is generated and not in git. After a change to `plugins` in
+  `app.json`, run `npx expo prebuild -p ios` before `npx expo run:ios`, or the
+  new Info.plist keys are missing (the camera then crashes the app).
+- `--port` and `--no-bundler` cannot go together on `expo run:ios`.
 - `react-dom` is pinned only to stop npm resolving a mismatched optional peer.
 - `xcrun simctl openurl <device> "hermes://settings"` opens a screen by deep
   link, but iOS shows an "Open in Hermes?" dialog that needs a tap. Dark mode
@@ -161,10 +208,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
    table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
    button, keep position when reading history, haptics.
-3. **Composer**: queue + steer
-   (`prompt.submit` status `queued` / `steered`, `queued` param), attachments
-   (`image.attach_bytes`, `file.attach`, `pdf.attach`; expo-image-picker,
-   expo-document-picker, camera).
+3. **Composer**: DONE in code (queue + steer, attachments). Left: the device
+   check, image thumbnails in the chips and in the user row, paste an image
+   from the clipboard, a way to see and cancel the backend queue.
 4. **Session actions**: rename (`session.title`), pin, archive
    (`session.archive`), delete (`session.delete`), export, branch
    (`session.branch_stored`), projects and filters, source/channel filter.
