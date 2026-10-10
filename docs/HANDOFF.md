@@ -85,6 +85,10 @@ src/core/                pure logic, no React, no native modules. Tested.
   requests.ts            agent -> user requests (approval, clarify, secret, sudo, code, vault)
   commands.ts            slash commands on a phone: blocked ones, the app's own actions, the sheet
   composer.ts            completion triggers, what a slash answer means
+  voice.ts               a call without audio: when a listen ends, what to say aloud
+  vault.ts               the vault form: fields, checks, the add request
+  tools.ts               tool row detail, diff lines, which answer ends a turn
+  preview/               the browser preview: addresses, scripts, answers, the vendored engine
   attachments.ts         kinds, the size limit, the prompt text an attachment adds,
                          the preview mode of a file, the stored prompt parser
   sessions.ts            the list of conversations: rows, filters, groups, actions
@@ -95,6 +99,9 @@ src/store/               nanostores atoms + side effects
   commands.ts            the backend command catalog, one copy per link
   attachments.ts         pickers + upload; the staged list per conversation
   preview.ts             the copy of an attachment on the phone (downloads a host file once)
+  voice.ts               the ONE call: listen, transcribe, ask, speak; dictation; read aloud
+  browser.ts             previews per conversation; answers preview.read / preview.act
+  vault.ts               vault items and password manager sources
   sessions.ts            the list (REST) and rename, pin, archive, delete, branch, export
 src/components/          shared UI
 src/theme/               tokens + useTheme / useIsTablet
@@ -178,6 +185,33 @@ event and payload shape. Grep it before writing a store.
 - The owner's agent is slow (the model). A tool row can show "running" for a
   minute with nothing wrong. Wait 30 to 60 s in a live check, or put rows in
   the store with the driver.
+- The tools that need a screen (`open_preview`, `read_preview`,
+  `drive_preview`: toolset `desktop_ui`) exist ONLY in a session whose source
+  is `desktop` (`tui_gateway/server.py::_gui_surface_toolsets`). The app
+  therefore sends `source: "desktop"` (`SESSION_SOURCE` in `core/sessions.ts`).
+  With `mobile` the agent drove the Chrome of the host machine. A cleaner fix
+  is in the Hermes repo (give `mobile` its own client-surface set); that is
+  the owner's call. Until then a chat from the phone reads "desktop" there.
+- The agent's preview requests are server-to-client requests: `preview.read`
+  ({start, count}) and `preview.act` ({action, ref, selector, text, key, ...}).
+  The answer is `{ value: <JSON string> }`. The page side is the desktop
+  app's engine, `apps/desktop/src/lib/preview-act/`. The desktop builds its
+  source with `Function.toString()`; Hermes bytecode has no function source,
+  so `node scripts/vendor-preview-engine.mjs` writes it to
+  `src/core/preview/act-engine.generated.ts`. Run that script again when the
+  desktop engine changes.
+- A WebView does not share the app's cookies by default. `sharedCookiesEnabled`
+  is what lets the preview proxy see the session.
+- Voice: the `voice.*` RPCs record and play on the HOST (its microphone and
+  speakers). A phone uses REST: `POST /api/audio/transcribe`
+  `{data_url, mime_type}` -> `{transcript}` and `POST /api/audio/speak`
+  `{text}` -> `{data_url}`. There are also `/api/audio/transcribe-stream` and
+  `/api/audio/speak-stream` (WebSocket), `/api/audio/voice-config` (keys for
+  client-direct STT/TTS) and `/api/audio/voice-live/session` (WebRTC, the
+  "gpt-live" engine). `wake.feed` takes PCM frames from a client for the wake
+  word. None of the last four is used yet.
+- The bot screen (`display.*`, the computer-use view) needs Xvnc on Linux or
+  Docker. On this Mac `display.status` says `supported: false`.
 - `POST /api/files/upload-stream` is a multipart upload with no base64. It
   could replace the 12 MB frame limit for attachments. Not used yet.
 - More: `~/.hermes/hermes-mobile-handover.md` (sections "Auth contract" and
@@ -242,7 +276,20 @@ Checked in the Simulator:
   addresses and password managers use the same code; not exercised.
 - The message field is one line again after a long message is sent.
 
+- The browser preview. The agent opened example.com with `open_preview`, read
+  it with `read_preview` and clicked a link with `drive_preview`; the pane
+  showed the page it landed on. A `localhost` address loaded through
+  `/api/preview/host`, with the app's sign-in, over the Cloudflare address.
+- The voice call. The Mac said a question aloud (`say`), the call heard it,
+  the backend wrote it down word for word, the agent answered, the phone
+  spoke the answer and listened again. Mute, the strip view and End work.
+
 In code, NOT seen on a screen (a script cannot use a native picker):
+
+- Dictation into the message field and "read aloud" under an answer (they use
+  the same listen, transcribe and speak code as the call).
+- "Take control" / "Hand back" in the preview (the refusal text is unit logic).
+- The tap on the call circle (send now, stop the agent, stop the voice).
 
 - The scroll-to-newest button and "keep the reading position" (need a drag).
 
@@ -304,6 +351,13 @@ Build notes:
 - An edit to a store file reloads the whole app and the stores start empty.
 - Test files for attachments go in the app's Documents folder:
   `xcrun simctl get_app_container <device> com.example.hermesnative data`.
+- `"microphonePermission": false` in the image picker's plugin config REMOVES
+  `NSMicrophoneUsageDescription`, also when another plugin sets it. The audio
+  module then answers "denied" with no prompt. Both plugins have the text now.
+- `xcrun simctl privacy <device> grant microphone com.example.hermesnative`
+  grants the microphone with no tap. Run it AFTER the install of a new build.
+- The Simulator's microphone is the Mac's. `say "a question"` on the Mac is
+  heard by a voice call in the Simulator: that is how the call was checked.
 - After `npx expo install <native module>`, run `pod install` in `ios/` before
   `npx expo run:ios`. Without it the build succeeds and the app stops at
   "Cannot find native module".
@@ -343,6 +397,11 @@ Each item is one or more commits. Check the contract file for the RPC names.
 4. **Session actions**: DONE (rename, pin, archive, delete, export, branch,
    source filter, archive view). Left: projects, full-text search
    (`GET /api/sessions/search`), bulk delete, export as Markdown.
+4b. **Browser preview**: DONE (`core/preview/browser.ts`, `store/browser.ts`,
+   `components/preview-pane.tsx`). Left: several tabs (the phone shows the
+   last opened page), the annotation actions (`pin`, `hold`, `strobe` draw
+   nothing on the phone), file and artifact previews from `preview.open`
+   (only web addresses load), `preview.restart`.
 5. **Subagents**: live list and transcript (`subagent.*` events,
    `subagent.list`, `subagent.tail`), steer, interrupt. Todo list
    (`todo.updated`).
@@ -352,13 +411,33 @@ Each item is one or more commits. Check the contract file for the RPC names.
    A push test needs the old app's bundle ID, so it needs the owner's word. Backend
    code: `hermes_cli/push/` and `hermes_cli/web_routers/push.py` in the Hermes
    repo. Sandbox vs production environment must match the build type.
-7. **Voice**: live voice conversation, both engines (`chained`, `gpt-live`).
-   Read the desktop code first: `apps/desktop/src/app/chat/composer/voice-*`
-   and the `voice.*` RPCs and events. Full-screen call view and in-chat voice
-   are two views of ONE call. Needs microphone permission, background audio
-   mode, barge-in, mute, end. The Iris app (`~/Developer/indie/iris-rs/mobile`)
-   uses `react-native-audio-api` and has a working voice controller to learn
-   from. This is the largest item.
+7. **Voice**: the chained call is DONE and checked (`core/voice.ts`,
+   `store/voice.ts`, `components/voice-call.tsx`): full-screen call, strip in
+   the chat, dictation, read aloud. The owner uses voice most; next, in order:
+   - Live words while the user talks. Now the words show after the user
+     stops. Use `/api/audio/transcribe-stream` with PCM from expo-audio's
+     `useAudioStream`, and show the partial text in the call view.
+   - Speak while the answer streams (`/api/audio/speak-stream`), sentence by
+     sentence. Now the voice starts after the whole answer.
+   - Barge-in by voice: listen during speech (needs echo cancellation; try
+     `setAudioModeAsync` voice-chat mode) and stop the voice when the user
+     talks. Now a tap on the circle stops it.
+   - The wake word: PCM frames to `wake.feed` after `wake.start`, the event
+     `wake.detected`, then start a call and speak the wake reply. The backend
+     side exists (`wake.*`); read `apps/desktop/src/app/chat/composer/voice-*`.
+   - The `gpt-live` engine: WebRTC to `/api/audio/voice-live/session` (needs
+     `react-native-webrtc`, a native build). An engine choice in the call.
+   - Keep the call alive with the screen locked (background audio mode in
+     `app.json`, `shouldPlayInBackground`), route to the earpiece or a headset,
+     a voice picker, haptics at each change of turn (expo-haptics is installed).
+   - Seen in the check: the level reads about 0.5 to 0.66 for speech from the
+     Mac's speakers. The speech threshold is -38 dB (`SPEECH_DB`); tune it on a
+     real phone.
+7b. **Bot screen (computer use)**: not started; needs a Linux or Docker host
+   to run. Plan: a card with `display.status`, a picture from
+   `display.thumbnail` every 2 s, "Take over" / "Hand back" with
+   `display.lease.acquire` / `.release`, then the live screen with noVNC in a
+   WebView on `/api/display/ws` (ticket from `display.observe`).
 8. **Bots tab**: profiles (list, create, rename, delete; `profiles.create`
    and REST), agents, hermes-bots (bot chat, bot cron). Profile scope: every
    REST call takes `?profile=`, RPCs take a `profile` param.
