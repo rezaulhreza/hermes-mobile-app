@@ -39,6 +39,26 @@ export default function Settings() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[type.title, { color: t.ink }]}>Settings</Text>
 
+        <Text style={[type.small, styles.section, { color: t.muted }]}>For the agent</Text>
+        <Card style={styles.card}>
+          <Pressable
+            accessibilityHint="The logins, cards and addresses Hermes may use in its own browser"
+            accessibilityLabel="Logins and cards"
+            accessibilityRole="button"
+            onPress={() => router.push('/vault')}
+            style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="key" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Logins and cards</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                What Hermes signs in and pays with in its own browser
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+        </Card>
+
         <Text style={[type.small, styles.section, { color: t.muted }]}>Workspaces</Text>
         <Card style={styles.card}>
           {workspaces.map((workspace, index) => {

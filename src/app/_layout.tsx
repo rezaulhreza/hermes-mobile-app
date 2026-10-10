@@ -12,6 +12,7 @@ import { clearCatalog } from '@/store/commands'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
+import { clearVault } from '@/store/vault'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
@@ -37,6 +38,7 @@ export default function RootLayout() {
     clearCatalog()
     clearAttachments()
     clearRequests()
+    clearVault()
 
     if (workspace) {
       void openLink(workspace)
@@ -70,6 +72,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="chat/[id]" />
+          <Stack.Screen name="vault" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
