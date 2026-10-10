@@ -183,7 +183,9 @@ export function promptWithAttachments(text: string, attachments: readonly Attach
 
 // The backend adds the content of every reference under this line before it stores the prompt.
 const ATTACHED_CONTEXT = /(?:^|\n)--- (?:Attached Context|Context Warnings) ---[\s\S]*$/
-const FILE_REF_LINE = /^@file:(?:"([^"]+)"|'([^']+)'|`([^`]+)`|(\S+))$/
+const REF_LINE = /^@(file|image):(?:"([^"]+)"|'([^']+)'|`([^`]+)`|(\S+))$/
+// The backend adds one such line per picture it holds for the prompt. The `@image:` line already names the picture.
+const PICTURE_MARK = /^\[(screenshot|image)\]$/i
 const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$/
 
 /**
@@ -198,14 +200,16 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
 
   while (lines.length) {
     const line = lines[lines.length - 1].trim()
-    const file = FILE_REF_LINE.exec(line)
+    const ref = REF_LINE.exec(line)
     const held = HELD_LINE.exec(line)
 
-    if (file) {
-      const path = file[1] ?? file[2] ?? file[3] ?? file[4]
+    if (ref) {
+      const path = ref[2] ?? ref[3] ?? ref[4] ?? ref[5]
       const name = path.split('/').pop() ?? ''
 
-      attached.unshift({ name, kind: attachmentKind({ name }), path })
+      attached.unshift({ name, kind: ref[1] === 'image' ? 'image' : attachmentKind({ name }), path })
+    } else if (PICTURE_MARK.test(line)) {
+      // Nothing to show for it.
     } else if (held) {
       attached.unshift({ name: held[2], kind: held[1] === 'PDF' ? 'pdf' : 'image' })
     } else if (line) {

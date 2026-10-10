@@ -1,9 +1,11 @@
 import { Feather } from '@expo/vector-icons'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { IconName } from '@/components/ui'
 import { type Attachment, type FileGlyph, fileGlyph, type SentAttachment } from '@/core/attachments'
 import { fileSize } from '@/core/format'
+import { localCopy } from '@/store/preview'
 import { radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -82,10 +84,43 @@ export function StagedAttachment({ item, onRemove, onOpen }: { item: Attachment;
   )
 }
 
+function Thumbnail({ item, side }: { item: SentAttachment; side: number }) {
+  const t = useTheme()
+  const [uri, setUri] = useState(item.uri ?? null)
+
+  useEffect(() => {
+    if (item.uri) {
+      return
+    }
+
+    let cancelled = false
+
+    // No copy, no picture: the box stays, with the picture icon, and a tap says why.
+    localCopy(item)
+      .then(copy => !cancelled && setUri(copy))
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [item])
+
+  const box = [styles.picture, { width: side, height: side, backgroundColor: t.line }]
+
+  return uri ? (
+    <Image source={{ uri }} style={box} />
+  ) : (
+    <View style={[box, styles.empty]}>
+      <Feather color={t.muted} name="image" size={22} />
+    </View>
+  )
+}
+
 /** The attachments of a sent message, inside its bubble: pictures first, then one row per file. */
 export function SentAttachments({ items, onOpen }: { items: readonly SentAttachment[]; onOpen: (index: number) => void }) {
   const t = useTheme()
-  const pictures = items.filter(item => item.kind === 'image' && item.uri)
+  // A picture from stored history is on the host. Its thumbnail comes from there, once.
+  const pictures = items.filter(item => item.kind === 'image' && (item.uri || item.path))
   const files = items.filter(item => !pictures.includes(item))
   const side = pictures.length === 1 ? SENT_ALONE_SIZE : SENT_SIZE
 
@@ -98,10 +133,10 @@ export function SentAttachments({ items, onOpen }: { items: readonly SentAttachm
               accessibilityHint="Opens the picture"
               accessibilityLabel={item.name}
               accessibilityRole="imagebutton"
-              key={`${item.uri}:${index}`}
+              key={`${item.uri ?? item.path}:${index}`}
               onPress={() => onOpen(items.indexOf(item))}
             >
-              <Image source={{ uri: item.uri }} style={[styles.picture, { width: side, height: side, backgroundColor: t.line }]} />
+              <Thumbnail item={item} side={side} />
             </Pressable>
           ))}
         </View>
@@ -156,6 +191,7 @@ const styles = StyleSheet.create({
   sent: { gap: space.sm },
   pictures: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   picture: { borderRadius: radius.md },
+  empty: { alignItems: 'center', justifyContent: 'center' },
   // A row of its own, with a surface: it must read as something to tap.
   file: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 40, paddingHorizontal: space.md, borderRadius: radius.md }
 })

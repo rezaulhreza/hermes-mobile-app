@@ -77,6 +77,19 @@ describe('splitStoredPrompt', () => {
     })
   })
 
+  // A picture the backend holds is stored as an `@image:` line and a `[screenshot]` line.
+  it('reads the pictures of a stored message, with where they are on the host', () => {
+    const stored = 'What is in here both\n@image:/h/images/upload_1.jpg\n@image:/h/images/upload_2.jpg\n[screenshot]\n[screenshot]'
+
+    expect(splitStoredPrompt(stored)).toEqual({
+      text: 'What is in here both',
+      attached: [
+        { name: 'upload_1.jpg', kind: 'image', path: '/h/images/upload_1.jpg' },
+        { name: 'upload_2.jpg', kind: 'image', path: '/h/images/upload_2.jpg' }
+      ]
+    })
+  })
+
   it('reads a message of images alone', () => {
     expect(splitStoredPrompt('[User attached image: a.jpg]\n[User attached image: b.png]')).toEqual({
       text: '',
