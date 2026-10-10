@@ -351,6 +351,13 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
     }
 
     return NOTHING
+      const messages = result?.compressed === false ? [] : (result?.messages ?? [])
+
+      // The backend replaced the history with a summary. The rows on screen must be the new history.
+      if (messages.length) {
+        patch(sessionId, c => ({ ...c, transcript: transcriptFromHistory(messages) }))
+      }
+
   },
 
   btw: async (sessionId, arg) => {
