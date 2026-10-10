@@ -2,7 +2,7 @@ import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
 import type { SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
-import { exportFileName, rowsInView, sessionListPath, type SessionRow, type SessionView, withSessionChange } from '@/core/sessions'
+import { exportFileName, rowsInView, SESSION_SOURCE, sessionListPath, type SessionRow, type SessionView, withSessionChange } from '@/core/sessions'
 
 import { currentApi, onGatewayEvent, rpc } from './link'
 
@@ -85,7 +85,7 @@ export async function deleteSession(id: string): Promise<void> {
 
 /** Copy a stored conversation into a new one. Returns the stored id of the copy. */
 export async function branchSession(id: string): Promise<string> {
-  const result = await rpc<SessionBranchStoredResult>('session.branch_stored', { parent_session_id: id, source: 'mobile' })
+  const result = await rpc<SessionBranchStoredResult>('session.branch_stored', { parent_session_id: id, source: SESSION_SOURCE })
 
   return result.stored_session_id || result.session_id
 }

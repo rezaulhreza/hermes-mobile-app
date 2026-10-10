@@ -8,6 +8,16 @@
 
 import { previewLine } from './format'
 
+/**
+ * The source the app gives a session it opens. The backend adds the tools
+ * that need a screen (the browser preview: `open_preview`, `read_preview`,
+ * `drive_preview`) only to a session whose source is `desktop`
+ * (`tui_gateway/server.py::_gui_surface_toolsets`). With `mobile` the agent
+ * has no preview on the phone. The old mobile shell was the desktop renderer
+ * and sent `desktop` too.
+ */
+export const SESSION_SOURCE = 'desktop'
+
 export interface SessionRow {
   id: string
   title?: string | null

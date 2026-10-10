@@ -22,6 +22,7 @@ import type {
 } from '@/core/gateway/gateway-contract.generated'
 import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
+import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
@@ -69,7 +70,7 @@ export function liveSessionId(storedId: string): string | null {
 
 /** Start a new conversation. */
 export async function createConversation(): Promise<Conversation> {
-  const result = await rpc<SessionCreateResult>('session.create', { source: 'mobile' })
+  const result = await rpc<SessionCreateResult>('session.create', { source: SESSION_SOURCE })
   const conversation: Conversation = {
     sessionId: result.session_id,
     storedId: result.stored_session_id || result.session_id,
@@ -85,7 +86,7 @@ export async function createConversation(): Promise<Conversation> {
 
 /** Open a stored conversation. Returns its live session id. */
 export async function resumeConversation(storedId: string, title = ''): Promise<string> {
-  const result = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: 'mobile' })
+  const result = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE })
 
   $conversations.setKey(result.session_id, {
     sessionId: result.session_id,

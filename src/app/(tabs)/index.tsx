@@ -176,6 +176,9 @@ function Chip({ label, on, onPress, icon }: { label: string; on: boolean; onPres
   )
 }
 
+// A conversation from an app needs no label. One from a channel, the terminal or a schedule does.
+const APP_SOURCES = new Set(['mobile', 'desktop'])
+
 function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
   const t = useTheme()
   const preview = sessionPreview(row)
@@ -205,7 +208,7 @@ function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
       </View>
       {row.pinned ? <Feather color={t.muted} name="bookmark" size={14} /> : null}
       <Text style={[type.small, { color: t.muted }]}>
-        {[row.source && row.source !== 'mobile' ? row.source : null, at ? relativeTime(at) : null].filter(Boolean).join(' · ')}
+        {[row.source && !APP_SOURCES.has(row.source) ? row.source : null, at ? relativeTime(at) : null].filter(Boolean).join(' · ')}
       </Text>
     </Pressable>
   )
