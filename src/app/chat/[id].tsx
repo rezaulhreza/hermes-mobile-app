@@ -27,6 +27,7 @@ import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
+import { PreviewPane, PreviewPill } from '@/components/preview-pane'
 import { RequestCard } from '@/components/request-card'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
@@ -50,6 +51,7 @@ import {
   type SendMode,
   stopTurn
 } from '@/store/chat'
+import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { $sessions } from '@/store/sessions'
@@ -69,6 +71,10 @@ export default function Chat() {
   const [modelQuery, setModelQuery] = useState('')
   const [acting, setActing] = useState(false)
   const [tool, setTool] = useState<ToolTarget | null>(null)
+  const previewUrl = useStore($previews)[sessionId ?? '']?.url
+  // The agent opened a page for the user: show it. The user can put it away; a new address shows again.
+  const [putAway, setPutAway] = useState<string | null>(null)
+  const previewOpen = Boolean(previewUrl) && putAway !== previewUrl
   // The list follows new text only while the user is at the end. A user who scrolled up is reading.
   const atEnd = useRef(true)
   const [awayFromEnd, setAwayFromEnd] = useState(false)
@@ -280,6 +286,8 @@ export default function Chat() {
           </View>
         ))}
 
+        {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
+
         {shownCompletions.length ? (
           <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
             {shownCompletions.map((item, index) => (
@@ -396,6 +404,7 @@ export default function Chat() {
 
       {sessionId ? (
         <>
+          <PreviewPane onClose={() => setPutAway(previewUrl ?? null)} open={previewOpen} sessionId={sessionId} />
           <ModelSheet
             initialQuery={modelQuery}
             // A new search text is a new sheet: the field starts from it.

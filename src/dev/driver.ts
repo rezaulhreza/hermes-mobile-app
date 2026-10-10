@@ -11,6 +11,7 @@
 import { router } from 'expo-router'
 
 import { $attachments, stage } from '@/store/attachments'
+import { $previews } from '@/store/browser'
 import { $conversations } from '@/store/chat'
 import { $linkState, currentApi, rpc } from '@/store/link'
 import { $requests } from '@/store/requests'
@@ -117,7 +118,7 @@ const helpers = {
   api: currentApi,
   /** Stage a file by its path, past the native picker that a script cannot use. */
   stage,
-  stores: { $attachments, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $attachments, $previews, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),

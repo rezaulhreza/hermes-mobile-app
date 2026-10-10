@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { clearAttachments } from '@/store/attachments'
+import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
@@ -39,6 +40,7 @@ export default function RootLayout() {
     clearAttachments()
     clearRequests()
     clearVault()
+    clearPreviews()
 
     if (workspace) {
       void openLink(workspace)
