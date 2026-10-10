@@ -10,8 +10,15 @@
 import type { GatewayEvent } from './gateway/gateway-events'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 
+/**
+ * What the backend did with a message sent during a turn. `queued`: it runs as
+ * the next turn. `steered`: the model reads it after its current action, with
+ * no new turn. `redirected`: the running turn changed course to follow it.
+ */
+export type Delivery = 'queued' | 'steered' | 'redirected'
+
 export type TranscriptItem =
-  | { kind: 'user'; key: string; text: string }
+  | { kind: 'user'; key: string; text: string; delivery?: Delivery }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
@@ -31,7 +38,11 @@ export interface Transcript {
 export const EMPTY_TRANSCRIPT: Transcript = { items: [], running: false, status: null, nextKey: 0 }
 
 /** Build a transcript from the stored history a `session.resume` returns. */
-export function transcriptFromHistory(messages: readonly TranscriptMessage[], running = false): Transcript {
+export function transcriptFromHistory(
+  messages: readonly TranscriptMessage[],
+  running = false,
+  queuedText?: string | null
+): Transcript {
   let transcript = EMPTY_TRANSCRIPT
 
   for (const message of messages) {
@@ -55,7 +66,39 @@ export function transcriptFromHistory(messages: readonly TranscriptMessage[], ru
     }
   }
 
-  return { ...transcript, running }
+  return { ...withQueuedFromHistory(transcript, queuedText?.trim() ?? ''), running }
+}
+
+/**
+ * A prompt still waiting in the backend queue when the conversation opens. The
+ * backend stores a queued prompt the moment it accepts it, so the history
+ * normally holds it already and only the label is missing.
+ */
+function withQueuedFromHistory(transcript: Transcript, text: string): Transcript {
+  if (!text) {
+    return transcript
+  }
+
+  const last = transcript.items[transcript.items.length - 1]
+
+  if (last?.kind === 'user' && last.text.trim() === text) {
+    return { ...transcript, items: [...transcript.items.slice(0, -1), { ...last, delivery: 'queued' }] }
+  }
+
+  return push(transcript, key => ({ kind: 'user', key, text, delivery: 'queued' }))
+}
+
+/** The key the next added row gets. Lets the sender label its own row when the backend answers. */
+export function nextItemKey(transcript: Transcript): string {
+  return `i${transcript.nextKey}`
+}
+
+/** Record what the backend did with a message sent during a turn. */
+export function withDelivery(transcript: Transcript, key: string, delivery: Delivery): Transcript {
+  return {
+    ...transcript,
+    items: transcript.items.map(item => (item.kind === 'user' && item.key === key ? { ...item, delivery } : item))
+  }
 }
 
 /** Add the user's own message the moment they send it. */
@@ -75,7 +118,17 @@ export function withNotice(transcript: Transcript, text: string, tone: 'info' | 
 export function reduceTranscript(transcript: Transcript, event: GatewayEvent): Transcript {
   switch (event.type) {
     case 'message.start':
-      return { ...transcript, running: true }
+      return { ...startQueuedTurn(transcript), running: true }
+
+    case 'btw.complete':
+    case 'background.complete': {
+      const payload = event.payload as { text?: unknown; question?: unknown } | undefined
+      const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
+      const name = event.type === 'btw.complete' ? '/btw' : '/bg'
+      const question = typeof payload?.question === 'string' ? ` ${payload.question.trim()}` : ''
+
+      return text ? withCommandOutput(transcript, `${name}${question}`, text) : transcript
+    }
 
     case 'message.delta': {
       const text = (event as GatewayEvent<'message.delta'>).payload?.text ?? ''
@@ -180,6 +233,26 @@ function completeTurn(
     running: false,
     status: null
   }
+}
+
+/**
+ * A turn starts. If a queued message waits, this turn is its turn: the message
+ * moves below everything the last turn printed, as the backend stores it, and
+ * loses its label. Queued messages run oldest first.
+ */
+function startQueuedTurn(transcript: Transcript): Transcript {
+  const queued = transcript.items.find(item => item.kind === 'user' && item.delivery === 'queued')
+
+  if (queued?.kind !== 'user') {
+    return transcript
+  }
+
+  const { delivery: _sent, ...started } = queued
+  const rest = transcript.items.filter(item => item !== queued)
+  const firstWaiting = rest.findIndex(item => item.kind === 'user' && item.delivery === 'queued')
+  const at = firstWaiting === -1 ? rest.length : firstWaiting
+
+  return { ...transcript, items: [...rest.slice(0, at), started, ...rest.slice(at)] }
 }
 
 /** Grow the open row of this kind, or open one. A row of the other kind closes first. */

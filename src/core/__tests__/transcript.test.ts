@@ -1,5 +1,12 @@
 import type { GatewayEvent } from '../gateway/gateway-events'
-import { EMPTY_TRANSCRIPT, reduceTranscript, transcriptFromHistory, withUserMessage } from '../transcript'
+import {
+  EMPTY_TRANSCRIPT,
+  nextItemKey,
+  reduceTranscript,
+  transcriptFromHistory,
+  withDelivery,
+  withUserMessage
+} from '../transcript'
 
 const run = (events: unknown[], start = EMPTY_TRANSCRIPT) =>
   events.reduce<typeof EMPTY_TRANSCRIPT>((t, e) => reduceTranscript(t, e as GatewayEvent), start)
@@ -97,5 +104,68 @@ describe('transcript', () => {
     expect(shape(t)).toEqual(['user:hi', 'assistant:hello', 'tool:terminal:done'])
     expect(t.running).toBe(true)
     expect(new Set(t.items.map(i => i.key)).size).toBe(3)
+  })
+  describe('a message sent during a turn', () => {
+    const during = (delivery: 'queued' | 'steered' | 'redirected') => {
+      const first = run([delta('Working')], withUserMessage(EMPTY_TRANSCRIPT, 'first'))
+      const key = nextItemKey(first)
+
+      return withDelivery(withUserMessage(first, 'second'), key, delivery)
+    }
+
+    it('labels the row with what the backend did', () => {
+      expect(during('queued').items[2]).toMatchObject({ kind: 'user', text: 'second', delivery: 'queued' })
+      expect(during('steered').items[2]).toMatchObject({ delivery: 'steered' })
+    })
+
+    it('moves a queued message below the rest of the turn when its own turn starts', () => {
+      const t = run(
+        [
+          delta(' more'),
+          { type: 'message.complete', payload: { status: 'complete' } },
+          { type: 'message.start', payload: {} },
+          delta('Answer two')
+        ],
+        during('queued')
+      )
+
+      expect(shape(t)).toEqual(['user:first', 'assistant:Working', 'assistant: more', 'user:second', 'assistant:Answer two'])
+      expect(t.items[3]).not.toHaveProperty('delivery')
+    })
+
+    it('starts queued messages oldest first and keeps the others waiting', () => {
+      const one = during('queued')
+      const two = withDelivery(withUserMessage(one, 'third'), nextItemKey(one), 'queued')
+      const t = run([{ type: 'message.complete', payload: { status: 'complete' } }, { type: 'message.start', payload: {} }], two)
+
+      expect(t.items.filter(i => i.kind === 'user').map(i => [i.text, i.delivery])).toEqual([
+        ['first', undefined],
+        ['second', undefined],
+        ['third', 'queued']
+      ])
+    })
+
+    it('keeps a steered message where it was sent', () => {
+      const t = run([delta('On it'), { type: 'message.complete', payload: { status: 'complete' } }], during('steered'))
+
+      expect(shape(t)).toEqual(['user:first', 'assistant:Working', 'user:second', 'assistant:On it'])
+      expect(t.items[2]).toMatchObject({ delivery: 'steered' })
+    })
+  })
+
+  it('labels a prompt that is still queued when the conversation opens, without adding it twice', () => {
+    const stored = [{ role: 'user', text: 'first' }, { role: 'assistant', text: 'ok' }, { role: 'user', text: 'later' }]
+    const t = transcriptFromHistory(stored as never, true, 'later')
+
+    expect(t.items).toHaveLength(3)
+    expect(t.items[2]).toMatchObject({ text: 'later', delivery: 'queued' })
+    expect(transcriptFromHistory(stored.slice(0, 2) as never, true, 'later').items[2]).toMatchObject({ delivery: 'queued' })
+  })
+
+  it('shows the answer to a side question as command output', () => {
+    const t = run([{ type: 'btw.complete', payload: { task_id: 'x', question: 'why?', text: 'Because.' } }])
+
+    expect(t.items[0]).toMatchObject({ kind: 'output', command: '/btw why?', text: 'Because.' })
+    expect(t.running).toBe(false)
   })
 })
