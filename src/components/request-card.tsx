@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import type { ApprovalChoice } from '@/core/gateway/gateway-contract.generated'
 import type { AgentAnswer, AgentRequest } from '@/core/requests'
-import { radius, space, TOUCH, type } from '@/theme/tokens'
+import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Button } from './ui'
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   card: { gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   block: { gap: space.sm },
-  code: { fontFamily: 'Menlo', fontSize: 13, padding: space.md, borderRadius: radius.sm, overflow: 'hidden' },
+  code: { fontFamily: MONO, fontSize: 13, padding: space.md, borderRadius: radius.sm, overflow: 'hidden' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   action: { flexGrow: 1 },
   chip: {

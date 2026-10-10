@@ -1,11 +1,10 @@
 import { memo, useMemo } from 'react'
-import { Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { type Block, parseMarkdown, type Span } from '@/core/markdown'
-import { radius, space, type } from '@/theme/tokens'
+import { MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
-const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' })
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
 
 /**

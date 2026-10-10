@@ -27,7 +27,7 @@ import type { TranscriptItem } from '@/core/transcript'
 import { $conversations, completeDraft, type Completions, resumeConversation, sendDraft, stopTurn } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
-import { radius, space, TOUCH, type } from '@/theme/tokens'
+import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 export default function Chat() {
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   },
   completion: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
-  outputText: { fontFamily: 'Menlo', fontSize: 12, lineHeight: 17 },
+  outputText: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

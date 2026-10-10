@@ -1,3 +1,5 @@
+import { Platform } from 'react-native'
+
 /**
  * Colour and shape tokens. The palette comes from the design prototype: warm
  * paper in light mode, soft charcoal in dark mode, one terracotta accent.
@@ -67,6 +69,9 @@ export const type = {
   label: { fontSize: 15, fontWeight: '600' },
   small: { fontSize: 13 }
 } as const
+
+/** `Menlo` exists on iOS only. Android names its fixed-width font `monospace`. */
+export const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' })
 
 /** Minimum touch target, in points. */
 export const TOUCH = 44
