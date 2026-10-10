@@ -70,8 +70,8 @@ describe('splitStoredPrompt', () => {
     expect(splitStoredPrompt(stored)).toEqual({
       text: 'read these',
       attached: [
-        { name: 'notes.md', kind: 'file' },
-        { name: 'my plan.pdf', kind: 'pdf' },
+        { name: 'notes.md', kind: 'file', path: '/up/notes.md' },
+        { name: 'my plan.pdf', kind: 'pdf', path: '/up/my plan.pdf' },
         { name: 'p.pdf', kind: 'pdf' }
       ]
     })

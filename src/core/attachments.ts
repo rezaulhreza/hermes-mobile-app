@@ -39,12 +39,52 @@ export interface Attachment {
 export interface SentAttachment {
   name: string
   kind: AttachmentKind
+  /** The copy on the phone. A message sent from this phone, in this run of the app, has one. */
   uri?: string
+  /** Where the file is on the Hermes host. A message from stored history has only this. */
+  path?: string
   size?: number
 }
 
 export function sentAttachment({ name, kind, uri, size }: Attachment): SentAttachment {
   return { name, kind, ...(uri ? { uri } : {}), ...(size ? { size } : {}) }
+}
+
+/**
+ * How the phone can show a file. `image`: full screen, with zoom. `text`: the
+ * app draws the text itself. `web`: the system web view draws it (PDF, office
+ * documents, audio, video). `none`: nothing on a phone draws it; it can only
+ * be shared to another app.
+ */
+export type PreviewMode = 'image' | 'text' | 'web' | 'none'
+
+const WEB_PREVIEW = /\.(pdf|html?|rtf|docx?|xlsx?|pptx?|pages|numbers|key)$/i
+const TEXT_PREVIEW = /\.(txt|md|markdown|log|csv|tsv|env|ini|conf|lock)$/i
+
+export function previewMode(name: string, kind: AttachmentKind): PreviewMode {
+  const glyph = fileGlyph(name, kind)
+
+  if (glyph === 'image') {
+    return 'image'
+  }
+
+  if (WEB_PREVIEW.test(name) || glyph === 'video' || glyph === 'audio') {
+    return 'web'
+  }
+
+  return glyph === 'code' || TEXT_PREVIEW.test(name) ? 'text' : 'none'
+}
+
+export function isMarkdown(name: string): boolean {
+  return /\.(md|markdown)$/i.test(name)
+}
+
+// A preview is for reading, not for loading a whole log into a text view.
+const TEXT_PREVIEW_CHARS = 200_000
+
+/** The text a preview shows, and whether the end was cut. */
+export function previewText(text: string): { text: string; cut: boolean } {
+  return text.length > TEXT_PREVIEW_CHARS ? { text: text.slice(0, TEXT_PREVIEW_CHARS), cut: true } : { text, cut: false }
 }
 
 /** The byte count of a picked file. Base64 length stands in for a size the picker did not give. */
@@ -142,9 +182,10 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
     const held = HELD_LINE.exec(line)
 
     if (file) {
-      const name = (file[1] ?? file[2] ?? file[3] ?? file[4]).split('/').pop() ?? ''
+      const path = file[1] ?? file[2] ?? file[3] ?? file[4]
+      const name = path.split('/').pop() ?? ''
 
-      attached.unshift({ name, kind: attachmentKind({ name }) })
+      attached.unshift({ name, kind: attachmentKind({ name }), path })
     } else if (held) {
       attached.unshift({ name: held[2], kind: held[1] === 'PDF' ? 'pdf' : 'image' })
     } else if (line) {

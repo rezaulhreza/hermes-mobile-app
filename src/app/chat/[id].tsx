@@ -18,13 +18,14 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, type IconName, Notice } from '@/components/ui'
-import type { Attachment } from '@/core/attachments'
+import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
@@ -86,6 +87,7 @@ export default function Chat() {
   const attachments = useStore($attachments)[sessionId ?? '']
   const staged = attachments ?? NO_ATTACHMENTS
   const [adding, setAdding] = useState(false)
+  const [viewing, setViewing] = useState<ViewerTarget | null>(null)
   const hasContent = draft.trim().length > 0 || staged.some(item => item.state === 'ready')
   // An upload still running would miss the message it was picked for.
   const canSend = Boolean(sessionId) && linkState === 'open' && hasContent && !staged.some(item => item.state === 'uploading')
@@ -200,7 +202,7 @@ export default function Chat() {
             keyboardDismissMode="interactive"
             onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
             ref={list}
-            renderItem={({ item }) => <Row item={item} />}
+            renderItem={({ item }) => <Row item={item} onOpen={setViewing} />}
           />
         )}
 
@@ -267,7 +269,12 @@ export default function Chat() {
           {staged.length ? (
             <ScrollView contentContainerStyle={styles.chips} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
               {staged.map(item => (
-                <StagedAttachment item={item} key={item.id} onRemove={() => sessionId && removeAttachment(sessionId, item.id)} />
+                <StagedAttachment
+                  item={item}
+                  key={item.id}
+                  onOpen={() => setViewing({ items: staged.map(sentAttachment), index: staged.indexOf(item) })}
+                  onRemove={() => sessionId && removeAttachment(sessionId, item.id)}
+                />
               ))}
             </ScrollView>
           ) : null}
@@ -323,6 +330,7 @@ export default function Chat() {
             sessionId={sessionId}
             visible={sheet === 'model'}
           />
+          <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           <CommandsSheet
             onClose={() => setSheet(null)}
             onPick={command => {
@@ -367,7 +375,7 @@ const DELIVERY_LABEL: Record<Delivery, string> = {
   dropped: 'Not sent. The turn was stopped first.'
 }
 
-function Row({ item }: { item: TranscriptItem }) {
+function Row({ item, onOpen }: { item: TranscriptItem; onOpen: (target: ViewerTarget) => void }) {
   const t = useTheme()
 
   switch (item.kind) {
@@ -375,7 +383,7 @@ function Row({ item }: { item: TranscriptItem }) {
       return (
         <View style={styles.sent}>
           <View style={[styles.bubble, { backgroundColor: t.soft }, (item.delivery === 'queued' || item.delivery === 'dropped') && styles.waiting]}>
-            {item.attached?.length ? <SentAttachments items={item.attached} /> : null}
+            {item.attached?.length ? <SentAttachments items={item.attached} onOpen={index => onOpen({ items: item.attached ?? [], index })} /> : null}
             {item.text ? (
               <Text selectable style={[type.body, { color: t.ink }]}>
                 {item.text}

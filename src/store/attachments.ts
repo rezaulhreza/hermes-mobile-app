@@ -88,8 +88,8 @@ export async function stage(sessionId: string, file: PickedFile): Promise<void> 
     state: 'uploading',
     heldPaths: [],
     promptText: '',
-    // Only an image has a picture to show. The picker's copy stays on the phone.
-    ...(kind === 'image' ? { uri: file.uri } : {}),
+    // The picker's copy stays on the phone: the thumbnail and the preview read it.
+    uri: file.uri,
     ...(size ? { size } : {})
   }
 
