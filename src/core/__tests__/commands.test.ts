@@ -57,6 +57,18 @@ describe('phoneCompletions', () => {
 
     expect(phoneCompletions(items, catalog).map(item => item.text)).toEqual(['/queue', 'high', '@src/'])
   })
+
+  // The backend sends the name without the slash and says what the row is in `kind`.
+  it('reads a command row that has no slash in its text', () => {
+    const items = [
+      { text: 'quit', display: '/quit', kind: 'command' },
+      { text: 'queue', display: '/queue', kind: 'command' },
+      { text: 'term', display: '/term', kind: 'command' },
+      { text: 'work', display: '/work', kind: 'skill' }
+    ]
+
+    expect(phoneCompletions(items, catalog).map(item => item.text)).toEqual(['queue', 'work'])
+  })
 })
 
 describe('commandSections', () => {

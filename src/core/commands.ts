@@ -81,7 +81,8 @@ const NO_PHONE: Readonly<Record<Reason, readonly string[]>> = {
   terminal: [
     '/busy', '/config', '/copy', '/cron', '/exit', '/footer', '/gateway', '/history', '/image', '/indicator',
     '/paste', '/platforms', '/plugins', '/quit', '/redraw', '/reload', '/restart', '/sb', '/set-home', '/sethome',
-    '/snap', '/snapshot', '/statusbar', '/toolsets', '/update', '/verbose', '/density', '/details', '/logs', '/mouse'
+    '/snap', '/snapshot', '/statusbar', '/toolsets', '/update', '/verbose', '/density', '/details', '/logs', '/mouse',
+    '/battery'
   ],
   messaging: ['/approve', '/deny'],
   settings: ['/login'],
@@ -89,7 +90,7 @@ const NO_PHONE: Readonly<Record<Reason, readonly string[]>> = {
   advanced: ['/curator', '/fast', '/insights', '/kanban', '/reload-mcp', '/reload-skills', '/reload_mcp', '/reload_skills'],
   // The desktop runs these inside its own window: theme, pets, wake word, panels.
   desktop: [
-    '/compose', '/skin', '/wake', '/pet', '/pets', '/hatch', '/generate-pet', '/journey', '/learning',
+    '/compose', '/prompt', '/skin', '/wake', '/pet', '/pets', '/hatch', '/generate-pet', '/journey', '/learning',
     '/memory-graph', '/palette', '/browser', '/profile'
   ]
 }
@@ -130,9 +131,13 @@ export function phoneBlock(command: string, catalog?: Catalog): string | null {
   return reason ? REASON_TEXT[reason] : null
 }
 
-/** Drop the completions that name a command with no phone surface. Argument and path completions pass. */
+/**
+ * Drop the completions that name a command with no phone surface. Argument and
+ * path completions pass. The backend sends a command's name without the slash
+ * and marks the row with `kind`.
+ */
 export function phoneCompletions(items: readonly CompletionItem[], catalog?: Catalog): CompletionItem[] {
-  return items.filter(item => !item.text.startsWith('/') || phoneBlock(item.text, catalog) === null)
+  return items.filter(item => !(item.kind === 'command' || item.text.startsWith('/')) || phoneBlock(item.text, catalog) === null)
 }
 
 export interface CommandRow {
