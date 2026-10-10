@@ -1,4 +1,4 @@
-import { parseMarkdown, parseSpans } from "../markdown";
+import { columnWidths, parseMarkdown, parseSpans } from "../markdown";
 
 describe("parseMarkdown", () => {
   it("reads paragraphs, headings and both kinds of list", () => {
@@ -75,5 +75,37 @@ describe("parseSpans", () => {
 
   it("refuses a link that is not a web address", () => {
     expect(parseSpans("[x](javascript:alert(1))")[0]).toMatchObject({ kind: "text" });
+  });
+});
+
+describe("tables", () => {
+  const source = "Before\n\n| Name | Count | Note |\n|:-----|------:|:----:|\n| `a|b` | 12 | **ok** |\n| short |\n\nAfter";
+
+  it("reads the header, the alignment and the rows", () => {
+    const blocks = parseMarkdown(source);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    expect(blocks[1]).toMatchObject({
+      kind: "table",
+      align: ["left", "right", "center"],
+      header: [[{ kind: "text", text: "Name" }], [{ kind: "text", text: "Count" }], [{ kind: "text", text: "Note" }]],
+    });
+
+    const table = blocks[1] as Extract<(typeof blocks)[number], { kind: "table" }>;
+
+    expect(table.rows[0]).toEqual([[{ kind: "code", text: "a|b" }], [{ kind: "text", text: "12" }], [{ kind: "strong", text: "ok" }]]);
+    // A short row is filled, so every row has one cell per column.
+    expect(table.rows[1]).toEqual([[{ kind: "text", text: "short" }], [], []]);
+  });
+
+  it("reads a header with no dashes line yet as text", () => {
+    expect(parseMarkdown("| Name | Count |").map((block) => block.kind)).toEqual(["paragraph"]);
+    expect(parseMarkdown("a | b\n---").map((block) => block.kind)).toEqual(["paragraph", "rule"]);
+  });
+
+  it("sizes a column by its longest cell, inside limits", () => {
+    const table = parseMarkdown("| A | B |\n|---|---|\n| x | " + "long ".repeat(30) + "|")[0];
+
+    expect(table.kind === "table" && columnWidths(table)).toEqual([64, 240]);
   });
 });

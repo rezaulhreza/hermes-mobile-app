@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react'
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 
-import { type Block, parseMarkdown, type Span } from '@/core/markdown'
+import { type Block, columnWidths, parseMarkdown, type Span } from '@/core/markdown'
 import { MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -79,9 +79,41 @@ function BlockView({ block, muted }: { block: Block; muted: boolean }) {
         </View>
       )
 
+    case 'table':
+      return <Table colour={colour} table={block} />
+
     case 'rule':
       return <View style={[styles.rule, { backgroundColor: t.line }]} />
   }
+}
+
+/** A table scrolls sideways: a phone is narrower than most tables, and a squeezed column cannot be read. */
+function Table({ table, colour }: { table: Extract<Block, { kind: 'table' }>; colour: string }) {
+  const t = useTheme()
+  const widths = useMemo(() => columnWidths(table), [table])
+
+  const row = (cells: readonly (readonly Span[])[], key: number | string, head: boolean) => (
+    <View key={key} style={[styles.tableRow, { borderTopColor: t.line }, head ? { backgroundColor: t.soft } : styles.tableLine]}>
+      {cells.map((cell, column) => (
+        <Text
+          key={column}
+          selectable
+          style={[type.small, styles.cell, { width: widths[column], color: colour, textAlign: table.align[column] }, head && styles.strong]}
+        >
+          <Spans spans={cell} />
+        </Text>
+      ))}
+    </View>
+  )
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.table, { borderColor: t.line }]}>
+      <View>
+        {row(table.header, 'head', true)}
+        {table.rows.map((cells, index) => row(cells, index, false))}
+      </View>
+    </ScrollView>
+  )
 }
 
 function Spans({ spans }: { spans: readonly Span[] }) {
@@ -140,5 +172,9 @@ const styles = StyleSheet.create({
   inlineCode: { fontFamily: MONO, fontSize: 14 },
   strong: { fontWeight: '700' },
   em: { fontStyle: 'italic' },
-  rule: { height: StyleSheet.hairlineWidth }
+  rule: { height: StyleSheet.hairlineWidth },
+  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexGrow: 0 },
+  tableRow: { flexDirection: 'row' },
+  tableLine: { borderTopWidth: StyleSheet.hairlineWidth },
+  cell: { paddingHorizontal: space.md, paddingVertical: space.sm }
 })
