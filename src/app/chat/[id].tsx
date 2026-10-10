@@ -363,7 +363,8 @@ export default function Chat() {
               onChangeText={setDraft}
               placeholder={running ? 'Queue a message or steer' : 'Message, /command or @file'}
               placeholderTextColor={t.muted}
-              style={[styles.input, type.body, { color: t.ink }]}
+              // An empty field is one line high. iOS keeps the height of the text that was sent until the next key.
+              style={[styles.input, type.body, { color: t.ink }, !draft && styles.inputEmpty]}
               value={draft}
             />
             {canSteer ? (
@@ -676,5 +677,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth
   },
+  inputEmpty: { height: TOUCH },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 160, paddingHorizontal: space.sm, paddingTop: 10, paddingBottom: 10 }
 })
