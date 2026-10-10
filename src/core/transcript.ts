@@ -14,8 +14,10 @@ import type { TranscriptMessage } from './gateway/gateway-contract.generated'
  * What the backend did with a message sent during a turn. `queued`: it runs as
  * the next turn. `steered`: the model reads it after its current action, with
  * no new turn. `redirected`: the running turn changed course to follow it.
+ * `dropped`: it waited in the queue and the user stopped the turn, which
+ * empties the backend queue, so it never ran.
  */
-export type Delivery = 'queued' | 'steered' | 'redirected'
+export type Delivery = 'queued' | 'steered' | 'redirected' | 'dropped'
 
 export type TranscriptItem =
   | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: string[] }
@@ -225,6 +227,10 @@ function completeTurn(
 
     next = push(next, key => ({ kind: 'notice', key, text, tone: 'error' }))
   } else if (payload?.status === 'interrupted') {
+    next = {
+      ...next,
+      items: next.items.map(item => (item.kind === 'user' && item.delivery === 'queued' ? { ...item, delivery: 'dropped' } : item))
+    }
     next = push(next, key => ({ kind: 'notice', key, text: 'Stopped', tone: 'info' }))
   }
 

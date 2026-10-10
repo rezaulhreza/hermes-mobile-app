@@ -385,8 +385,9 @@ function useKeyboardOpen(): boolean {
 
 const DELIVERY_LABEL: Record<Delivery, string> = {
   queued: 'Queued. Runs after this turn.',
-  steered: 'Steered. The agent reads it after its current step.',
-  redirected: 'Redirected the turn.'
+  steered: 'Steered into the running turn.',
+  redirected: 'Redirected the turn.',
+  dropped: 'Not sent. The turn was stopped first.'
 }
 
 function Row({ item }: { item: TranscriptItem }) {
@@ -396,7 +397,7 @@ function Row({ item }: { item: TranscriptItem }) {
     case 'user':
       return (
         <View style={styles.sent}>
-          <View style={[styles.bubble, { backgroundColor: t.soft }, item.delivery === 'queued' && styles.waiting]}>
+          <View style={[styles.bubble, { backgroundColor: t.soft }, (item.delivery === 'queued' || item.delivery === 'dropped') && styles.waiting]}>
             {item.text ? (
               <Text selectable style={[type.body, { color: t.ink }]}>
                 {item.text}

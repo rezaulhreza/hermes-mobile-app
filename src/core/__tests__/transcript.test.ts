@@ -118,6 +118,16 @@ describe('transcript', () => {
       expect(during('steered').items[2]).toMatchObject({ delivery: 'steered' })
     })
 
+    // The backend empties its queue when the user stops the turn.
+    it('marks a queued message as dropped when the turn is stopped', () => {
+      const t = run([{ type: 'message.complete', payload: { status: 'interrupted' } }], during('queued'))
+
+      expect(t.items[2]).toMatchObject({ text: 'second', delivery: 'dropped' })
+      expect(run([{ type: 'message.complete', payload: { status: 'interrupted' } }], during('steered')).items[2]).toMatchObject({
+        delivery: 'steered'
+      })
+    })
+
     it('moves a queued message below the rest of the turn when its own turn starts', () => {
       const t = run(
         [
