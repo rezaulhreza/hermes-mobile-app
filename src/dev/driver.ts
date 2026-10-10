@@ -14,7 +14,7 @@ import { $attachments, stage } from '@/store/attachments'
 import { $conversations } from '@/store/chat'
 import { $linkState, currentApi, rpc } from '@/store/link'
 import { $requests } from '@/store/requests'
-import { $sessions } from '@/store/sessions'
+import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
 
 const PORT = 8099
 const REDIAL_MS = 1500
@@ -66,6 +66,9 @@ function textOf(fiber: Fiber): string {
     .filter(f => f.tag === HOST_TEXT)
     .map(f => String(f.memoizedProps))
     .join('')
+    // An icon is a glyph of an icon font. It is not part of the name a person reads.
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .trim()
 }
 
 /** One entry per control: a Pressable passes `onPress` down through several fibers. */
@@ -100,7 +103,7 @@ const helpers = {
   api: currentApi,
   /** Stage a file by its path, past the native picker that a script cannot use. */
   stage,
-  stores: { $attachments, $conversations, $linkState, $requests, $sessions },
+  stores: { $attachments, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),
@@ -111,7 +114,8 @@ const helpers = {
   /** Press the control with this accessibility label, or the first one whose text contains it. */
   press: (what: string, nth = 0) => {
     const all = pressables()
-    const exact = all.filter(fiber => labelOf(fiber) === what)
+    // A whole name wins over a part of one: "Archive" must not press "Archived".
+    const exact = all.filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what)
     const hit = (exact.length ? exact : all.filter(fiber => nameOf(fiber).includes(what)))[nth]
 
     if (!hit) {
@@ -125,6 +129,19 @@ const helpers = {
     ;(props(hit).onPress as (event: unknown) => void)({ nativeEvent: {} })
 
     return `pressed: ${nameOf(hit)}`
+  },
+
+  /** Hold the first control that has a long press and this name. */
+  longPress: (what: string) => {
+    const hit = fibers().find(fiber => typeof props(fiber).onLongPress === 'function' && nameOf(fiber).includes(what))
+
+    if (!hit) {
+      return `not found: ${what}`
+    }
+
+    ;(props(hit).onLongPress as (event: unknown) => void)({ nativeEvent: {} })
+
+    return `held: ${nameOf(hit)}`
   },
 
   /** Replace the text of the input with this accessibility label. */
