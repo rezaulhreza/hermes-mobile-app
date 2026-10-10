@@ -4,24 +4,34 @@
  * to settle.
  */
 
+import * as Clipboard from 'expo-clipboard'
 import * as DocumentPicker from 'expo-document-picker'
 import { File } from 'expo-file-system'
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { map } from 'nanostores'
 
-import { type Attachment, attachmentKind, attachProblem, dataUrl, type PickedFile, pickedSize } from '@/core/attachments'
+import {
+  type Attachment,
+  attachmentKind,
+  attachProblem,
+  dataUrl,
+  jpegName,
+  type PickedFile,
+  pickedSize,
+  shrinkTarget
+} from '@/core/attachments'
 import type { AttachedImageResult, FileAttachResult, PdfAttachResult } from '@/core/gateway/gateway-contract.generated'
 
 import { rpc } from './link'
 
 export const $attachments = map<Record<string, Attachment[]>>({})
 
-export type AttachSource = 'photos' | 'camera' | 'files'
+export type AttachSource = 'photos' | 'camera' | 'files' | 'clipboard'
 
 // A 12 MB file over a phone connection needs more than the default request time.
 const UPLOAD_TIMEOUT_MS = 180_000
 const PHOTO_LIMIT = 6
-// The backend resizes what the model sees. Full camera quality only costs upload time.
 const PHOTO_QUALITY = 0.8
 
 let lastId = 0
@@ -30,14 +40,45 @@ function update(sessionId: string, change: (list: Attachment[]) => Attachment[])
   $attachments.setKey(sessionId, change($attachments.get()[sessionId] ?? []))
 }
 
-function fromImages(result: ImagePicker.ImagePickerResult): PickedFile[] {
-  return (result.assets ?? []).map((asset, index) => ({
-    uri: asset.uri,
-    name: asset.fileName || `photo-${index + 1}.jpg`,
-    mimeType: asset.mimeType ?? 'image/jpeg',
-    size: asset.fileSize,
-    base64: asset.base64
-  }))
+/** One picked photo. A photo larger than the model needs is made smaller first, so it uploads fast and fits the limit. */
+async function fitted(asset: ImagePicker.ImagePickerAsset, index: number): Promise<PickedFile> {
+  const name = asset.fileName || `photo-${index + 1}.jpg`
+  const target = shrinkTarget(asset.width, asset.height)
+
+  if (target) {
+    try {
+      const image = await ImageManipulator.manipulate(asset.uri).resize(target).renderAsync()
+      const saved = await image.saveAsync({ base64: true, compress: PHOTO_QUALITY, format: SaveFormat.JPEG })
+
+      return { uri: saved.uri, name: jpegName(name), mimeType: 'image/jpeg', base64: saved.base64 }
+    } catch {
+      // The photo as it is can still be within the limit.
+    }
+  }
+
+  return { uri: asset.uri, name, mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize, base64: asset.base64 }
+}
+
+function fromImages(result: ImagePicker.ImagePickerResult): Promise<PickedFile[]> {
+  return Promise.all((result.assets ?? []).map(fitted))
+}
+
+let pasted = 0
+
+async function fromClipboard(): Promise<PickedFile[]> {
+  const image = await Clipboard.getImageAsync({ format: 'jpeg', jpegQuality: PHOTO_QUALITY })
+
+  if (!image) {
+    throw new Error('The clipboard has no picture.')
+  }
+
+  // `data` is a data URL. The preview shows it as it is; the upload needs the part after the comma.
+  return [{ uri: image.data, name: `pasted-${++pasted}.jpg`, mimeType: 'image/jpeg', base64: image.data.slice(image.data.indexOf(',') + 1) }]
+}
+
+/** True when the clipboard holds a picture. The attach menu offers "Paste" only then. */
+export function clipboardHasImage(): Promise<boolean> {
+  return Clipboard.hasImageAsync().catch(() => false)
 }
 
 async function pick(source: AttachSource): Promise<PickedFile[]> {
@@ -61,6 +102,10 @@ async function pick(source: AttachSource): Promise<PickedFile[]> {
     }
 
     return fromImages(await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: PHOTO_QUALITY, base64: true }))
+  }
+
+  if (source === 'clipboard') {
+    return fromClipboard()
   }
 
   const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true })

@@ -30,7 +30,7 @@ import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
-import { $attachments, addAttachments, type AttachSource, removeAttachment } from '@/store/attachments'
+import { $attachments, addAttachments, type AttachSource, clipboardHasImage, removeAttachment } from '@/store/attachments'
 import {
   $conversations,
   completeDraft,
@@ -88,6 +88,14 @@ export default function Chat() {
   const staged = attachments ?? NO_ATTACHMENTS
   const [adding, setAdding] = useState(false)
   const [viewing, setViewing] = useState<ViewerTarget | null>(null)
+  const [canPaste, setCanPaste] = useState(false)
+
+  // The clipboard can change while the app is in the background, so ask each time the list opens.
+  useEffect(() => {
+    if (adding) {
+      void clipboardHasImage().then(setCanPaste)
+    }
+  }, [adding])
   const hasContent = draft.trim().length > 0 || staged.some(item => item.state === 'ready')
   // An upload still running would miss the message it was picked for.
   const canSend = Boolean(sessionId) && linkState === 'open' && hasContent && !staged.some(item => item.state === 'uploading')
@@ -240,7 +248,7 @@ export default function Chat() {
 
         {adding ? (
           <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
-            {ATTACH_SOURCES.map((source, index) => (
+            {ATTACH_SOURCES.filter(source => source.id !== 'clipboard' || canPaste).map((source, index) => (
               <Pressable
                 accessibilityRole="button"
                 key={source.id}
@@ -255,6 +263,9 @@ export default function Chat() {
                 <Text style={[type.label, { color: t.ink }]}>{source.label}</Text>
               </Pressable>
             ))}
+            <Text style={[type.small, styles.limit, { color: t.muted, borderTopColor: t.line }]}>
+              A file can be up to 12 MB. A large photo is made smaller before it is sent.
+            </Text>
           </View>
         ) : null}
 
@@ -351,7 +362,8 @@ const NO_ATTACHMENTS: Attachment[] = []
 const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
   { id: 'photos', label: 'Photo library', icon: 'image' },
   { id: 'camera', label: 'Take a photo', icon: 'camera' },
-  { id: 'files', label: 'Choose a file', icon: 'file' }
+  { id: 'files', label: 'Choose a file', icon: 'file' },
+  { id: 'clipboard', label: 'Paste a picture', icon: 'clipboard' }
 ]
 
 function useKeyboardOpen(): boolean {
@@ -522,6 +534,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden'
   },
+  limit: { padding: space.md, borderTopWidth: StyleSheet.hairlineWidth },
   completion: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
   outputText: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },

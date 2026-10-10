@@ -117,6 +117,26 @@ export function fileGlyph(name: string, kind: AttachmentKind): FileGlyph {
  */
 export const ATTACH_MAX_BYTES = 12 * 1024 * 1024
 
+// The backend resizes what the model sees. More pixels than this only cost upload time.
+export const PHOTO_LONG_SIDE = 2048
+
+/**
+ * The new size of a photo that is larger than the model needs, as the one
+ * side to set (the other side follows). Null when the photo is small enough.
+ */
+export function shrinkTarget(width: number, height: number, longSide = PHOTO_LONG_SIDE): { width: number } | { height: number } | null {
+  if (Math.max(width, height) <= longSide) {
+    return null
+  }
+
+  return width >= height ? { width: longSide } : { height: longSide }
+}
+
+/** A resized photo is saved as JPEG, so its name must say so. */
+export function jpegName(name: string): string {
+  return `${name.replace(/\.[^./]+$/, '')}.jpg`
+}
+
 const IMAGE_NAME = /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?)$/i
 
 export function attachmentKind(file: Pick<PickedFile, 'name' | 'mimeType'>): AttachmentKind {

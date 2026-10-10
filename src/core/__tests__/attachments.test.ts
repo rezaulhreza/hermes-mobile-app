@@ -1,4 +1,4 @@
-import { ATTACH_MAX_BYTES, attachmentKind, attachProblem, dataUrl, fileGlyph, pickedSize, promptWithAttachments, sentAttachment, splitStoredPrompt, type Attachment } from '../attachments'
+import { ATTACH_MAX_BYTES, attachmentKind, attachProblem, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, promptWithAttachments, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
 
 const ready = (kind: Attachment['kind'], name: string, promptText = ''): Attachment => ({
   id: name,
@@ -104,5 +104,33 @@ describe('sentAttachment', () => {
 
     expect(sentAttachment(staged)).toEqual({ name: 'a.jpg', kind: 'image', uri: 'file:///a.jpg', size: 2048 })
     expect(pickedSize({ uri: 'x', name: 'x', base64: 'AAAA' })).toBe(3)
+  })
+})
+
+describe('previewMode', () => {
+  it('says how a phone can show each file', () => {
+    expect(previewMode('a.jpg', 'image')).toBe('image')
+    expect(previewMode('plan.pdf', 'pdf')).toBe('web')
+    expect(previewMode('sheet.xlsx', 'file')).toBe('web')
+    expect(previewMode('clip.mov', 'file')).toBe('web')
+    expect(previewMode('notes.md', 'file')).toBe('text')
+    expect(previewMode('app.tsx', 'file')).toBe('text')
+    expect(previewMode('data.csv', 'file')).toBe('text')
+    expect(previewMode('bundle.zip', 'file')).toBe('none')
+  })
+
+  it('cuts a very long text', () => {
+    expect(previewText('short')).toEqual({ text: 'short', cut: false })
+    expect(previewText('x'.repeat(200_001))).toMatchObject({ cut: true })
+  })
+})
+
+describe('shrinkTarget', () => {
+  it('sets the long side of a large photo and leaves a small one', () => {
+    expect(shrinkTarget(4032, 3024)).toEqual({ width: 2048 })
+    expect(shrinkTarget(3024, 4032)).toEqual({ height: 2048 })
+    expect(shrinkTarget(2048, 1536)).toBeNull()
+    expect(jpegName('IMG_0012.HEIC')).toBe('IMG_0012.jpg')
+    expect(jpegName('photo')).toBe('photo.jpg')
   })
 })
