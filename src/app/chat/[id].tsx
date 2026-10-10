@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,7 +15,7 @@ import {
   TextInput,
   View
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
@@ -49,6 +50,8 @@ export default function Chat() {
   const [failure, setFailure] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
+  const insets = useSafeAreaInsets()
+  const keyboardOpen = useKeyboardOpen()
   const linkState = useStore($linkState)
   const conversation = useStore($conversations)[sessionId ?? '']
   const requests = useStore($requests).filter(r => r.sessionId === sessionId)
@@ -132,7 +135,7 @@ export default function Chat() {
   const canSteer = running && canSend && !draft.trimStart().startsWith('/')
 
   return (
-    <SafeAreaView style={[styles.fill, { backgroundColor: t.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={[styles.header, { borderBottomColor: t.line }]}>
         <IconButton icon="chevron-left" label="Back" onPress={() => router.back()} />
         <View style={styles.fill}>
@@ -212,7 +215,14 @@ export default function Chat() {
           </View>
         ) : null}
 
-        <View style={[styles.composer, { backgroundColor: t.paper, borderColor: t.line }]}>
+        <View
+          style={[
+            styles.composer,
+            { backgroundColor: t.paper, borderColor: t.line },
+            // The keyboard covers the home indicator. Without it the composer sits just above the indicator.
+            !keyboardOpen && { marginBottom: Math.max(insets.bottom - 10, space.md) }
+          ]}
+        >
           <TextInput
             accessibilityLabel="Message"
             autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
@@ -270,6 +280,20 @@ export default function Chat() {
       ) : null}
     </SafeAreaView>
   )
+}
+
+function useKeyboardOpen(): boolean {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    // iOS says "will", so the layout moves with the keyboard. Android only says "did".
+    const [show, hide] = Platform.OS === 'ios' ? (['keyboardWillShow', 'keyboardWillHide'] as const) : (['keyboardDidShow', 'keyboardDidHide'] as const)
+    const subscriptions = [Keyboard.addListener(show, () => setOpen(true)), Keyboard.addListener(hide, () => setOpen(false))]
+
+    return () => subscriptions.forEach(subscription => subscription.remove())
+  }, [])
+
+  return open
 }
 
 const DELIVERY_LABEL: Record<Delivery, string> = {
