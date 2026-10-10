@@ -14,6 +14,7 @@ import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
+import { clearVoice } from '@/store/voice'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
@@ -41,6 +42,7 @@ export default function RootLayout() {
     clearRequests()
     clearVault()
     clearPreviews()
+    clearVoice()
 
     if (workspace) {
       void openLink(workspace)

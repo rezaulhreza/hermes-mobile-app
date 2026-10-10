@@ -31,6 +31,7 @@ import { PreviewPane, PreviewPill } from '@/components/preview-pane'
 import { RequestCard } from '@/components/request-card'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
+import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
@@ -55,6 +56,7 @@ import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { $sessions } from '@/store/sessions'
+import { $call, $dictation, $reading, dictate, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -71,6 +73,17 @@ export default function Chat() {
   const [modelQuery, setModelQuery] = useState('')
   const [acting, setActing] = useState(false)
   const [tool, setTool] = useState<ToolTarget | null>(null)
+  const call = useStore($call)
+  const dictation = useStore($dictation)
+
+  const say = (problem: unknown) => Alert.alert('Voice is not available', problem instanceof Error ? problem.message : String(problem))
+
+  // The words go into the field, after what is there. The user reads them and sends: a wrong word costs nothing.
+  const speakDraft = () => {
+    dictate()
+      .then(words => words && setDraft(current => (current.trim() ? `${current.trimEnd()} ${words}` : words)))
+      .catch(say)
+  }
   const previewUrl = useStore($previews)[sessionId ?? '']?.url
   // The agent opened a page for the user: show it. The user can put it away; a new address shows again.
   const [putAway, setPutAway] = useState<string | null>(null)
@@ -286,6 +299,7 @@ export default function Chat() {
           </View>
         ))}
 
+        {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
 
         {shownCompletions.length ? (
@@ -369,7 +383,7 @@ export default function Chat() {
               autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
               multiline
               onChangeText={setDraft}
-              placeholder={running ? 'Queue a message or steer' : 'Message, /command or @file'}
+              placeholder={running ? 'Queue or steer' : 'Message, / or @'}
               placeholderTextColor={t.muted}
               // An empty field is one line high. iOS keeps the height of the text that was sent until the next key.
               style={[styles.input, type.body, { color: t.ink }, !draft && styles.inputEmpty]}
@@ -387,9 +401,19 @@ export default function Chat() {
                 <Text style={[type.label, { color: t.ink }]}>Steer</Text>
               </Pressable>
             ) : null}
+            {!hasContent && sessionId && linkState === 'open' ? (
+              <>
+                <IconButton
+                  icon={dictation === 'off' ? 'mic' : dictation === 'listening' ? 'check' : 'loader'}
+                  label={dictation === 'off' ? 'Dictate a message' : dictation === 'listening' ? 'Done talking' : 'Writing it down'}
+                  onPress={speakDraft}
+                />
+                {call ? null : <IconButton icon="phone" label="Start a voice call" onPress={() => startCall(sessionId).catch(say)} />}
+              </>
+            ) : null}
             {running && !hasContent ? (
               <IconButton icon="square" label="Stop" onPress={() => sessionId && void stopTurn(sessionId)} />
-            ) : (
+            ) : !hasContent && sessionId && linkState === 'open' ? null : (
               <IconButton
                 disabled={!canSend}
                 filled
@@ -414,6 +438,7 @@ export default function Chat() {
             sessionId={sessionId}
             visible={sheet === 'model'}
           />
+          <VoiceCallScreen items={transcript?.items ?? NO_ITEMS} sessionId={sessionId} title={conversation?.title ?? ''} />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           <SessionActionsSheet
@@ -444,6 +469,7 @@ export default function Chat() {
 }
 
 const NO_ATTACHMENTS: Attachment[] = []
+const NO_ITEMS: TranscriptItem[] = []
 // Closer to the end than this still counts as the end: a streamed line must not show the button.
 const END_SLACK = 160
 
@@ -506,7 +532,7 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
       return final ? (
         <View style={styles.answer}>
           <Markdown text={item.text} />
-          <AnswerActions text={item.text} />
+          <AnswerActions id={item.key} text={item.text} />
         </View>
       ) : (
         <Markdown text={item.text} />
@@ -558,8 +584,9 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
 }
 
 /** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
-function AnswerActions({ text }: { text: string }) {
+function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
+  const reading = useStore($reading) === id
   const [copied, setCopied] = useState(false)
 
   const copy = () => {
@@ -577,6 +604,14 @@ function AnswerActions({ text }: { text: string }) {
       </Pressable>
       <Pressable accessibilityLabel="Share the answer" accessibilityRole="button" hitSlop={10} onPress={() => void Share.share({ message: text }).catch(() => undefined)}>
         <Feather color={t.muted} name="share" size={15} />
+      </Pressable>
+      <Pressable
+        accessibilityLabel={reading ? 'Stop reading' : 'Read the answer aloud'}
+        accessibilityRole="button"
+        hitSlop={10}
+        onPress={() => void readAloud(id, text).catch(() => undefined)}
+      >
+        <Feather color={reading ? t.accent : t.muted} name={reading ? 'square' : 'volume-2'} size={15} />
       </Pressable>
     </View>
   )

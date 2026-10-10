@@ -41,10 +41,11 @@
         {
           "photosPermission": "Hermes reads the photos you choose so you can send them to your agent.",
           "cameraPermission": "Hermes uses the camera when you take a photo to send to your agent.",
-          "microphonePermission": false
+          "microphonePermission": "Hermes uses the microphone when you talk to your agent."
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
