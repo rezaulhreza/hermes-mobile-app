@@ -27,6 +27,33 @@ paper, one terracotta accent, floating tab bar, calm type), improve the rest.
 The most important surface is "Hermes needs you": approvals, questions,
 secrets, sudo passwords, 2FA codes, vault unlock. `src/core/requests.ts`.
 
+## This app replaces the old one (owner's decision, 2026-10-09)
+
+This app is the drop-in replacement for the old Hermes mobile app (the
+Capacitor shell). At release it takes the old app's identity and
+configuration, so the phone sees an update of the same app, and push keeps
+working with no backend change. After that, this repo is the one to maintain.
+
+NOT YET. Until this app is complete the owner uses the old app. Keep the
+placeholder bundle ID `com.example.hermesnative` so both apps install side by
+side. Do the switch only when the owner says so.
+
+What to take over at the switch, and where each value is:
+
+- Bundle ID and app name: the old app builds with `CAP_APP_ID` /
+  `CAP_APP_NAME` (`mobile-shell/capacitor.config.ts`, `mobile-shell/README.md`
+  in the Hermes repo). The live bundle ID is also `push.bundle_id` in
+  `~/.hermes/config.yaml`.
+- Push: the backend sends with `push.apns_key_path`, `apns_key_id`,
+  `apns_team_id`, `bundle_id`, `environment` in `~/.hermes/config.yaml`. The
+  APNs topic IS the bundle ID, so the same bundle ID means the same key works.
+  The app needs the `aps-environment` entitlement and the same team.
+- Signing team, App Store Connect record, TestFlight group, icons, splash,
+  display name, permission texts, URL scheme: read them from
+  `mobile-shell/ios/` before the first release build.
+- Keep personal identifiers out of the tree, as the old app does: read the
+  bundle ID from the environment in `app.config`, do not commit it.
+
 ## Working rules (from the owner)
 
 - Do the work inline. Subagents only when clearly worth the cost: Sonnet at
@@ -230,7 +257,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `subagent.list`, `subagent.tail`), steer, interrupt. Todo list
    (`todo.updated`).
 6. **Push notifications (iOS)**: expo-notifications, register the APNs token
-   with `POST /api/push/register`, open the named session on tap. Backend
+   with `POST /api/push/register`, open the named session on tap. Use the
+   old app's push setup, not a new key: see "This app replaces the old one".
+   A push test needs the old app's bundle ID, so it needs the owner's word. Backend
    code: `hermes_cli/push/` and `hermes_cli/web_routers/push.py` in the Hermes
    repo. Sandbox vs production environment must match the build type.
 7. **Voice**: live voice conversation, both engines (`chained`, `gpt-live`).
@@ -263,8 +292,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
     (`useIsTablet`). Screens already cap their width at 760 pt.
 16. **Android**: build, back gesture, permissions. Push needs FCM, which the
     backend does not have. Deferred.
-17. **Release**: real bundle ID (the committed one is a placeholder), icons,
-    splash, TestFlight via a local build.
+17. **Release**: take over the old app's bundle ID and configuration (see
+    "This app replaces the old one"), icons, splash, TestFlight via a local
+    build.
 
 Deferred by the owner: messaging and webhooks setup. Out: starmap, artifacts
 gallery.
