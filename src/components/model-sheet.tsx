@@ -40,16 +40,18 @@ interface Props {
   sessionId: string
   reasoning: string | undefined
   visible: boolean
+  /** Text for the search field when the sheet mounts: the name the user typed after `/model`. */
+  initialQuery?: string
   onClose: () => void
 }
 
 /** Pick the model and the reasoning level for one conversation. */
-export function ModelSheet({ sessionId, reasoning, visible, onClose }: Props) {
+export function ModelSheet({ sessionId, reasoning, visible, initialQuery = '', onClose }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [sections, setSections] = useState<ModelSection[] | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [pending, setPending] = useState<string | null>(null)
 
   useEffect(() => {

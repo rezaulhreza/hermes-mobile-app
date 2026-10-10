@@ -12,7 +12,7 @@ import { requestSummary } from '@/core/requests'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
-import { $sessions, $sessionsLoading, refreshSessions } from '@/store/sessions'
+import { $sessionQuery, $sessions, $sessionsLoading, refreshSessions } from '@/store/sessions'
 import { $activeWorkspace } from '@/store/workspaces'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -35,7 +35,7 @@ export default function Chats() {
   const linkState = useStore($linkState)
   const linkError = useStore($linkError)
   const requests = useStore($requests)
-  const [query, setQuery] = useState('')
+  const query = useStore($sessionQuery)
   const [starting, setStarting] = useState(false)
 
   const shown = useMemo(() => {
@@ -103,7 +103,7 @@ export default function Chats() {
         <TextInput
           accessibilityLabel="Search conversations"
           autoCorrect={false}
-          onChangeText={setQuery}
+          onChangeText={text => $sessionQuery.set(text)}
           placeholder="Search conversations"
           placeholderTextColor={t.muted}
           style={[styles.fill, type.body, { color: t.ink }]}

@@ -40,6 +40,7 @@ import {
 import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
 import { onGatewayEvent, rpc } from './link'
+import { $sessionQuery } from './sessions'
 
 export interface Conversation {
   sessionId: string
@@ -103,7 +104,7 @@ export type DraftEffect =
   | { kind: 'prefill'; text: string }
   /** Show this live conversation instead (a new chat, a branch). */
   | { kind: 'open'; sessionId: string; storedId: string }
-  | { kind: 'sheet'; sheet: 'model' | 'commands' }
+  | { kind: 'sheet'; sheet: 'model' | 'commands'; query?: string }
   /** Go to the list of conversations. */
   | { kind: 'sessions' }
 
@@ -325,9 +326,14 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
     return { kind: 'open', sessionId: result.session_id, storedId }
   },
 
-  model: async () => ({ kind: 'sheet', sheet: 'model' }),
+  // A name after the command is what the user looks for. The sheet finds it; the user confirms with a tap.
+  model: async (_sessionId, arg) => ({ kind: 'sheet', sheet: 'model', query: arg }),
   help: async () => ({ kind: 'sheet', sheet: 'commands' }),
-  sessions: async () => ({ kind: 'sessions' }),
+  sessions: async (_sessionId, arg) => {
+    $sessionQuery.set(arg)
+
+    return { kind: 'sessions' }
+  },
 
   stop: async sessionId => {
     await stopTurn(sessionId)
@@ -345,12 +351,6 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
         COMPRESS_TIMEOUT_MS
       )
 
-      note(sessionId, compressNotice(result))
-    } finally {
-      patch(sessionId, c => ({ ...c, transcript: { ...c.transcript, status: null } }))
-    }
-
-    return NOTHING
       const messages = result?.compressed === false ? [] : (result?.messages ?? [])
 
       // The backend replaced the history with a summary. The rows on screen must be the new history.
@@ -358,6 +358,12 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
         patch(sessionId, c => ({ ...c, transcript: transcriptFromHistory(messages) }))
       }
 
+      note(sessionId, compressNotice(result))
+    } finally {
+      patch(sessionId, c => ({ ...c, transcript: { ...c.transcript, status: null } }))
+    }
+
+    return NOTHING
   },
 
   btw: async (sessionId, arg) => {

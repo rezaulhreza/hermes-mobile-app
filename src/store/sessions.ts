@@ -6,6 +6,8 @@ import { onGatewayEvent, rpc } from './link'
 
 export const $sessions = atom<SessionListRow[]>([])
 export const $sessionsLoading = atom(false)
+/** The text in the search field of the list. `/resume <words>` in a chat sets it. */
+export const $sessionQuery = atom('')
 export const $sessionsError = atom<string | null>(null)
 
 export async function refreshSessions(): Promise<void> {

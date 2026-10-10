@@ -57,6 +57,7 @@ export default function Chat() {
   const [failure, setFailure] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
+  const [modelQuery, setModelQuery] = useState('')
   const insets = useSafeAreaInsets()
   const keyboardOpen = useKeyboardOpen()
   const linkState = useStore($linkState)
@@ -135,6 +136,8 @@ export default function Chat() {
         return router.setParams({ id: effect.storedId, live: '1', title: '' })
 
       case 'sheet':
+        setModelQuery(effect.query ?? '')
+
         return setSheet(effect.sheet)
 
       case 'sessions':
@@ -183,7 +186,10 @@ export default function Chat() {
             accessibilityLabel={`Model: ${modelLabel(conversation.info.model)}`}
             accessibilityRole="button"
             hitSlop={6}
-            onPress={() => setSheet('model')}
+            onPress={() => {
+              setModelQuery('')
+              setSheet('model')
+            }}
             style={[styles.pill, { backgroundColor: t.soft }]}
           >
             <Text numberOfLines={1} style={[type.small, styles.pillText, { color: t.ink }]}>
@@ -336,6 +342,9 @@ export default function Chat() {
       {sessionId ? (
         <>
           <ModelSheet
+            initialQuery={modelQuery}
+            // A new search text is a new sheet: the field starts from it.
+            key={modelQuery}
             onClose={() => setSheet(null)}
             reasoning={conversation?.info.reasoning_effort}
             sessionId={sessionId}
