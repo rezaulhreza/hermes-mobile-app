@@ -111,11 +111,12 @@ Done and checked (`npm run verify` green, iOS bundle exports):
 Checked in the iOS Simulator (iPhone 17, Xcode 26.3) against the owner's real
 Hermes on 2026-10-09: sign-in through the Cloudflare address, the ticket and
 socket, the session list, opening a stored chat (history, tool rows, Markdown),
-sending a message and the streamed answer, new chat, dark mode on the Chats
-tab.
+sending a message and the streamed answer, new chat, the model and reasoning sheet, dark mode on the Chats tab.
 
-Not checked yet: the model and reasoning sheet (built, tests pass, not seen
-on screen), the request cards (no approval came up), stop, workspace
+Built with tests but not seen on screen: slash commands and `@` file
+references in the composer (`core/composer.ts`).
+
+Not checked yet: the request cards (no approval came up), stop, workspace
 switching, sign-out, tablet width, a Tailscale or LAN
 address on a real phone (the backend listens on 127.0.0.1:9130 only; the
 Simulator reaches it as `127.0.0.1:9130`).
@@ -145,8 +146,7 @@ Each item is one or more commits. Check the contract file for the RPC names.
    table block yet), tool row
    detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
    button, keep position when reading history, haptics.
-3. **Composer**: slash commands (`complete.slash`, `slash.exec`,
-   `command.dispatch`), `@` file references (`complete.path`), queue + steer
+3. **Composer**: queue + steer
    (`prompt.submit` status `queued` / `steered`, `queued` param), attachments
    (`image.attach_bytes`, `file.attach`, `pdf.attach`; expo-image-picker,
    expo-document-picker, camera).

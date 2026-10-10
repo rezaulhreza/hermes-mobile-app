@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -19,10 +19,11 @@ import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, Notice } from '@/components/ui'
+import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import type { TranscriptItem } from '@/core/transcript'
-import { $conversations, resumeConversation, sendMessage, stopTurn } from '@/store/chat'
+import { $conversations, completeDraft, type Completions, resumeConversation, sendDraft, stopTurn } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
@@ -62,13 +63,40 @@ export default function Chat() {
   const running = transcript?.running ?? false
   const canSend = Boolean(sessionId) && linkState === 'open' && draft.trim().length > 0
 
+  const trigger = useMemo(() => activeTrigger(draft), [draft])
+  const [completions, setCompletions] = useState<Completions | null>(null)
+
+  // Ask for completions a moment after the last keystroke, and drop an answer
+  // that arrives after the draft has moved on.
+  useEffect(() => {
+    if (!sessionId || !trigger) {
+      return
+    }
+
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void completeDraft(sessionId, trigger).then(result => !cancelled && setCompletions(result))
+    }, 120)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [sessionId, trigger])
+
+  const shownCompletions = trigger ? (completions?.items ?? []).slice(0, 8) : []
+
   const send = () => {
     if (!sessionId || !canSend) {
       return
     }
 
-    void sendMessage(sessionId, draft)
+    const text = draft
+
     setDraft('')
+    setCompletions(null)
+    // A command can hand text back for the user to finish (a prefill).
+    void sendDraft(sessionId, text).then(back => back && setDraft(back))
   }
 
   return (
@@ -126,12 +154,39 @@ export default function Chat() {
           </View>
         ))}
 
+        {shownCompletions.length ? (
+          <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
+            {shownCompletions.map((item, index) => (
+              <Pressable
+                accessibilityRole="button"
+                key={`${item.text}:${index}`}
+                onPress={() => trigger && setDraft(applyCompletion(draft, trigger, item.text, completions?.replaceFrom))}
+                style={({ pressed }) => [
+                  styles.completion,
+                  index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth },
+                  pressed && { backgroundColor: t.soft }
+                ]}
+              >
+                <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+                  {item.display || item.text}
+                </Text>
+                {item.meta ? (
+                  <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+                    {item.meta}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         <View style={[styles.composer, { backgroundColor: t.paper, borderColor: t.line }]}>
           <TextInput
             accessibilityLabel="Message"
+            autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
             multiline
             onChangeText={setDraft}
-            placeholder={running ? 'Add to the queue…' : 'Message Hermes'}
+            placeholder={running ? 'Add to the queue…' : 'Message Hermes, / for commands, @ for files'}
             placeholderTextColor={t.muted}
             style={[styles.input, type.body, { color: t.ink }]}
             value={draft}
@@ -195,6 +250,16 @@ function Row({ item }: { item: TranscriptItem }) {
         </View>
       )
 
+    case 'output':
+      return (
+        <View style={[styles.output, { backgroundColor: t.soft }]}>
+          <Text style={[type.small, { color: t.muted, fontWeight: '700' }]}>{item.command}</Text>
+          <Text selectable style={[styles.outputText, { color: t.ink }]}>
+            {item.text}
+          </Text>
+        </View>
+      )
+
     case 'notice':
       return (
         <Text style={[type.small, { color: item.tone === 'error' ? t.red : t.muted, textAlign: 'center' }]}>
@@ -252,6 +317,15 @@ const styles = StyleSheet.create({
   bubble: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
   tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   request: { paddingHorizontal: space.md, paddingBottom: space.sm, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  completions: {
+    marginHorizontal: space.md,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden'
+  },
+  completion: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
+  output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
+  outputText: { fontFamily: 'Menlo', fontSize: 13, lineHeight: 19 },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

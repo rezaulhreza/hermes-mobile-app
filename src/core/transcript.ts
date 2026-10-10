@@ -15,6 +15,8 @@ export type TranscriptItem =
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
+  /** What a slash command printed. Not part of the conversation with the model. */
+  | { kind: 'output'; key: string; command: string; text: string }
   | { kind: 'notice'; key: string; text: string; tone: 'info' | 'error' }
 
 export interface Transcript {
@@ -59,6 +61,15 @@ export function transcriptFromHistory(messages: readonly TranscriptMessage[], ru
 /** Add the user's own message the moment they send it. */
 export function withUserMessage(transcript: Transcript, text: string): Transcript {
   return { ...push(transcript, key => ({ kind: 'user', key, text })), running: true }
+}
+
+/** Add what a slash command printed. It does not start a turn. */
+export function withCommandOutput(transcript: Transcript, command: string, text: string): Transcript {
+  return push(transcript, key => ({ kind: 'output', key, command, text }))
+}
+
+export function withNotice(transcript: Transcript, text: string, tone: 'info' | 'error' = 'info'): Transcript {
+  return push(transcript, key => ({ kind: 'notice', key, text, tone }))
 }
 
 export function reduceTranscript(transcript: Transcript, event: GatewayEvent): Transcript {
