@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { clearConversations } from '@/store/chat'
+import { clearCatalog } from '@/store/commands'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
@@ -27,6 +28,7 @@ export default function RootLayout() {
   useEffect(() => {
     clearSessions()
     clearConversations()
+    clearCatalog()
     clearRequests()
 
     if (workspace) {

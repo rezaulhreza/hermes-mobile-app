@@ -16,6 +16,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
@@ -23,8 +24,17 @@ import { IconButton, Notice } from '@/components/ui'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
-import type { TranscriptItem } from '@/core/transcript'
-import { $conversations, completeDraft, type Completions, resumeConversation, sendDraft, stopTurn } from '@/store/chat'
+import type { Delivery, TranscriptItem } from '@/core/transcript'
+import {
+  $conversations,
+  completeDraft,
+  type Completions,
+  type DraftEffect,
+  resumeConversation,
+  sendDraft,
+  type SendMode,
+  stopTurn
+} from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
@@ -38,7 +48,7 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string | null>(params.live ? params.id : null)
   const [failure, setFailure] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [pickingModel, setPickingModel] = useState(false)
+  const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
   const linkState = useStore($linkState)
   const conversation = useStore($conversations)[sessionId ?? '']
   const requests = useStore($requests).filter(r => r.sessionId === sessionId)
@@ -87,7 +97,26 @@ export default function Chat() {
 
   const shownCompletions = trigger ? (completions?.items ?? []).slice(0, 8) : []
 
-  const send = () => {
+  const apply = (effect: DraftEffect) => {
+    switch (effect.kind) {
+      case 'prefill':
+        return setDraft(effect.text)
+
+      case 'open':
+        // Same screen, other conversation. The route follows, so a reload opens the right one.
+        setSessionId(effect.sessionId)
+
+        return router.setParams({ id: effect.sessionId, live: '1', title: '' })
+
+      case 'sheet':
+        return setSheet(effect.sheet)
+
+      case 'sessions':
+        return router.back()
+    }
+  }
+
+  const send = (mode: SendMode = 'queue') => {
     if (!sessionId || !canSend) {
       return
     }
@@ -96,9 +125,11 @@ export default function Chat() {
 
     setDraft('')
     setCompletions(null)
-    // A command can hand text back for the user to finish (a prefill).
-    void sendDraft(sessionId, text).then(back => back && setDraft(back))
+    void sendDraft(sessionId, text, mode).then(apply)
   }
+
+  // During a turn a plain message can wait for the turn (send) or join it (steer).
+  const canSteer = running && canSend && !draft.trimStart().startsWith('/')
 
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: t.bg }]}>
@@ -118,7 +149,7 @@ export default function Chat() {
             accessibilityLabel={`Model: ${modelLabel(conversation.info.model)}`}
             accessibilityRole="button"
             hitSlop={6}
-            onPress={() => setPickingModel(true)}
+            onPress={() => setSheet('model')}
             style={[styles.pill, { backgroundColor: t.soft }]}
           >
             <Text numberOfLines={1} style={[type.small, styles.pillText, { color: t.ink }]}>
@@ -187,29 +218,64 @@ export default function Chat() {
             autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
             multiline
             onChangeText={setDraft}
-            placeholder={running ? 'Add to the queue…' : 'Message Hermes, / for commands, @ for files'}
+            placeholder={running ? 'Queue a message or steer' : 'Message, /command or @file'}
             placeholderTextColor={t.muted}
             style={[styles.input, type.body, { color: t.ink }]}
             value={draft}
           />
+          {canSteer ? (
+            <Pressable
+              accessibilityHint="The agent reads the message after its current step, in this turn"
+              accessibilityLabel="Steer"
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={() => send('steer')}
+              style={({ pressed }) => [styles.steer, { backgroundColor: t.soft }, pressed && styles.dim]}
+            >
+              <Text style={[type.label, { color: t.ink }]}>Steer</Text>
+            </Pressable>
+          ) : null}
           {running && !draft.trim() ? (
             <IconButton icon="square" label="Stop" onPress={() => sessionId && void stopTurn(sessionId)} />
           ) : (
-            <IconButton disabled={!canSend} filled icon="arrow-up" label="Send" onPress={send} />
+            <IconButton
+              disabled={!canSend}
+              filled
+              icon="arrow-up"
+              label={running ? 'Queue for the next turn' : 'Send'}
+              onPress={() => send()}
+            />
           )}
         </View>
       </KeyboardAvoidingView>
 
       {sessionId ? (
-        <ModelSheet
-          onClose={() => setPickingModel(false)}
-          reasoning={conversation?.info.reasoning_effort}
-          sessionId={sessionId}
-          visible={pickingModel}
-        />
+        <>
+          <ModelSheet
+            onClose={() => setSheet(null)}
+            reasoning={conversation?.info.reasoning_effort}
+            sessionId={sessionId}
+            visible={sheet === 'model'}
+          />
+          <CommandsSheet
+            onClose={() => setSheet(null)}
+            onPick={command => {
+              setDraft(`${command} `)
+              setSheet(null)
+            }}
+            sessionId={sessionId}
+            visible={sheet === 'commands'}
+          />
+        </>
       ) : null}
     </SafeAreaView>
   )
+}
+
+const DELIVERY_LABEL: Record<Delivery, string> = {
+  queued: 'Queued. Runs after this turn.',
+  steered: 'Steered. The agent reads it after its current step.',
+  redirected: 'Redirected the turn.'
 }
 
 function Row({ item }: { item: TranscriptItem }) {
@@ -218,10 +284,13 @@ function Row({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case 'user':
       return (
-        <View style={[styles.bubble, { backgroundColor: t.soft }]}>
-          <Text selectable style={[type.body, { color: t.ink }]}>
-            {item.text}
-          </Text>
+        <View style={styles.sent}>
+          <View style={[styles.bubble, { backgroundColor: t.soft }, item.delivery === 'queued' && styles.waiting]}>
+            <Text selectable style={[type.body, { color: t.ink }]}>
+              {item.text}
+            </Text>
+          </View>
+          {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
       )
 
@@ -338,7 +407,11 @@ const styles = StyleSheet.create({
   },
   pillText: { fontWeight: '600', flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
-  bubble: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
+  sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
+  bubble: { padding: space.md, borderRadius: radius.lg },
+  waiting: { opacity: 0.6 },
+  steer: { minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill },
+  dim: { opacity: 0.55 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   request: { paddingHorizontal: space.md, paddingBottom: space.sm, maxWidth: 760, width: '100%', alignSelf: 'center' },
   completions: {
