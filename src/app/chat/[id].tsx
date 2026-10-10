@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -21,11 +22,13 @@ import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
-import { IconButton, Notice } from '@/components/ui'
+import { IconButton, type IconName, Notice } from '@/components/ui'
+import type { Attachment, AttachmentKind } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
+import { $attachments, addAttachments, type AttachSource, removeAttachment } from '@/store/attachments'
 import {
   $conversations,
   completeDraft,
@@ -75,7 +78,12 @@ export default function Chat() {
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
-  const canSend = Boolean(sessionId) && linkState === 'open' && draft.trim().length > 0
+  const attachments = useStore($attachments)[sessionId ?? '']
+  const staged = attachments ?? NO_ATTACHMENTS
+  const [adding, setAdding] = useState(false)
+  const hasContent = draft.trim().length > 0 || staged.some(item => item.state === 'ready')
+  // An upload still running would miss the message it was picked for.
+  const canSend = Boolean(sessionId) && linkState === 'open' && hasContent && !staged.some(item => item.state === 'uploading')
 
   const trigger = useMemo(() => activeTrigger(draft), [draft])
   const [completions, setCompletions] = useState<Completions | null>(null)
@@ -132,7 +140,15 @@ export default function Chat() {
   }
 
   // During a turn a plain message can wait for the turn (send) or join it (steer).
-  const canSteer = running && canSend && !draft.trimStart().startsWith('/')
+  const canSteer = running && canSend && !staged.length && !draft.trimStart().startsWith('/')
+
+  const attach = (source: AttachSource) => {
+    setAdding(false)
+
+    if (sessionId) {
+      addAttachments(sessionId, source).catch(error => Alert.alert('Could not add this', error instanceof Error ? error.message : String(error)))
+    }
+  }
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: t.bg }]}>
@@ -215,6 +231,26 @@ export default function Chat() {
           </View>
         ) : null}
 
+        {adding ? (
+          <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
+            {ATTACH_SOURCES.map((source, index) => (
+              <Pressable
+                accessibilityRole="button"
+                key={source.id}
+                onPress={() => attach(source.id)}
+                style={({ pressed }) => [
+                  styles.completion,
+                  index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth },
+                  pressed && { backgroundColor: t.soft }
+                ]}
+              >
+                <Feather color={t.muted} name={source.icon} size={18} />
+                <Text style={[type.label, { color: t.ink }]}>{source.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         <View
           style={[
             styles.composer,
@@ -223,39 +259,54 @@ export default function Chat() {
             !keyboardOpen && { marginBottom: Math.max(insets.bottom - 10, space.md) }
           ]}
         >
-          <TextInput
-            accessibilityLabel="Message"
-            autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
-            multiline
-            onChangeText={setDraft}
-            placeholder={running ? 'Queue a message or steer' : 'Message, /command or @file'}
-            placeholderTextColor={t.muted}
-            style={[styles.input, type.body, { color: t.ink }]}
-            value={draft}
-          />
-          {canSteer ? (
-            <Pressable
-              accessibilityHint="The agent reads the message after its current step, in this turn"
-              accessibilityLabel="Steer"
-              accessibilityRole="button"
-              hitSlop={6}
-              onPress={() => send('steer')}
-              style={({ pressed }) => [styles.steer, { backgroundColor: t.soft }, pressed && styles.dim]}
-            >
-              <Text style={[type.label, { color: t.ink }]}>Steer</Text>
-            </Pressable>
+          {staged.length ? (
+            <ScrollView contentContainerStyle={styles.chips} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
+              {staged.map(item => (
+                <AttachmentChip item={item} key={item.id} onRemove={() => sessionId && removeAttachment(sessionId, item.id)} />
+              ))}
+            </ScrollView>
           ) : null}
-          {running && !draft.trim() ? (
-            <IconButton icon="square" label="Stop" onPress={() => sessionId && void stopTurn(sessionId)} />
-          ) : (
+          <View style={styles.composerRow}>
             <IconButton
-              disabled={!canSend}
-              filled
-              icon="arrow-up"
-              label={running ? 'Queue for the next turn' : 'Send'}
-              onPress={() => send()}
+              disabled={!sessionId || linkState !== 'open'}
+              icon={adding ? 'x' : 'plus'}
+              label={adding ? 'Close the attachment list' : 'Add a photo or a file'}
+              onPress={() => setAdding(value => !value)}
             />
-          )}
+            <TextInput
+              accessibilityLabel="Message"
+              autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
+              multiline
+              onChangeText={setDraft}
+              placeholder={running ? 'Queue a message or steer' : 'Message, /command or @file'}
+              placeholderTextColor={t.muted}
+              style={[styles.input, type.body, { color: t.ink }]}
+              value={draft}
+            />
+            {canSteer ? (
+              <Pressable
+                accessibilityHint="The agent reads the message after its current step, in this turn"
+                accessibilityLabel="Steer"
+                accessibilityRole="button"
+                hitSlop={6}
+                onPress={() => send('steer')}
+                style={({ pressed }) => [styles.steer, { backgroundColor: t.soft }, pressed && styles.dim]}
+              >
+                <Text style={[type.label, { color: t.ink }]}>Steer</Text>
+              </Pressable>
+            ) : null}
+            {running && !hasContent ? (
+              <IconButton icon="square" label="Stop" onPress={() => sessionId && void stopTurn(sessionId)} />
+            ) : (
+              <IconButton
+                disabled={!canSend}
+                filled
+                icon="arrow-up"
+                label={running ? 'Queue for the next turn' : 'Send'}
+                onPress={() => send()}
+              />
+            )}
+          </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -279,6 +330,38 @@ export default function Chat() {
         </>
       ) : null}
     </SafeAreaView>
+  )
+}
+
+const NO_ATTACHMENTS: Attachment[] = []
+
+const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
+  { id: 'photos', label: 'Photo library', icon: 'image' },
+  { id: 'camera', label: 'Take a photo', icon: 'camera' },
+  { id: 'files', label: 'Choose a file', icon: 'file' }
+]
+
+const KIND_ICON: Record<AttachmentKind, IconName> = { image: 'image', pdf: 'file-text', file: 'file' }
+
+/** One staged attachment. A failed one stays, with its reason, until the user removes it. */
+function AttachmentChip({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
+  const t = useTheme()
+  const failed = item.state === 'failed'
+
+  return (
+    <View style={[styles.chip, { backgroundColor: failed ? t.redBg : t.soft }]}>
+      {item.state === 'uploading' ? (
+        <ActivityIndicator color={t.muted} size="small" />
+      ) : (
+        <Feather color={failed ? t.red : t.muted} name={failed ? 'alert-triangle' : KIND_ICON[item.kind]} size={15} />
+      )}
+      <Text numberOfLines={1} style={[type.small, styles.chipText, { color: failed ? t.red : t.ink }]}>
+        {failed ? item.error : item.name}
+      </Text>
+      <Pressable accessibilityLabel={`Remove ${item.name}`} accessibilityRole="button" hitSlop={12} onPress={onRemove}>
+        <Feather color={failed ? t.red : t.muted} name="x" size={16} />
+      </Pressable>
+    </View>
   )
 }
 
@@ -310,9 +393,19 @@ function Row({ item }: { item: TranscriptItem }) {
       return (
         <View style={styles.sent}>
           <View style={[styles.bubble, { backgroundColor: t.soft }, item.delivery === 'queued' && styles.waiting]}>
-            <Text selectable style={[type.body, { color: t.ink }]}>
-              {item.text}
-            </Text>
+            {item.text ? (
+              <Text selectable style={[type.body, { color: t.ink }]}>
+                {item.text}
+              </Text>
+            ) : null}
+            {item.attached?.map((name, index) => (
+              <View key={`${name}:${index}`} style={styles.tool}>
+                <Feather color={t.muted} name="paperclip" size={14} />
+                <Text numberOfLines={1} style={[type.small, styles.chipText, { color: t.muted }]}>
+                  {name}
+                </Text>
+              </View>
+            ))}
           </View>
           {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
@@ -432,7 +525,19 @@ const styles = StyleSheet.create({
   pillText: { fontWeight: '600', flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
-  bubble: { padding: space.md, borderRadius: radius.lg },
+  bubble: { padding: space.md, borderRadius: radius.lg, gap: space.xs },
+  chips: { gap: space.sm, paddingHorizontal: space.xs, paddingBottom: space.sm },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    maxWidth: 240,
+    minHeight: 32,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill
+  },
+  chipText: { flexShrink: 1 },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   waiting: { opacity: 0.6 },
   steer: { minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill },
   dim: { opacity: 0.55 },
@@ -448,9 +553,6 @@ const styles = StyleSheet.create({
   output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
   outputText: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: space.sm,
     margin: space.md,
     padding: space.sm,
     borderRadius: radius.lg,

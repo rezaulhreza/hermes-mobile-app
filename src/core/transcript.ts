@@ -18,7 +18,7 @@ import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 export type Delivery = 'queued' | 'steered' | 'redirected'
 
 export type TranscriptItem =
-  | { kind: 'user'; key: string; text: string; delivery?: Delivery }
+  | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: string[] }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
@@ -102,8 +102,10 @@ export function withDelivery(transcript: Transcript, key: string, delivery: Deli
 }
 
 /** Add the user's own message the moment they send it. */
-export function withUserMessage(transcript: Transcript, text: string): Transcript {
-  return { ...push(transcript, key => ({ kind: 'user', key, text })), running: true }
+export function withUserMessage(transcript: Transcript, text: string, attached: readonly string[] = []): Transcript {
+  const files = attached.length ? { attached: [...attached] } : {}
+
+  return { ...push(transcript, key => ({ kind: 'user', key, text, ...files })), running: true }
 }
 
 /** Add what a slash command printed. It does not start a turn. */

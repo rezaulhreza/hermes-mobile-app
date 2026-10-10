@@ -20,6 +20,7 @@ import type {
   SessionResumeResult,
   SessionTitleResult
 } from '@/core/gateway/gateway-contract.generated'
+import { type Attachment, promptWithAttachments } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
@@ -36,6 +37,7 @@ import {
   withUserMessage
 } from '@/core/transcript'
 
+import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
 import { onGatewayEvent, rpc } from './link'
 
@@ -104,15 +106,19 @@ export type SendMode = 'queue' | 'steer'
 export async function sendDraft(sessionId: string, text: string, mode: SendMode = 'queue'): Promise<DraftEffect> {
   const trimmed = text.trim()
 
-  if (!trimmed) {
-    return NOTHING
-  }
-
   if (isSlashCommand(trimmed)) {
+    // A command takes no attachments. They stay staged for the next message.
     return runSlash(sessionId, trimmed)
   }
 
-  await (mode === 'steer' ? steerTurn(sessionId, trimmed) : submitPrompt(sessionId, trimmed))
+  const attachments = takeAttachments(sessionId)
+
+  if (!trimmed && !attachments.length) {
+    return NOTHING
+  }
+
+  // Steering puts text into the running turn. Files need a turn of their own.
+  await (mode === 'steer' && !attachments.length ? steerTurn(sessionId, trimmed) : submitPrompt(sessionId, trimmed, attachments))
 
   return NOTHING
 }
@@ -128,11 +134,11 @@ function fail(sessionId: string, error: unknown): void {
 }
 
 /** Add the user's row now and return its key, so the backend's answer can label it. */
-function showUserMessage(sessionId: string, text: string): string {
+function showUserMessage(sessionId: string, text: string, attached: readonly string[] = []): string {
   const current = $conversations.get()[sessionId]
   const key = current ? nextItemKey(current.transcript) : ''
 
-  patch(sessionId, c => ({ ...c, transcript: withUserMessage(c.transcript, text) }))
+  patch(sessionId, c => ({ ...c, transcript: withUserMessage(c.transcript, text, attached) }))
 
   return key
 }
@@ -148,14 +154,15 @@ function label(sessionId: string, key: string, delivery: Delivery): void {
  * The backend decides in the end (the turn can finish first), so the label
  * comes from its answer, not from what the app asked for.
  */
-async function submitPrompt(sessionId: string, text: string): Promise<void> {
+async function submitPrompt(sessionId: string, text: string, attachments: readonly Attachment[] = []): Promise<void> {
   const busy = $conversations.get()[sessionId]?.transcript.running ?? false
-  const key = showUserMessage(sessionId, text)
+  // The row shows the user's words and the file names. The model also gets the references.
+  const key = showUserMessage(sessionId, text, attachments.map(attachment => attachment.name))
 
   try {
     const result = await rpc<PromptSubmitResult>('prompt.submit', {
       session_id: sessionId,
-      text,
+      text: promptWithAttachments(text, attachments),
       surface: 'mobile',
       ...(busy ? { queued: true } : {})
     })
@@ -402,12 +409,13 @@ export interface Completions {
 export async function completeDraft(sessionId: string, trigger: Trigger): Promise<Completions> {
   try {
     if (trigger.kind === 'slash') {
-      const [result, catalog] = await Promise.all([
-        rpc<CompleteSlashResult>('complete.slash', { session_id: sessionId, text: trigger.word }, 8000),
-        loadCatalog(sessionId)
-      ])
+      // The catalog loads beside the list, never before it: the built-in rules
+      // already hide the common terminal commands, and typing must not wait.
+      void loadCatalog(sessionId)
 
-      return { items: phoneCompletions(result.items ?? [], catalog), replaceFrom: result.replace_from ?? null }
+      const result = await rpc<CompleteSlashResult>('complete.slash', { session_id: sessionId, text: trigger.word }, 8000)
+
+      return { items: phoneCompletions(result.items ?? [], $catalog.get()), replaceFrom: result.replace_from ?? null }
     }
 
     const result = await rpc<CompletionItemsResult>('complete.path', { session_id: sessionId, word: trigger.word }, 8000)
