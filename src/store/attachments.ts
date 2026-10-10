@@ -9,7 +9,7 @@ import { File } from 'expo-file-system'
 import * as ImagePicker from 'expo-image-picker'
 import { map } from 'nanostores'
 
-import { type Attachment, attachmentKind, attachProblem, dataUrl, type PickedFile } from '@/core/attachments'
+import { type Attachment, attachmentKind, attachProblem, dataUrl, type PickedFile, pickedSize } from '@/core/attachments'
 import type { AttachedImageResult, FileAttachResult, PdfAttachResult } from '@/core/gateway/gateway-contract.generated'
 
 import { rpc } from './link'
@@ -75,10 +75,23 @@ export async function addAttachments(sessionId: string, source: AttachSource): P
   }
 }
 
-async function stage(sessionId: string, file: PickedFile): Promise<void> {
+/** Stage one picked file and upload it. Never throws: a failure is a state of the staged entry. */
+export async function stage(sessionId: string, file: PickedFile): Promise<void> {
   const id = `a${++lastId}`
   const problem = attachProblem(file)
-  const entry: Attachment = { id, kind: attachmentKind(file), name: file.name, state: 'uploading', heldPaths: [], promptText: '' }
+  const kind = attachmentKind(file)
+  const size = pickedSize(file)
+  const entry: Attachment = {
+    id,
+    kind,
+    name: file.name,
+    state: 'uploading',
+    heldPaths: [],
+    promptText: '',
+    // Only an image has a picture to show. The picker's copy stays on the phone.
+    ...(kind === 'image' ? { uri: file.uri } : {}),
+    ...(size ? { size } : {})
+  }
 
   if (problem) {
     return update(sessionId, list => [...list, { ...entry, state: 'failed', error: problem }])
@@ -102,13 +115,18 @@ async function stage(sessionId: string, file: PickedFile): Promise<void> {
   update(sessionId, list => list.map(item => (item.id === id ? { ...item, ...settled } : item)))
 }
 
-async function upload(sessionId: string, entry: Attachment, file: PickedFile): Promise<Pick<Attachment, 'heldPaths' | 'promptText'>> {
+type Uploaded = Pick<Attachment, 'heldPaths' | 'promptText' | 'size'>
+
+async function upload(sessionId: string, entry: Attachment, file: PickedFile): Promise<Uploaded> {
   const base64 = file.base64 || (await new File(file.uri).base64())
   const oversize = attachProblem({ ...file, base64 })
 
   if (oversize) {
     throw new Error(oversize)
   }
+
+  // A picker can leave the size out. The bytes are here now, so the chip can show it.
+  const size = pickedSize({ ...file, base64 }) ?? undefined
 
   if (entry.kind === 'image') {
     const result = await rpc<AttachedImageResult>(
@@ -121,7 +139,7 @@ async function upload(sessionId: string, entry: Attachment, file: PickedFile): P
       throw new Error(result.message || `Could not attach ${file.name}.`)
     }
 
-    return { heldPaths: result.path ? [result.path] : [], promptText: '' }
+    return { heldPaths: result.path ? [result.path] : [], promptText: '', size }
   }
 
   if (entry.kind === 'pdf') {
@@ -131,7 +149,7 @@ async function upload(sessionId: string, entry: Attachment, file: PickedFile): P
       UPLOAD_TIMEOUT_MS
     )
 
-    return { heldPaths: (result.pages ?? []).map(page => page.path), promptText: result.text ?? '' }
+    return { heldPaths: (result.pages ?? []).map(page => page.path), promptText: result.text ?? '', size }
   }
 
   const result = await rpc<FileAttachResult>(
@@ -144,7 +162,7 @@ async function upload(sessionId: string, entry: Attachment, file: PickedFile): P
     throw new Error(`Could not attach ${file.name}.`)
   }
 
-  return { heldPaths: [], promptText: result.ref_text }
+  return { heldPaths: [], promptText: result.ref_text, size }
 }
 
 function release(sessionId: string, paths: readonly string[]): void {

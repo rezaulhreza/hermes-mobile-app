@@ -1,4 +1,4 @@
-import { duration, headLines, previewLine, relativeTime } from '../format'
+import { duration, fileSize, headLines, previewLine, relativeTime } from '../format'
 
 describe('previewLine', () => {
   it('removes terminal prompt glyphs and box drawing from pasted output', () => {
@@ -26,4 +26,13 @@ it('formats a tool duration', () => {
 it('cuts a long output to its first lines and counts the rest', () => {
   expect(headLines('a\nb\nc\nd\n\n', 2)).toEqual({ head: 'a\nb', hidden: 2 })
   expect(headLines('a\nb\n', 2)).toEqual({ head: 'a\nb', hidden: 0 })
+})
+
+describe('fileSize', () => {
+  it('uses the unit a person reads', () => {
+    expect(fileSize(640)).toBe('640 B')
+    expect(fileSize(348_160)).toBe('340 KB')
+    expect(fileSize(1_258_291)).toBe('1.2 MB')
+    expect(fileSize(12 * 1024 * 1024)).toBe('12 MB')
+  })
 })

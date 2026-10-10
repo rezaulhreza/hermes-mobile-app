@@ -20,7 +20,7 @@ import type {
   SessionResumeResult,
   SessionTitleResult
 } from '@/core/gateway/gateway-contract.generated'
-import { type Attachment, promptWithAttachments } from '@/core/attachments'
+import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
@@ -144,7 +144,7 @@ function fail(sessionId: string, error: unknown): void {
 }
 
 /** Add the user's row now and return its key, so the backend's answer can label it. */
-function showUserMessage(sessionId: string, text: string, attached: readonly string[] = []): string {
+function showUserMessage(sessionId: string, text: string, attached: readonly SentAttachment[] = []): string {
   const current = $conversations.get()[sessionId]
   const key = current ? nextItemKey(current.transcript) : ''
 
@@ -166,8 +166,8 @@ function label(sessionId: string, key: string, delivery: Delivery): void {
  */
 async function submitPrompt(sessionId: string, text: string, attachments: readonly Attachment[] = []): Promise<void> {
   const busy = $conversations.get()[sessionId]?.transcript.running ?? false
-  // The row shows the user's words and the file names. The model also gets the references.
-  const key = showUserMessage(sessionId, text, attachments.map(attachment => attachment.name))
+  // The row shows the user's words and the files. The model also gets the references.
+  const key = showUserMessage(sessionId, text, attachments.map(sentAttachment))
 
   try {
     const result = await rpc<PromptSubmitResult>('prompt.submit', {

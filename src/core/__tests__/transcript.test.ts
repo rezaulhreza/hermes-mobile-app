@@ -163,6 +163,12 @@ describe('transcript', () => {
     })
   })
 
+  it('shows a stored message with files as the words and the file names', () => {
+    const t = transcriptFromHistory([{ role: 'user', text: 'read this\n@file:/up/notes.md\n\n--- Attached Context ---\n\n📄 @file:/up/notes.md (3 tokens)\nabc' }])
+
+    expect(t.items[0]).toMatchObject({ kind: 'user', text: 'read this', attached: [{ name: 'notes.md', kind: 'file' }] })
+  })
+
   it('labels a prompt that is still queued when the conversation opens, without adding it twice', () => {
     const stored = [{ role: 'user', text: 'first' }, { role: 'assistant', text: 'ok' }, { role: 'user', text: 'later' }]
     const t = transcriptFromHistory(stored as never, true, 'later')

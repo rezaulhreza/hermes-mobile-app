@@ -44,6 +44,21 @@ export function duration(seconds: number): string {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
 }
 
+/** "640 B", "340 KB", "1.2 MB" for a file. */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`
+  }
+
+  const megabytes = bytes / (1024 * 1024)
+
+  return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`
+}
+
 // Private-use glyphs (terminal prompt icons), box drawing and block elements:
 // decoration from pasted terminal output that a phone font cannot draw.
 const TERMINAL_DECORATION = /[\uE000-\uF8FF\u2500-\u259F]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g

@@ -7,6 +7,7 @@
  * `message.complete` that settles the turn.
  */
 
+import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 
@@ -20,7 +21,7 @@ import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 export type Delivery = 'queued' | 'steered' | 'redirected' | 'dropped'
 
 export type TranscriptItem =
-  | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: string[] }
+  | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: SentAttachment[] }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number }
@@ -51,7 +52,10 @@ export function transcriptFromHistory(
     const text = messageText(message)
 
     if (message.role === 'user' && text) {
-      transcript = push(transcript, key => ({ kind: 'user', key, text }))
+      const stored = splitStoredPrompt(text)
+      const files = stored.attached.length ? { attached: stored.attached } : {}
+
+      transcript = push(transcript, key => ({ kind: 'user', key, text: stored.text, ...files }))
     } else if (message.role === 'assistant' && text) {
       transcript = push(transcript, key => ({ kind: 'assistant', key, text, streaming: false }))
     } else if (message.role === 'tool' && message.name) {
@@ -68,7 +72,7 @@ export function transcriptFromHistory(
     }
   }
 
-  return { ...withQueuedFromHistory(transcript, queuedText?.trim() ?? ''), running }
+  return { ...withQueuedFromHistory(transcript, splitStoredPrompt(queuedText ?? '').text), running }
 }
 
 /**
@@ -104,7 +108,7 @@ export function withDelivery(transcript: Transcript, key: string, delivery: Deli
 }
 
 /** Add the user's own message the moment they send it. */
-export function withUserMessage(transcript: Transcript, text: string, attached: readonly string[] = []): Transcript {
+export function withUserMessage(transcript: Transcript, text: string, attached: readonly SentAttachment[] = []): Transcript {
   const files = attached.length ? { attached: [...attached] } : {}
 
   return { ...push(transcript, key => ({ kind: 'user', key, text, ...files })), running: true }

@@ -30,6 +30,45 @@ export interface Attachment {
   heldPaths: string[]
   /** Text the prompt must carry for the model to see this attachment. */
   promptText: string
+  /** Where the picker left an image on the phone. The preview reads it; nothing is downloaded. */
+  uri?: string
+  size?: number
+}
+
+/** An attachment as a sent message shows it. A message from stored history has the name only. */
+export interface SentAttachment {
+  name: string
+  kind: AttachmentKind
+  uri?: string
+  size?: number
+}
+
+export function sentAttachment({ name, kind, uri, size }: Attachment): SentAttachment {
+  return { name, kind, ...(uri ? { uri } : {}), ...(size ? { size } : {}) }
+}
+
+/** The byte count of a picked file. Base64 length stands in for a size the picker did not give. */
+export function pickedSize(file: PickedFile): number | null {
+  return file.size ?? (file.base64 ? Math.floor((file.base64.length * 3) / 4) : null)
+}
+
+export type FileGlyph = 'image' | 'text' | 'video' | 'audio' | 'archive' | 'code' | 'file'
+
+const GLYPH_BY_EXTENSION: readonly [FileGlyph, RegExp][] = [
+  ['text', /\.(pdf|txt|md|rtf|docx?|pages|csv|xlsx?|numbers|pptx?|key)$/i],
+  ['video', /\.(mp4|mov|m4v|webm|mkv|avi)$/i],
+  ['audio', /\.(mp3|m4a|wav|aac|flac|ogg|opus)$/i],
+  ['archive', /\.(zip|tar|gz|tgz|bz2|7z|rar)$/i],
+  ['code', /\.(js|jsx|ts|tsx|py|rb|go|rs|swift|kt|java|c|h|cpp|cs|php|sh|json|ya?ml|toml|xml|html?|css|sql)$/i]
+]
+
+/** Which picture stands for this file in a list. */
+export function fileGlyph(name: string, kind: AttachmentKind): FileGlyph {
+  if (kind === 'image') {
+    return 'image'
+  }
+
+  return GLYPH_BY_EXTENSION.find(([, pattern]) => pattern.test(name))?.[0] ?? (kind === 'pdf' ? 'text' : 'file')
 }
 
 /**
@@ -50,9 +89,9 @@ export function attachmentKind(file: Pick<PickedFile, 'name' | 'mimeType'>): Att
   return mime === 'application/pdf' || /\.pdf$/i.test(file.name) ? 'pdf' : 'file'
 }
 
-/** Why this file cannot be attached, or null. Base64 length stands in for a size the picker did not give. */
+/** Why this file cannot be attached, or null. */
 export function attachProblem(file: PickedFile): string | null {
-  const size = file.size ?? (file.base64 ? Math.floor((file.base64.length * 3) / 4) : null)
+  const size = pickedSize(file)
 
   if (size !== null && size > ATTACH_MAX_BYTES) {
     return `${file.name} is too large to send from the phone (limit 12 MB).`
@@ -80,4 +119,40 @@ export function promptWithAttachments(text: string, attachments: readonly Attach
   }
 
   return [words, ...extra].filter(Boolean).join('\n')
+}
+
+// The backend adds the content of every reference under this line before it stores the prompt.
+const ATTACHED_CONTEXT = /(?:^|\n)--- (?:Attached Context|Context Warnings) ---[\s\S]*$/
+const FILE_REF_LINE = /^@file:(?:"([^"]+)"|'([^']+)'|`([^`]+)`|(\S+))$/
+const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$/
+
+/**
+ * A stored user message, as the user wrote it: the words, and the names of
+ * the files that went with them. The app sends each attachment as a line of
+ * its own under the words (see `promptWithAttachments`), so only such lines
+ * count. A reference inside a sentence stays in the sentence.
+ */
+export function splitStoredPrompt(stored: string): { text: string; attached: SentAttachment[] } {
+  const lines = stored.replace(ATTACHED_CONTEXT, '').trimEnd().split('\n')
+  const attached: SentAttachment[] = []
+
+  while (lines.length) {
+    const line = lines[lines.length - 1].trim()
+    const file = FILE_REF_LINE.exec(line)
+    const held = HELD_LINE.exec(line)
+
+    if (file) {
+      const name = (file[1] ?? file[2] ?? file[3] ?? file[4]).split('/').pop() ?? ''
+
+      attached.unshift({ name, kind: attachmentKind({ name }) })
+    } else if (held) {
+      attached.unshift({ name: held[2], kind: held[1] === 'PDF' ? 'pdf' : 'image' })
+    } else if (line) {
+      break
+    }
+
+    lines.pop()
+  }
+
+  return { text: lines.join('\n').trim(), attached }
 }

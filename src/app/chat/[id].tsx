@@ -18,12 +18,13 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { RequestCard } from '@/components/request-card'
 import { IconButton, type IconName, Notice } from '@/components/ui'
-import type { Attachment, AttachmentKind } from '@/core/attachments'
+import type { Attachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines } from '@/core/format'
 import { modelLabel } from '@/core/models'
@@ -266,7 +267,7 @@ export default function Chat() {
           {staged.length ? (
             <ScrollView contentContainerStyle={styles.chips} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
               {staged.map(item => (
-                <AttachmentChip item={item} key={item.id} onRemove={() => sessionId && removeAttachment(sessionId, item.id)} />
+                <StagedAttachment item={item} key={item.id} onRemove={() => sessionId && removeAttachment(sessionId, item.id)} />
               ))}
             </ScrollView>
           ) : null}
@@ -345,30 +346,6 @@ const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
   { id: 'files', label: 'Choose a file', icon: 'file' }
 ]
 
-const KIND_ICON: Record<AttachmentKind, IconName> = { image: 'image', pdf: 'file-text', file: 'file' }
-
-/** One staged attachment. A failed one stays, with its reason, until the user removes it. */
-function AttachmentChip({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
-  const t = useTheme()
-  const failed = item.state === 'failed'
-
-  return (
-    <View style={[styles.chip, { backgroundColor: failed ? t.redBg : t.soft }]}>
-      {item.state === 'uploading' ? (
-        <ActivityIndicator color={t.muted} size="small" />
-      ) : (
-        <Feather color={failed ? t.red : t.muted} name={failed ? 'alert-triangle' : KIND_ICON[item.kind]} size={15} />
-      )}
-      <Text numberOfLines={1} style={[type.small, styles.chipText, { color: failed ? t.red : t.ink }]}>
-        {failed ? item.error : item.name}
-      </Text>
-      <Pressable accessibilityLabel={`Remove ${item.name}`} accessibilityRole="button" hitSlop={12} onPress={onRemove}>
-        <Feather color={failed ? t.red : t.muted} name="x" size={16} />
-      </Pressable>
-    </View>
-  )
-}
-
 function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false)
 
@@ -398,19 +375,12 @@ function Row({ item }: { item: TranscriptItem }) {
       return (
         <View style={styles.sent}>
           <View style={[styles.bubble, { backgroundColor: t.soft }, (item.delivery === 'queued' || item.delivery === 'dropped') && styles.waiting]}>
+            {item.attached?.length ? <SentAttachments items={item.attached} /> : null}
             {item.text ? (
               <Text selectable style={[type.body, { color: t.ink }]}>
                 {item.text}
               </Text>
             ) : null}
-            {item.attached?.map((name, index) => (
-              <View key={`${name}:${index}`} style={styles.tool}>
-                <Feather color={t.muted} name="paperclip" size={14} />
-                <Text numberOfLines={1} style={[type.small, styles.chipText, { color: t.muted }]}>
-                  {name}
-                </Text>
-              </View>
-            ))}
           </View>
           {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
@@ -530,18 +500,8 @@ const styles = StyleSheet.create({
   pillText: { fontWeight: '600', flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
-  bubble: { padding: space.md, borderRadius: radius.lg, gap: space.xs },
+  bubble: { padding: space.md, borderRadius: radius.lg, gap: space.sm },
   chips: { gap: space.sm, paddingHorizontal: space.xs, paddingBottom: space.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    maxWidth: 240,
-    minHeight: 32,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill
-  },
-  chipText: { flexShrink: 1 },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   waiting: { opacity: 0.6 },
   steer: { minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill },

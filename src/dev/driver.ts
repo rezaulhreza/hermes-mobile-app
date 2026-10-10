@@ -10,7 +10,7 @@
 
 import { router } from 'expo-router'
 
-import { $attachments } from '@/store/attachments'
+import { $attachments, stage } from '@/store/attachments'
 import { $conversations } from '@/store/chat'
 import { $linkState, rpc } from '@/store/link'
 import { $requests } from '@/store/requests'
@@ -97,6 +97,8 @@ function nameOf(fiber: Fiber): string {
 const helpers = {
   router,
   rpc,
+  /** Stage a file by its path, past the native picker that a script cannot use. */
+  stage,
   stores: { $attachments, $conversations, $linkState, $requests, $sessions },
 
   /** Every string on screen, in order. Screens under the current one are included. */

@@ -1,4 +1,4 @@
-import { type Attachment, ATTACH_MAX_BYTES, attachmentKind, attachProblem, dataUrl, promptWithAttachments } from '../attachments'
+import { ATTACH_MAX_BYTES, attachmentKind, attachProblem, dataUrl, fileGlyph, pickedSize, promptWithAttachments, sentAttachment, splitStoredPrompt, type Attachment } from '../attachments'
 
 const ready = (kind: Attachment['kind'], name: string, promptText = ''): Attachment => ({
   id: name,
@@ -54,5 +54,55 @@ describe('promptWithAttachments', () => {
     const failed: Attachment = { ...ready('file', 'x.md', '@file:/up/x.md'), state: 'failed' }
 
     expect(promptWithAttachments('hi', [failed])).toBe('hi')
+  })
+})
+
+describe('splitStoredPrompt', () => {
+  it('cuts the context the backend added and keeps a reference inside a sentence', () => {
+    const stored = 'Look at @file:a.yml and count\n\n--- Attached Context ---\n\n📄 @file:a.yml (864 tokens)\n```yaml\nx: 1\n```'
+
+    expect(splitStoredPrompt(stored)).toEqual({ text: 'Look at @file:a.yml and count', attached: [] })
+  })
+
+  it('reads the attachment lines the app adds under the words', () => {
+    const stored = 'read these\n@file:/up/notes.md\n@file:"/up/my plan.pdf"\n[User attached PDF: p.pdf (2 page(s))]'
+
+    expect(splitStoredPrompt(stored)).toEqual({
+      text: 'read these',
+      attached: [
+        { name: 'notes.md', kind: 'file' },
+        { name: 'my plan.pdf', kind: 'pdf' },
+        { name: 'p.pdf', kind: 'pdf' }
+      ]
+    })
+  })
+
+  it('reads a message of images alone', () => {
+    expect(splitStoredPrompt('[User attached image: a.jpg]\n[User attached image: b.png]')).toEqual({
+      text: '',
+      attached: [
+        { name: 'a.jpg', kind: 'image' },
+        { name: 'b.png', kind: 'image' }
+      ]
+    })
+  })
+})
+
+describe('fileGlyph', () => {
+  it('picks a picture by kind, then by extension', () => {
+    expect(fileGlyph('a.heic', 'image')).toBe('image')
+    expect(fileGlyph('plan.pdf', 'pdf')).toBe('text')
+    expect(fileGlyph('clip.MOV', 'file')).toBe('video')
+    expect(fileGlyph('app.tsx', 'file')).toBe('code')
+    expect(fileGlyph('data.bin', 'file')).toBe('file')
+  })
+})
+
+describe('sentAttachment', () => {
+  it('keeps what the sent row shows', () => {
+    const staged = { id: 'a1', kind: 'image' as const, name: 'a.jpg', state: 'ready' as const, heldPaths: ['/h/a.jpg'], promptText: '', uri: 'file:///a.jpg', size: 2048 }
+
+    expect(sentAttachment(staged)).toEqual({ name: 'a.jpg', kind: 'image', uri: 'file:///a.jpg', size: 2048 })
+    expect(pickedSize({ uri: 'x', name: 'x', base64: 'AAAA' })).toBe(3)
   })
 })
