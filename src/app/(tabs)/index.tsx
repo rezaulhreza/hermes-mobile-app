@@ -50,9 +50,9 @@ export default function Chats() {
     setStarting(true)
 
     try {
-      const sessionId = await createConversation()
+      const { storedId } = await createConversation()
 
-      router.push({ pathname: '/chat/[id]', params: { id: sessionId, live: '1' } })
+      router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1' } })
     } finally {
       setStarting(false)
     }

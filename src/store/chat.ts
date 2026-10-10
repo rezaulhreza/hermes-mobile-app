@@ -43,6 +43,8 @@ import { onGatewayEvent, rpc } from './link'
 
 export interface Conversation {
   sessionId: string
+  /** The id of the row in the session list. It opens the conversation again after the live session is gone. */
+  storedId: string
   title: string
   info: SessionLiveInfo
   transcript: Transcript
@@ -58,18 +60,25 @@ function patch(sessionId: string, change: (conversation: Conversation) => Conver
   }
 }
 
-/** Start a new conversation. Returns its live session id. */
-export async function createConversation(): Promise<string> {
-  const result = await rpc<SessionCreateResult>('session.create', { source: 'mobile' })
+/** The live session id of an open conversation, from its stored id. */
+export function liveSessionId(storedId: string): string | null {
+  return Object.values($conversations.get()).find(conversation => conversation.storedId === storedId)?.sessionId ?? null
+}
 
-  $conversations.setKey(result.session_id, {
+/** Start a new conversation. */
+export async function createConversation(): Promise<Conversation> {
+  const result = await rpc<SessionCreateResult>('session.create', { source: 'mobile' })
+  const conversation: Conversation = {
     sessionId: result.session_id,
+    storedId: result.stored_session_id || result.session_id,
     title: result.info?.title ?? '',
     info: result.info ?? {},
     transcript: EMPTY_TRANSCRIPT
-  })
+  }
 
-  return result.session_id
+  $conversations.setKey(conversation.sessionId, conversation)
+
+  return conversation
 }
 
 /** Open a stored conversation. Returns its live session id. */
@@ -78,6 +87,7 @@ export async function resumeConversation(storedId: string, title = ''): Promise<
 
   $conversations.setKey(result.session_id, {
     sessionId: result.session_id,
+    storedId: result.stored_session_id || storedId,
     title: result.info?.title ?? title,
     info: result.info ?? {},
     transcript: transcriptFromHistory(result.messages ?? [], Boolean(result.running), result.queued?.user)
@@ -92,7 +102,7 @@ export type DraftEffect =
   /** A command handed text back for the user to finish. */
   | { kind: 'prefill'; text: string }
   /** Show this live conversation instead (a new chat, a branch). */
-  | { kind: 'open'; sessionId: string }
+  | { kind: 'open'; sessionId: string; storedId: string }
   | { kind: 'sheet'; sheet: 'model' | 'commands' }
   /** Go to the list of conversations. */
   | { kind: 'sessions' }
@@ -281,7 +291,11 @@ const COMPRESS_TIMEOUT_MS = 660_000
 
 /** The commands the app runs with its own code. A thrown error becomes a notice in the conversation. */
 const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<DraftEffect>> = {
-  new: async () => ({ kind: 'open', sessionId: await createConversation() }),
+  new: async () => {
+    const { sessionId, storedId } = await createConversation()
+
+    return { kind: 'open', sessionId, storedId }
+  },
 
   title: async (sessionId, arg) => {
     const result = await rpc<SessionTitleResult>('session.title', { session_id: sessionId, ...(arg ? { title: arg } : {}) })
@@ -298,14 +312,17 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
   branch: async (sessionId, arg) => {
     const result = await rpc<SessionBranchResult>('session.branch', { session_id: sessionId, ...(arg ? { name: arg } : {}) })
 
+    const storedId = result.stored_session_id || result.session_id
+
     $conversations.setKey(result.session_id, {
       sessionId: result.session_id,
+      storedId,
       title: result.title || result.info?.title || '',
       info: result.info ?? {},
       transcript: withNotice(transcriptFromHistory(result.messages ?? []), 'Branched from the conversation before')
     })
 
-    return { kind: 'open', sessionId: result.session_id }
+    return { kind: 'open', sessionId: result.session_id, storedId }
   },
 
   model: async () => ({ kind: 'sheet', sheet: 'model' }),

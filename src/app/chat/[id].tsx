@@ -34,6 +34,7 @@ import {
   completeDraft,
   type Completions,
   type DraftEffect,
+  liveSessionId,
   resumeConversation,
   sendDraft,
   type SendMode,
@@ -47,9 +48,10 @@ import { useTheme } from '@/theme/use-theme'
 export default function Chat() {
   const t = useTheme()
   const params = useLocalSearchParams<{ id: string; title?: string; live?: string }>()
-  // `live=1` means the id is already a live session (a chat just created).
-  // Otherwise it is a stored id and the conversation must be resumed first.
-  const [sessionId, setSessionId] = useState<string | null>(params.live ? params.id : null)
+  // The route carries the stored id. `live=1` means the conversation was just
+  // created and is in the store already. When it is not there (the app
+  // started again on this route), the stored id opens it like any other.
+  const [sessionId, setSessionId] = useState<string | null>(() => (params.live ? liveSessionId(params.id) : null))
   const [failure, setFailure] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [sheet, setSheet] = useState<'model' | 'commands' | null>(null)
@@ -60,8 +62,10 @@ export default function Chat() {
   const requests = useStore($requests).filter(r => r.sessionId === sessionId)
   const list = useRef<FlatList<TranscriptItem>>(null)
 
+  const opened = Boolean(conversation)
+
   useEffect(() => {
-    if (sessionId || linkState !== 'open') {
+    if (opened || linkState !== 'open') {
       return
     }
 
@@ -74,7 +78,7 @@ export default function Chat() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, linkState, params.id, params.title])
+  }, [opened, linkState, params.id, params.title])
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
@@ -117,7 +121,7 @@ export default function Chat() {
         // Same screen, other conversation. The route follows, so a reload opens the right one.
         setSessionId(effect.sessionId)
 
-        return router.setParams({ id: effect.sessionId, live: '1', title: '' })
+        return router.setParams({ id: effect.storedId, live: '1', title: '' })
 
       case 'sheet':
         return setSheet(effect.sheet)
