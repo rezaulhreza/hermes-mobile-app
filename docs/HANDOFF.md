@@ -171,6 +171,13 @@ event and payload shape. Grep it before writing a store.
   `PATCH /api/sessions/{id}` takes `title`, `pinned`, `archived`.
   `DELETE /api/sessions/{id}`. `GET /api/sessions/{id}/export` streams JSON.
   A stored conversation branches with the RPC `session.branch_stored`.
+- A held picture is stored in the prompt as `@image:<host path>` plus one
+  `[screenshot]` line. `session.resume` tool rows carry `args` and `context`
+  but no output; the REST messages route has `content` (often JSON with
+  `output`, `exit_code`, `error`).
+- The owner's agent is slow (the model). A tool row can show "running" for a
+  minute with nothing wrong. Wait 30 to 60 s in a live check, or put rows in
+  the store with the driver.
 - `POST /api/files/upload-stream` is a multipart upload with no base64. It
   could replace the 12 MB frame limit for attachments. Not used yet.
 - More: `~/.hermes/hermes-mobile-handover.md` (sections "Auth contract" and
@@ -219,7 +226,25 @@ iOS Simulator against the owner's real Hermes with `scripts/drive.mjs`:
   rename, branch, export (share sheet), archive and move back, delete with a
   question inside the sheet. Pinned group, source chips, archive view.
 
+Done on 2026-10-09, fourth part (the owner was away; work went on alone).
+Checked in the Simulator:
+
+- Markdown tables (sideways scroll, alignment).
+- Tool row detail sheet: input, coloured diff, output. A stored tool row gets
+  its output from `GET /api/sessions/{id}/messages` when the sheet opens.
+- Copy and share under the answer that ends a turn.
+- The pictures of a stored message show again (`@image:` lines; the thumbnail
+  comes from the host).
+- A request card on a real request: a `clarify` question with two choices,
+  answered from the card. The approval kind uses the same card and path but
+  no approval came up (the owner's agent asks through `clarify`).
+- The vault (Settings, "Logins and cards"): add a login, list, remove. Cards,
+  addresses and password managers use the same code; not exercised.
+- The message field is one line again after a long message is sent.
+
 In code, NOT seen on a screen (a script cannot use a native picker):
+
+- The scroll-to-newest button and "keep the reading position" (need a drag).
 
 - The photo library, camera and file pickers themselves. The upload path
   under them is checked (`h.stage`).
@@ -291,10 +316,10 @@ Build notes:
 Each item is one or more commits. Check the contract file for the RPC names.
 
 1. **Finish the device check**: the "Not checked yet" list above.
-2. **Chat quality**: Markdown tables (the parser in `core/markdown.ts` has no
-   table block yet), tool row
-   detail sheet (args, output, inline diff), copy and share, scroll-to-bottom
-   button, keep position when reading history, haptics.
+2. **Chat quality**: DONE (tables, tool detail sheet, copy and share,
+   scroll-to-newest button, reading position). Left: haptics (needs
+   expo-haptics and a native build), copy for a user message, syntax colour
+   in code blocks.
 3. **Composer**: queue + steer, attachments, thumbnails, preview, photo
    resize and paste are DONE. Left:
    - A way to see and cancel the backend queue.
@@ -347,8 +372,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
 11. **Kanban**: boards, tasks, comments (plugin REST API).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`).
-13. **Settings**: providers, API keys (`model.save_key`), models, memory,
-    vault (`vault.*`), notifications, appearance. Adding credentials for the
+13. **Settings**: the vault is DONE (`src/app/vault.tsx`, `core/vault.ts`).
+    Left: providers, API keys (`model.save_key`), models, memory,
+    notifications, appearance. Adding credentials for the
     agent is a main use on the phone: make it fast.
 14. **Ops**: System (gateway status, logs, restart, update), Usage (tokens,
     cost), Maintenance (doctor, audit, backup, debug share, curator, memory
