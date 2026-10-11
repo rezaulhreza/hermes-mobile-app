@@ -12,6 +12,7 @@ import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { loadPreferences } from '@/store/preferences'
+import { clearProviders } from '@/store/providers'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
@@ -48,6 +49,7 @@ export default function RootLayout() {
     clearVoice()
     clearWake()
     clearWork()
+    clearProviders()
 
     if (workspace) {
       void openLink(workspace)
@@ -83,6 +85,8 @@ export default function RootLayout() {
           <Stack.Screen name="chat/[id]" />
           <Stack.Screen name="vault" />
           <Stack.Screen name="voice" />
+          <Stack.Screen name="providers" />
+          <Stack.Screen name="keys" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>

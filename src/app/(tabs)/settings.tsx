@@ -57,6 +57,38 @@ export default function Settings() {
             </View>
             <Feather color={t.muted} name="chevron-right" size={20} />
           </Pressable>
+          <Pressable
+            accessibilityHint="Connect a model provider and choose the default model"
+            accessibilityLabel="Providers and models"
+            accessibilityRole="button"
+            onPress={() => router.push('/providers')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="cpu" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Providers and models</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                What your agent thinks with, and the default model
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+          <Pressable
+            accessibilityHint="The secrets of your Hermes host"
+            accessibilityLabel="API keys"
+            accessibilityRole="button"
+            onPress={() => router.push('/keys')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="lock" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>API keys</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                Keys for tools and services, on your Hermes host
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
         </Card>
 
         <Text style={[type.small, styles.section, { color: t.muted }]}>This phone</Text>
