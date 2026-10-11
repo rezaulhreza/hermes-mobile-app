@@ -13,6 +13,7 @@ import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { clearSchedules } from '@/store/cron'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
+import { refreshScreenHold } from '@/store/screen'
 import { loadPreferences } from '@/store/preferences'
 import { clearProviders } from '@/store/providers'
 import { clearPush, installPush, registerPush } from '@/store/push'
@@ -69,6 +70,7 @@ export default function RootLayout() {
     if (linkState === 'open') {
       void refreshSessions()
       void registerPush()
+      void refreshScreenHold()
     }
   }, [linkState])
 

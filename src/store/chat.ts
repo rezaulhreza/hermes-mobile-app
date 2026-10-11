@@ -155,6 +155,26 @@ function fail(sessionId: string, error: unknown): void {
   patch(sessionId, c => ({ ...c, transcript: reduceTranscript(c.transcript, { type: 'error', payload: { message } }) }))
 }
 
+/**
+ * Send a message that stops the running turn. The backend's own default for a
+ * message in a turn is to stop the turn and answer the message; `submitPrompt`
+ * asks for the queue instead. This is for the user who takes something over
+ * and must tell the agent now.
+ */
+export async function redirectTurn(sessionId: string, text: string): Promise<void> {
+  const key = showUserMessage(sessionId, text)
+
+  try {
+    const result = await rpc<PromptSubmitResult>('prompt.submit', { session_id: sessionId, text, surface: 'mobile' })
+
+    if (result?.status === 'queued' || result?.status === 'steered' || result?.status === 'redirected') {
+      label(sessionId, key, result.status)
+    }
+  } catch (error) {
+    fail(sessionId, error)
+  }
+}
+
 /** Add the user's row now and return its key, so the backend's answer can label it. */
 function showUserMessage(sessionId: string, text: string, attached: readonly SentAttachment[] = []): string {
   const current = $conversations.get()[sessionId]

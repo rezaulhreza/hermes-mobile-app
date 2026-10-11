@@ -17,6 +17,7 @@ import { $conversations, $shownSession } from '@/store/chat'
 import { $linkState, currentApi, onGatewayEvent, rpc } from '@/store/link'
 import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
+import { $screen, $screenHold, $screenPicture, screenWatching, sendScreenInput } from '@/store/screen'
 import { $sessions, $sessionSource, $sessionView, loadMoreSessions } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
@@ -163,6 +164,9 @@ const helpers = {
   notifications: Notifications,
   registerPush,
   unregisterPush,
+  /** The screen view: is the picture asked for, and a tap on it, which a script cannot make. */
+  screenWatching,
+  sendScreenInput,
   /** The end of the chat list, which a script cannot scroll to. */
   loadMoreSessions,
   setPreference,
@@ -201,7 +205,7 @@ const helpers = {
 
     return 'fed'
   },
-  stores: { $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),

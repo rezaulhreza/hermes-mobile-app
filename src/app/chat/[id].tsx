@@ -29,6 +29,7 @@ import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { PreviewPane, PreviewPill } from '@/components/preview-pane'
 import { RequestCard } from '@/components/request-card'
+import { ScreenPill, ScreenView } from '@/components/screen-view'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
@@ -40,6 +41,7 @@ import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
 import { answerFiles } from '@/core/host-files'
 import { modelLabel } from '@/core/models'
+import { screenWork } from '@/core/screen'
 import { finalAnswerKeys, hasToolDetail } from '@/core/tools'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
 import { $attachments, addAttachments, type AttachSource, clipboardHasImage, removeAttachment } from '@/store/attachments'
@@ -60,6 +62,7 @@ import {
 import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
+import { $screenHold } from '@/store/screen'
 import { $sessions } from '@/store/sessions'
 import { $call, $callEnded, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
@@ -183,6 +186,10 @@ export default function Chat() {
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
+  // The agent used the host's screen or a browser in this chat, or the user still holds the screen: offer the view.
+  const screen = useMemo(() => screenWork(transcript?.items ?? []), [transcript?.items])
+  const holdsScreen = useStore($screenHold) !== null
+  const [watching, setWatching] = useState(false)
   const finals = useMemo(() => finalAnswerKeys(transcript?.items ?? [], running), [transcript?.items, running])
   // The list is inverted: the newest row is its first row. It opens at the newest message with
   // only the rows on screen drawn. A list in reading order drew every row of a long chat to get there.
@@ -376,6 +383,7 @@ export default function Chat() {
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {dictation === 'off' ? null : <DictationLine />}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
+        {sessionId && (screen.used || holdsScreen) ? <ScreenPill onOpen={() => setWatching(true)} working={screen.running} /> : null}
 
         {shownCompletions.length ? (
           <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
@@ -516,7 +524,8 @@ export default function Chat() {
           <VoiceCallScreen items={transcript?.items ?? NO_ITEMS} sessionId={sessionId} title={conversation?.title ?? ''} />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
-          <SessionActionsSheet
+          {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
+      <SessionActionsSheet
             onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId } })}
             onClose={() => setActing(false)}
             onRemoved={() => router.back()}

@@ -177,9 +177,6 @@ export default function Chats() {
   )
 }
 
-// A conversation from an app needs no label. One from a channel, the terminal or a schedule does.
-const APP_SOURCES = new Set(['mobile', 'desktop'])
-
 function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
   const t = useTheme()
   const preview = sessionPreview(row)
@@ -208,7 +205,7 @@ function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
         ) : null}
       </View>
       {row.pinned ? <Feather color={t.muted} name="bookmark" size={14} /> : null}
-      {row.source && !APP_SOURCES.has(row.source) ? (
+      {row.source ? (
         <Feather accessibilityLabel={channel(row.source).label} color={t.muted} name={channel(row.source).icon} size={14} />
       ) : null}
       <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>
