@@ -665,14 +665,38 @@ Each item is one or more commits. Check the contract file for the RPC names.
      while it speaks.
    - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
      `store/voice-relay.ts` are first guesses.
-7b. **Bot screen (computer use)**: NEXT (the owner's order: bot screen,
-   then the Workspace tab, then the "Left" lines, then items 11, 12, 14, 15,
-   then release). Not started; needs a Linux or Docker host to run. The owner
-   wants it to work on this Mac; the host may also be Linux or Windows, so
-   use the backend's own way (Xvnc or Docker), not a Mac-only method. Plan: a card with `display.status`, a picture from
-   `display.thumbnail` every 2 s, "Take over" / "Hand back" with
-   `display.lease.acquire` / `.release`, then the live screen with noVNC in a
-   WebView on `/api/display/ws` (ticket from `display.observe`).
+7b. **Bot screen (computer use)**: IN PROGRESS, NEXT (the owner's order: bot
+   screen, then the Workspace tab, then the "Left" lines, then items 11, 12,
+   14, 15, then release). What it needs, found in the sixth session:
+   - `tools/bot_desktop/runtime.py::is_supported_host()` is true on Linux
+     only. On a Mac or Windows host the screen runs INSIDE the terminal
+     sandbox: `tools/bot_desktop/placement.py` puts it in the container when
+     the profile's `terminal.backend` is `docker` (or `ssh`, `singularity`).
+     The image is `nousresearch/hermes-sandbox:desktop` (it is the default
+     `terminal.docker_image`; arm64 and amd64 exist). This way is the same
+     on a Mac, Linux and Windows host with Docker. No backend patch.
+   - The owner's main bot has `terminal.backend: local`. Do NOT change that:
+     it would move all its terminal work into a container. Make the screen
+     the screen of ONE dedicated bot whose own `config.yaml` has
+     `terminal.backend: docker`. Every `display.*` call takes `profile`.
+   - Docker Desktop 29.8.1 runs on this Mac. The image pull was started
+     (`docker images | grep hermes-sandbox` shows when it is there).
+     `terminal.container_memory` is 5120 MB by default: set a lower limit
+     for the screen bot (the Mac has 16 GB); Xvnc + Xfce idle at about 220 MB.
+   - Calls (`tui_gateway/contracts/display.py`, `methods_display.py`):
+     `display.status {profile}` (supported, installed, running, blocker,
+     lease), `display.start`, `display.stop {force}`, `display.thumbnail`
+     (a JPEG `data_url`; null with `suppressed: human_has_control`),
+     `display.lease.acquire` / `.release` (the lease holder is `agent` or
+     `human`; `epoch` moves on each change), `display.observe` (the ticket),
+     the event `display.lease`. The live screen is raw RFB over
+     `/api/display/ws` (`hermes_cli/web_routers/display.py`).
+   - Phone view, planned: a card in the bot's page with the status; a
+     picture from `display.thumbnail` every 2 s only while the card is on
+     screen (stop the timer on blur); Start / Stop; "Take over" / "Hand
+     back" with the lease; the live screen with noVNC in a WebView on
+     `/api/display/ws` (cookies shared, `sharedCookiesEnabled`), closed when
+     the screen closes. Clear the store when the page closes.
 8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
    `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
    its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
