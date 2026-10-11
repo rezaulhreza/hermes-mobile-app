@@ -33,6 +33,8 @@ interface DuplexModule {
   stats(): { taps: number; convertFailures: number; hardware: string; running: boolean; voiceProcessing: boolean }
   /** Queue mono int16 PCM at this rate. */
   play(pcm: ArrayBuffer, sampleRate: number): void
+  /** Queue one encoded sound (MP3, WAV, M4A) behind what plays now. */
+  playEncoded(sound: ArrayBuffer, fileExtension: string): void
   /** Drop what is queued, in the middle of a word. */
   clear(): void
   setMuted(muted: boolean): void

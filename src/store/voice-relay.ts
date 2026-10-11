@@ -13,8 +13,8 @@
  */
 
 import type { HermesApi } from '@/core/api'
-import { bytesBase64, EchoMemory, FRAME_MS, INPUT_SAMPLE_RATE, PLAYBACK_TAIL_MS, SentenceFeed, speakableLine, type UserTurn, wavFile } from '@/core/live-voice'
-import { advanceListen, type Listen, NEW_LISTEN } from '@/core/voice'
+import { bytesBase64, EchoMemory, pcmBytes, FRAME_MS, INPUT_SAMPLE_RATE, PLAYBACK_TAIL_MS, SentenceFeed, speakableLine, type UserTurn, wavFile } from '@/core/live-voice'
+import { advanceListen, audioExtension, dataUrlParts, type Listen, NEW_LISTEN } from '@/core/voice'
 import { duplexAudio } from '@/native/duplex-audio'
 
 import { openSiblingSocket } from './link'
@@ -39,6 +39,8 @@ interface Reply {
   /** Frames that wait for the socket to open. */
   queue: string[]
   rate: number
+  /** All the text given to this reply, for the other path when the host sends no sound. */
+  text: string
   /** The text is complete. The sound of it may still come. */
   closed: boolean
   /** The user stopped this reply. Its sound is dropped. */
@@ -65,6 +67,16 @@ export class RelayEngine implements VoiceEngine {
   private streamFinal: ((text: string | null) => void) | null = null
 
   private reply: Reply | null = null
+  /**
+   * The host's stream gave no sound (its speech provider writes a file the
+   * host could not decode). The phone then cuts the sentences and asks for
+   * each one with `POST /api/audio/speak`, as the desktop does.
+   */
+  private bySentence = false
+  private readonly sentences = new SentenceFeed()
+  private waiting: string[] = []
+  private working = false
+  private spoken = 0
   private readonly lines = new SentenceFeed()
   private readonly echo = new EchoMemory()
   private readonly samples = new SampleJoiner()
@@ -109,7 +121,7 @@ export class RelayEngine implements VoiceEngine {
   }
 
   speaking(): boolean {
-    return this.playing || (Boolean(this.reply) && Date.now() - this.said < SOUND_EXPECTED_MS)
+    return this.playing || this.working || (Boolean(this.reply) && Date.now() - this.said < SOUND_EXPECTED_MS)
   }
 
   audible(): boolean {
@@ -305,6 +317,10 @@ export class RelayEngine implements VoiceEngine {
       this.echo.remember(speakableLine(line), Date.now())
     }
 
+    if (this.bySentence) {
+      return this.speakLines(this.sentences.feed(text, final))
+    }
+
     // The host cuts sentences at white space. A finished thought gets a line end, so it is said now.
     const out = text + (final && this.reply ? '\n' : '')
 
@@ -316,7 +332,7 @@ export class RelayEngine implements VoiceEngine {
   endReply(): void {
     this.feed('', true)
 
-    if (this.reply) {
+    if (this.reply && !this.bySentence) {
       this.send({ done: true })
       this.reply.closed = true
     }
@@ -326,6 +342,11 @@ export class RelayEngine implements VoiceEngine {
     const alone = !this.reply || this.reply.closed
 
     this.echo.remember(speakableLine(line), Date.now())
+
+    if (this.bySentence) {
+      return this.speakLines([line])
+    }
+
     this.send({ text: `${line}\n` })
 
     if (alone) {
@@ -339,6 +360,10 @@ export class RelayEngine implements VoiceEngine {
 
   hush(): void {
     this.lines.clear()
+    this.sentences.clear()
+    this.waiting = []
+    this.spoken += 1
+    this.working = false
     this.closeReply(true)
     this.samples.reset()
     duplexAudio?.clear()
@@ -354,6 +379,7 @@ export class RelayEngine implements VoiceEngine {
     const text = JSON.stringify(frame)
 
     if (frame.text) {
+      reply.text += frame.text
       this.said = Date.now()
 
       if (this.soundTimer) {
@@ -372,7 +398,7 @@ export class RelayEngine implements VoiceEngine {
   }
 
   private openReply(): Reply {
-    const reply: Reply = { socket: null, queue: [], rate: 24_000, closed: false, hushed: false }
+    const reply: Reply = { socket: null, queue: [], rate: 24_000, text: '', closed: false, hushed: false }
 
     void openSiblingSocket('/api/audio/speak-stream')
       .then(socket => {
@@ -403,8 +429,11 @@ export class RelayEngine implements VoiceEngine {
 
           if (data?.type === 'start' && typeof data.sample_rate === 'number') {
             reply.rate = data.sample_rate
-          } else if (data?.type === 'fallback') {
-            this.events.lost('The voice of this Hermes host gave no sound. Check the text-to-speech provider.')
+          } else if (data?.type === 'fallback' && !reply.hushed) {
+            // Say this reply again by the other path, and use that path for the rest of the call.
+            this.bySentence = true
+            this.closeReply(false)
+            this.speakLines(this.sentences.feed(reply.text, reply.closed))
           }
         }
         socket.onclose = () => {
@@ -422,6 +451,44 @@ export class RelayEngine implements VoiceEngine {
       })
 
     return reply
+  }
+
+  /** Ask the host for the sound of each line, one at a time, in order. */
+  private speakLines(lines: readonly string[]): void {
+    this.waiting.push(...lines.map(speakableLine).filter(Boolean))
+
+    if (this.working || !this.waiting.length) {
+      return
+    }
+
+    const mine = this.spoken
+
+    this.working = true
+    this.said = Date.now()
+    this.events.changed()
+
+    void (async () => {
+      while (this.active && mine === this.spoken && this.waiting.length) {
+        const text = this.waiting.shift()!
+
+        try {
+          const result = await this.api.request<{ data_url?: string }>({ path: '/api/audio/speak', method: 'POST', body: { text }, timeoutMs: 60_000 })
+          const sound = dataUrlParts(result.data_url ?? '')
+
+          if (sound && this.active && mine === this.spoken) {
+            this.said = Date.now()
+            duplexAudio?.playEncoded(pcmBytes(sound.base64).buffer as ArrayBuffer, audioExtension(sound.mime))
+          }
+        } catch (error) {
+          this.events.lost(`The voice gave no sound: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+
+      if (mine === this.spoken) {
+        this.working = false
+        this.events.changed()
+      }
+    })()
   }
 
   private closeReply(stop: boolean): void {

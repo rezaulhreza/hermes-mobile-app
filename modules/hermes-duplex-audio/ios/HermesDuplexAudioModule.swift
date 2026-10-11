@@ -78,6 +78,11 @@ public final class HermesDuplexAudioModule: Module {
       self.play(data, sampleRate: sampleRate)
     }
 
+    /// Queue one encoded sound (MP3, WAV, M4A) behind what plays now.
+    Function("playEncoded") { (data: ArrayBuffer, fileExtension: String) in
+      try self.playEncoded(data.data, fileExtension: fileExtension)
+    }
+
     Function("clear") {
       self.clear()
     }
@@ -145,9 +150,8 @@ public final class HermesDuplexAudioModule: Module {
     }
 
     let player = AVAudioPlayerNode()
-    let rate = playFormat?.sampleRate ?? 24000
 
-    guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false) else {
+    guard let format = playFormat ?? AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false) else {
       throw Exception(name: "DuplexAudioFormat", description: "The playback format is not supported.")
     }
 
@@ -323,27 +327,11 @@ public final class HermesDuplexAudioModule: Module {
   // MARK: - playback
 
   private func play(_ data: ArrayBuffer, sampleRate: Double) {
-    guard running, let engine, let player else {
-      return
-    }
-
     let count = data.byteLength / 2
 
-    guard count > 0, sampleRate > 0 else {
-      return
-    }
-
-    if playFormat?.sampleRate != sampleRate {
-      guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
-        return
-      }
-
-      engine.disconnectNodeOutput(player)
-      engine.connect(player, to: engine.mainMixerNode, format: format)
-      playFormat = format
-    }
-
-    guard let format = playFormat, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+    guard running, count > 0, sampleRate > 0,
+      let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+      let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
       let channel = buffer.floatChannelData?[0]
     else {
       return
@@ -354,6 +342,41 @@ public final class HermesDuplexAudioModule: Module {
       for index in 0..<count {
         channel[index] = Float(raw.loadUnaligned(fromByteOffset: index * 2, as: Int16.self)) / 32768
       }
+    }
+
+    schedule(buffer)
+  }
+
+  private func playEncoded(_ data: Data, fileExtension: String) throws {
+    guard running, !data.isEmpty else {
+      return
+    }
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("hermes-voice-\(UUID().uuidString).\(fileExtension)")
+
+    try data.write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let file = try AVAudioFile(forReading: url)
+
+    guard file.length > 0, let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
+      return
+    }
+
+    try file.read(into: buffer)
+    schedule(buffer)
+  }
+
+  /// Queue a buffer. The player is connected with the format of what it plays; another format connects it again.
+  private func schedule(_ buffer: AVAudioPCMBuffer) {
+    guard let engine, let player, buffer.frameLength > 0 else {
+      return
+    }
+
+    if playFormat != buffer.format {
+      engine.disconnectNodeOutput(player)
+      engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
+      playFormat = buffer.format
     }
 
     lock.lock()
