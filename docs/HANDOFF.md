@@ -75,7 +75,8 @@ src/app/                 expo-router routes (thin)
   _layout.tsx            loads workspaces, owns the link lifecycle
   sign-in.tsx            add a workspace
   (tabs)/                Chats, Bots, Activity, Workspace, Settings + floating tab bar
-  chat/[id].tsx          one conversation
+  chat/[id].tsx          one conversation (`?profile=` for the chat of a bot)
+  voice.tsx, providers.tsx, keys.tsx, cron.tsx, vault.tsx   screens opened from Settings
 src/dev/driver.ts        development builds only: lets scripts/drive.mjs press and type
 src/core/                pure logic, no React, no native modules. Tested.
   gateway/               VENDORED from hermes-mobile/apps/shared/src. Do not edit by hand.
@@ -95,6 +96,10 @@ src/core/                pure logic, no React, no native modules. Tested.
   attachments.ts         kinds, the size limit, the prompt text an attachment adds,
                          the preview mode of a file, the stored prompt parser
   sessions.ts            the list of conversations: rows, filters, groups, actions
+  work.ts                the todo list and the helpers (subagents) of a turn
+  providers.ts           providers, the default model, the keys of the host
+  bots.ts                bots (profiles): rows, names
+  cron.ts                schedules (cron jobs): rows, the next run in words, checks
 src/store/               nanostores atoms + side effects
   workspaces.ts          SecureStore persistence
   link.ts                the ONE live link (REST + socket), redial with backoff
@@ -464,6 +469,15 @@ Build notes:
 - Metro's debugger socket (`/json/list`) closes at once for a script on this
   Mac. That is why the driver exists.
 
+Test data left in the owner's Hermes by the fifth session, safe to delete:
+about ten chats from the voice checks ("Count slowly from one to thirty",
+"Tell me one short fact about the moon", "Plan and delegate checking date",
+several "New chat"). One of them, "Experimentation tool options for lagging
+metrics", holds speech from the owner's meeting that the open microphone
+picked up: the owner knows, and decides whether to delete it. The test bot,
+the test key and the test schedule are gone again. The host's
+`wake_word.enabled` is back to false.
+
 ## Remaining work, in order
 
 Each item is one or more commits. Check the contract file for the RPC names.
@@ -546,9 +560,14 @@ Each item is one or more commits. Check the contract file for the RPC names.
    the other calls of a bot's chat: `session.resume` takes `profile`, and the
    calls after it go by the live session id, but REST calls for that chat
    (tool output of a stored row, file download) do not send `?profile=` yet.
-9. **Cron**: list, create, edit, pause, run, history (REST under `/api/cron`,
-   event `cron.changed`).
-10. **Workspace tab**: file tree with edit and save (REST `files` router),
+9. **Cron**: DONE (`core/cron.ts`, `store/cron.ts`, `src/app/cron.tsx`;
+   opened from the clock button of the Bots tab and from Settings). Checked
+   in the Simulator on the owner's 5 jobs; create, resume, pause and delete
+   ran on a paused test job. Left: where the result goes (`deliver`, from
+   `/api/cron/delivery-targets`), a schedule for another bot than the main
+   one (the create form sends no profile), blueprints
+   (`/api/cron/blueprints`), the whole text of a past run.
+10. **Workspace tab**: NEXT. Not started. File tree with edit and save (REST `files` router),
     terminal (interactive; a small xterm WebView is acceptable here, or a
     native text view over `agent.terminal.output` + `shell.exec`), preview
     (WebView onto the backend preview host, `preview.*` events, take over and
