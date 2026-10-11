@@ -85,7 +85,10 @@ src/core/                pure logic, no React, no native modules. Tested.
   requests.ts            agent -> user requests (approval, clarify, secret, sudo, code, vault)
   commands.ts            slash commands on a phone: blocked ones, the app's own actions, the sheet
   composer.ts            completion triggers, what a slash answer means
-  voice.ts               a call without audio: when a listen ends, what to say aloud
+  voice.ts               dictation and read aloud: when a listen ends, what to say aloud
+  live-voice.ts          the full-duplex call: sentence cutting, echo check, barge-in, spoken approval
+  gpt-live.ts            the gpt-live engine: delegation prompt, history, commentary parts
+  wake.ts                the wake word: refusal texts, the feed queue
   vault.ts               the vault form: fields, checks, the add request
   tools.ts               tool row detail, diff lines, which answer ends a turn
   preview/               the browser preview: addresses, scripts, answers, the vendored engine
@@ -99,10 +102,20 @@ src/store/               nanostores atoms + side effects
   commands.ts            the backend command catalog, one copy per link
   attachments.ts         pickers + upload; the staged list per conversation
   preview.ts             the copy of an attachment on the phone (downloads a host file once)
-  voice.ts               the ONE call: listen, transcribe, ask, speak; dictation; read aloud
+  voice.ts               the ONE call: owns the turn (utterance -> message, answer -> voice),
+                         spoken approvals, the engine choice; dictation; read aloud
+  voice-engine.ts        what a call needs from a speech engine (the interface)
+  voice-deepgram.ts      engine: the desktop's deepgram-live path (two sockets to Deepgram)
+  voice-relay.ts         engine: Hermes's own transcribe-stream / speak-stream routes
+  voice-gpt-live.ts      engine: WebRTC to OpenAI's voice model through the host
+  wake.ts                the wake word: wake.start, PCM to wake.feed, wake.detected -> call
+  preferences.ts         choices of this phone: the engine, the wake word
   browser.ts             previews per conversation; answers preview.read / preview.act
   vault.ts               vault items and password manager sources
   sessions.ts            the list (REST) and rename, pin, archive, delete, branch, export
+src/native/duplex-audio.ts  the wrapper of the native call audio
+modules/hermes-duplex-audio/  local Expo module (Swift): AVAudioEngine with voice processing.
+                         Microphone PCM out as events, PCM or MP3 in for playback, at the same time.
 src/components/          shared UI
 src/theme/               tokens + useTheme / useIsTablet
 ```
@@ -210,6 +223,36 @@ event and payload shape. Grep it before writing a store.
   client-direct STT/TTS) and `/api/audio/voice-live/session` (WebRTC, the
   "gpt-live" engine). `wake.feed` takes PCM frames from a client for the wake
   word. None of the last four is used yet.
+- Live voice (2026-10-09, fifth session). A call is full duplex. Three engines,
+  one interface (`store/voice-engine.ts`); `GET` them with `loadEngines()`:
+  - `deepgram`: the path of the owner's `deepgram-live` desktop plugin
+    (`~/.hermes/desktop-plugins/deepgram-live/plugin.js`, backend half in
+    `~/.hermes/plugins/deepgram-live`). `GET /api/plugins/deepgram-live/status`
+    gives the settings, `POST .../auth` gives a 30 s token, which goes in the
+    WebSocket subprotocols (`[scheme, value]`) of `wss://api.deepgram.com/v2/listen`
+    (16 kHz PCM up, `TurnInfo` events down) and `/v1/speak` (text up, 24 kHz PCM
+    down). `POST .../turn {text}` marks a turn as spoken, so the agent answers
+    in plain sentences. The key never reaches the phone.
+  - `relay`: `/api/audio/transcribe-stream` (only when `voice-config` says
+    `stt.streaming`; this host says false, so the phone sends each turn as a
+    WAV to `/api/audio/transcribe`) and `/api/audio/speak-stream`. Both sockets
+    sign in with `?ticket=` like `/api/ws` (`openSiblingSocket`).
+  - `gpt-live`: WebRTC. `POST /api/audio/voice-live/session {sdp, history}`.
+- This host's `speak-stream` answers `{"type":"fallback"}`: its log says
+  "ffmpeg is required to decode TTS audio" (the backend's PATH has no
+  `/opt/homebrew/bin`). The relay engine then asks `/api/audio/speak` for each
+  sentence. To get the faster PCM path, give the backend ffmpeg on its PATH.
+- Deepgram's speak socket still sends sound for a moment after `Clear`. Drop
+  it until `Cleared`.
+- Do not duck the microphone on the phone. With voice processing on, a gain
+  of 0.2 (the desktop's value) left the listening model with no words at all
+  during playback, so nothing could interrupt the voice.
+- The wake word: `wake.start {surface:'gui', client_capture:true, persist:true}`.
+  Without `persist` the host refuses with `disabled` while `wake_word.enabled`
+  is false in its config. One client owns the detector: the desktop and the
+  phone cannot both listen. `wake.feed {pcm: base64 int16 16 kHz}`, four 80 ms
+  frames a call. The host has no spoken wake reply of its own (the desktop
+  plays a sound); the phone says "Yes?" (`WAKE_REPLY`).
 - The bot screen (`display.*`, the computer-use view) needs Xvnc on Linux or
   Docker. On this Mac `display.status` says `supported: false`.
 - `POST /api/files/upload-stream` is a multipart upload with no base64. It

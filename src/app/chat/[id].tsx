@@ -56,7 +56,7 @@ import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { $sessions } from '@/store/sessions'
-import { $call, $dictation, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
+import { $call, $callEnded, $dictation, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -87,6 +87,15 @@ export default function Chat() {
   )
 
   const say = (problem: unknown) => Alert.alert('Voice is not available', problem instanceof Error ? problem.message : String(problem))
+  const callEnded = useStore($callEnded)
+
+  // A call that ended by itself says why, once.
+  useEffect(() => {
+    if (callEnded) {
+      $callEnded.set(null)
+      Alert.alert('The call ended', callEnded)
+    }
+  }, [callEnded])
 
   // The words go into the field, after what is there. The user reads them and sends: a wrong word costs nothing.
   const speakDraft = () => {

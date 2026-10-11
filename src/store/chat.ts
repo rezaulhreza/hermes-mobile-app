@@ -115,8 +115,12 @@ const NOTHING: DraftEffect = { kind: 'none' }
 /** How a message sent during a turn reaches the agent. `queue` waits for the turn; `steer` joins it. */
 export type SendMode = 'queue' | 'steer'
 
-/** Send a draft. A slash command runs as a command; anything else goes to the agent. */
-export async function sendDraft(sessionId: string, text: string, mode: SendMode = 'queue'): Promise<DraftEffect> {
+/**
+ * Send a draft. A slash command runs as a command; anything else goes to the
+ * agent. `voiceContext` is the recent spoken exchange of a call: the model
+ * reads it, the chat does not show it.
+ */
+export async function sendDraft(sessionId: string, text: string, mode: SendMode = 'queue', voiceContext?: string): Promise<DraftEffect> {
   const trimmed = text.trim()
 
   if (isSlashCommand(trimmed)) {
@@ -131,7 +135,7 @@ export async function sendDraft(sessionId: string, text: string, mode: SendMode 
   }
 
   // Steering puts text into the running turn. Files need a turn of their own.
-  await (mode === 'steer' && !attachments.length ? steerTurn(sessionId, trimmed) : submitPrompt(sessionId, trimmed, attachments))
+  await (mode === 'steer' && !attachments.length ? steerTurn(sessionId, trimmed) : submitPrompt(sessionId, trimmed, attachments, voiceContext))
 
   return NOTHING
 }
@@ -167,7 +171,7 @@ function label(sessionId: string, key: string, delivery: Delivery): void {
  * The backend decides in the end (the turn can finish first), so the label
  * comes from its answer, not from what the app asked for.
  */
-async function submitPrompt(sessionId: string, text: string, attachments: readonly Attachment[] = []): Promise<void> {
+async function submitPrompt(sessionId: string, text: string, attachments: readonly Attachment[] = [], voiceContext?: string): Promise<void> {
   const busy = $conversations.get()[sessionId]?.transcript.running ?? false
   // The row shows the user's words and the files. The model also gets the references.
   const key = showUserMessage(sessionId, text, attachments.map(sentAttachment))
@@ -177,6 +181,7 @@ async function submitPrompt(sessionId: string, text: string, attachments: readon
       session_id: sessionId,
       text: promptWithAttachments(text, attachments),
       surface: 'mobile',
+      ...(voiceContext ? { voice_context: voiceContext } : {}),
       ...(busy ? { queued: true } : {})
     })
 

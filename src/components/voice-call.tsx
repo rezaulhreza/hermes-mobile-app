@@ -8,11 +8,12 @@ import { requestSummary } from '@/core/requests'
 import type { TranscriptItem } from '@/core/transcript'
 import { callTimer, type CallPhase, PHASE_HEADING, PHASE_HINT } from '@/core/voice'
 import { $requests } from '@/store/requests'
-import { $call, type Call, endCall, interruptCall, setCallMuted, showCallFull } from '@/store/voice'
+import { $call, $engines, type Call, endCall, interruptCall, restartCall, setCallMuted, showCallFull } from '@/store/voice'
 import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { IconButton } from './ui'
+import { EngineChoices } from './voice-engines'
 
 interface Props {
   sessionId: string
@@ -91,6 +92,8 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
   // The microphone is open in every phase of a duplex call, so the circle always follows the voice of the user.
   const open = !call.muted && call.phase !== 'connecting'
   const hide = () => showCallFull(false)
+  const [choosing, setChoosing] = useState(false)
+  const engineLabel = useStore($engines)?.find(choice => choice.name === call.engine)?.label ?? 'Voice'
 
   return (
     <Modal animationType="slide" onRequestClose={hide} presentationStyle="fullScreen" visible>
@@ -105,6 +108,33 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
           </Text>
           <Text style={[styles.timer, { color: t.ink }]}>{callTimer(seconds)}</Text>
         </View>
+
+        <Pressable
+          accessibilityHint="Choose another speech engine for this call"
+          accessibilityLabel="Speech engine"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => setChoosing(open => !open)}
+          style={[styles.engine, { backgroundColor: t.soft }]}
+        >
+          <Feather color={t.muted} name="radio" size={14} />
+          <Text style={[type.small, { color: t.ink }]}>{engineLabel}</Text>
+          <Feather color={t.muted} name={choosing ? 'chevron-up' : 'chevron-down'} size={14} />
+        </Pressable>
+
+        {choosing ? (
+          <View style={[styles.engines, { backgroundColor: t.paper, borderColor: t.line }]}>
+            <EngineChoices
+              onChoose={choice => {
+                setChoosing(false)
+
+                if (choice.name !== call.engine) {
+                  void restartCall().catch(() => undefined)
+                }
+              }}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.stage}>
           <Pressable
@@ -211,6 +241,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg },
   sub: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.xs },
   timer: { fontFamily: MONO, fontSize: 13, fontVariant: ['tabular-nums'] },
+  engine: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: space.xs, marginLeft: space.lg, marginTop: space.sm, paddingHorizontal: space.md, minHeight: 32, borderRadius: 16 },
+  engines: { marginHorizontal: space.lg, marginTop: space.sm, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg, paddingHorizontal: space.xl },
   halo: { width: ORB + 40, height: ORB + 40, borderRadius: (ORB + 40) / 2, alignItems: 'center', justifyContent: 'center' },
   orb: { width: ORB, height: ORB, borderRadius: ORB / 2, alignItems: 'center', justifyContent: 'center' },

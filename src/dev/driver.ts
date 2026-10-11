@@ -18,6 +18,7 @@ import { $requests } from '@/store/requests'
 import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
+import { GptLiveEngine } from '@/store/voice-gpt-live'
 import { pcmBytes } from '@/core/live-voice'
 import { $call, $dictation, $engines, injectSpeech, setCallMuted } from '@/store/voice'
 import { $preferences, setPreference } from '@/store/preferences'
@@ -129,6 +130,32 @@ const helpers = {
   voiceTrace,
   setPreference,
   setWake,
+  /** Start the gpt-live engine with no call, to see how far a host with no OpenAI key lets it go. Resolves with what happened. */
+  gptLive: async () => {
+    const seen: string[] = []
+    const note = (name: string) => (...values: unknown[]) => void seen.push(`${name} ${values.join(' ')}`)
+    const engine = new GptLiveEngine(currentApi()!, () => [], {
+      partial: note('partial'),
+      hearing: note('hearing'),
+      barge: note('barge'),
+      transcribing: note('transcribing'),
+      utterance: note('utterance'),
+      stopWord: note('stopWord'),
+      changed: note('changed'),
+      lost: note('lost')
+    })
+
+    try {
+      await engine.start()
+      seen.push('started')
+    } catch (error) {
+      seen.push(`start failed: ${String(error)}`)
+    }
+
+    engine.stop()
+
+    return seen
+  },
   /** Say a recording into the call with the microphone muted: base64 of mono int16 PCM at 16 kHz. See `scripts/say-to-call.sh`. */
   hear: (base64: string) => {
     setCallMuted(true)

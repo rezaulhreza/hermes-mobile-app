@@ -17,16 +17,25 @@ export interface EngineEvents {
   barge(): void
   /** A recording is at the backend, which writes it down. */
   transcribing(): void
-  /** The user's turn ended with these words. An empty text means nothing was said. */
-  utterance(text: string, turn: UserTurn): void
+  /**
+   * The user's turn ended with these words. An empty text means nothing was
+   * said. `context` is the recent spoken exchange, for the model only.
+   */
+  utterance(text: string, turn: UserTurn, context?: string): void
+  /** The user said a phrase that ends the call. */
+  stopWord(): void
   /** The voice is busy or quiet now. Read `engine.speaking()`. */
   changed(): void
-  /** The engine cannot go on. */
-  lost(message: string): void
+  /** Something failed. `ended` says the engine cannot go on: the call is over. */
+  lost(message: string, ended?: boolean): void
 }
 
 export interface VoiceEngine {
   readonly name: EngineName
+  /** The engine has the microphone and the speaker itself (WebRTC). The call then does not open its own audio. */
+  readonly ownsAudio?: boolean
+  /** For an engine that has the microphone itself. */
+  setMuted?(muted: boolean): void
   start(): Promise<void>
   stop(): void
   /** One frame of the microphone: mono int16 PCM at 16 kHz. */

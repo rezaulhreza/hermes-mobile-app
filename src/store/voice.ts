@@ -34,6 +34,7 @@ import {
   toolLine,
   type UserTurn
 } from '@/core/live-voice'
+import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
 import { requestSummary } from '@/core/requests'
 import { advanceListen, audioExtension, base64Bytes, type CallPhase, dataUrlParts, levelFraction, NEW_LISTEN, recordingMime, speakable } from '@/core/voice'
 import { duplexAudio } from '@/native/duplex-audio'
@@ -44,6 +45,7 @@ import { $preferences } from './preferences'
 import { $requests, answerRequest } from './requests'
 import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
 import type { EngineEvents, EngineName, VoiceEngine } from './voice-engine'
+import { GptLiveEngine } from './voice-gpt-live'
 import { RelayEngine } from './voice-relay'
 
 export interface Call {
@@ -66,6 +68,8 @@ export interface Call {
 }
 
 export const $call = atom<Call | null>(null)
+/** Why the last call ended by itself (a lost connection). Null after the user has read it. */
+export const $callEnded = atom<string | null>(null)
 /** One-shot dictation into the message field: off, the microphone is open, or the text is on its way. */
 export const $dictation = atom<'off' | 'listening' | 'transcribing'>('off')
 /** The key of the answer that is read aloud now, outside a call. */
@@ -244,9 +248,10 @@ export async function loadEngines(): Promise<EngineChoice[]> {
     throw new Error('Not connected to a Hermes workspace.')
   }
 
-  const [deepgram, config] = await Promise.all([
+  const [deepgram, config, live] = await Promise.all([
     deepgramStatus(api),
-    api.request<{ stt?: { streaming?: boolean } }>({ path: '/api/audio/voice-config', timeoutMs: 8000 }).catch(() => null)
+    api.request<{ stt?: { streaming?: boolean } }>({ path: '/api/audio/voice-config', timeoutMs: 8000 }).catch(() => null),
+    api.request<GptLiveStatus>({ path: '/api/audio/voice-live/status', timeoutMs: 8000 }).catch(() => null)
   ])
 
   host = { deepgram, liveStt: Boolean(config?.stt?.streaming) }
@@ -263,6 +268,12 @@ export async function loadEngines(): Promise<EngineChoice[]> {
       label: 'Hermes voice',
       detail: 'The speech providers of your Hermes host.',
       reason: null
+    },
+    {
+      name: 'gpt-live',
+      label: 'GPT-Live',
+      detail: 'OpenAI’s voice model talks with you and hands the work to your agent.',
+      reason: live?.available ? null : gptLiveReason(live)
     }
   ]
 
@@ -271,12 +282,27 @@ export async function loadEngines(): Promise<EngineChoice[]> {
   return choices
 }
 
+function gptLiveReason(status: GptLiveStatus | null): string {
+  if (!status) {
+    return 'This Hermes host has no GPT-Live.'
+  }
+
+  return /api key/i.test(status.reason ?? '') ? 'Needs an OpenAI API key on your Hermes host.' : status.reason || 'Not ready on this Hermes host.'
+}
+
 /** The engine a call starts with: the choice of the user when the host has it, else the first one that works. */
 function pickEngine(choices: readonly EngineChoice[]): EngineName {
   const wanted = $preferences.get().engine
   const usable = choices.filter(choice => !choice.reason)
 
   return usable.find(choice => choice.name === wanted)?.name ?? usable[0]?.name ?? 'relay'
+}
+
+/** The text turns of the chat, for a voice model that starts with the conversation so far. */
+function spokenTurns(sessionId: string): { role: 'assistant' | 'user'; text: string }[] {
+  return ($conversations.get()[sessionId]?.transcript.items ?? []).flatMap(item =>
+    item.kind === 'user' || item.kind === 'assistant' ? [{ role: item.kind, text: item.text }] : []
+  )
 }
 
 /** One turn of the agent, as the call follows it. */
@@ -361,7 +387,7 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
       tap()
     },
     transcribing: () => alive() && patch({ phase: 'transcribing' }),
-    utterance: (text, userTurn) => {
+    utterance: (text, userTurn, context) => {
       if (!alive()) {
         return
       }
@@ -370,15 +396,32 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
       refreshPhase()
 
       if (text) {
-        void onUtterance(sessionId, text, userTurn, alive).catch(error => patch({ error: message(error) }))
+        void onUtterance(sessionId, text, userTurn, alive, context).catch(error => patch({ error: message(error) }))
+      }
+    },
+    stopWord: () => {
+      if (alive()) {
+        void interruptIfBusy(sessionId).then(endCall)
       }
     },
     changed: () => alive() && refreshPhase(),
-    lost: text => alive() && patch({ error: text })
+    lost: (text, ended) => {
+      if (!alive()) {
+        return
+      }
+
+      if (ended) {
+        // The call cannot go on. The reason stays on the screen of the chat.
+        endCall()
+        $callEnded.set(text)
+      } else {
+        patch({ error: text })
+      }
+    }
   }
 }
 
-async function onUtterance(sessionId: string, text: string, userTurn: UserTurn, alive: () => boolean): Promise<void> {
+async function onUtterance(sessionId: string, text: string, userTurn: UserTurn, alive: () => boolean, context?: string): Promise<void> {
   if (approval) {
     return answerApproval(approval, text, userTurn)
   }
@@ -407,7 +450,7 @@ async function onUtterance(sessionId: string, text: string, userTurn: UserTurn, 
   turn = { done: false, muted: false, spoke: false, started: false }
   tap()
   refreshPhase()
-  await sendDraft(sessionId, text)
+  await sendDraft(sessionId, text, 'queue', context)
 }
 
 /** Stop the running turn and wait until it is gone, so the next message starts a turn of its own. */
@@ -596,13 +639,22 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     }
 
     const events = engineEvents(sessionId, mine)
-    const next: VoiceEngine = name === 'deepgram' && host?.deepgram ? new DeepgramEngine(api, host.deepgram, events) : new RelayEngine(api, host?.liveStt ?? false, events)
+    const next: VoiceEngine =
+      name === 'deepgram' && host?.deepgram
+        ? new DeepgramEngine(api, host.deepgram, events)
+        : name === 'gpt-live'
+          ? new GptLiveEngine(api, () => liveHistory(spokenTurns(sessionId)), events)
+          : new RelayEngine(api, host?.liveStt ?? false, events)
 
     patch({ engine: next.name })
-    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_WITH_ECHO_CANCELLING, speaker: true })
+    $callEnded.set(null)
+
+    if (!next.ownsAudio) {
+      await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_WITH_ECHO_CANCELLING, speaker: true })
+    }
 
     if (!alive()) {
-      return audio.stop()
+      return next.ownsAudio ? undefined : audio.stop()
     }
 
     if (fedOnly) {
@@ -611,7 +663,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     }
 
     engine = next
-    subscriptions = [
+    subscriptions = next.ownsAudio ? [] : [
       audio.addListener('onFrame', frame => {
         if (!alive()) {
           return
@@ -648,6 +700,15 @@ export async function startCall(sessionId: string, options: { greeting?: string 
   }
 }
 
+/** Go on with the same call on the engine the user just chose. */
+export async function restartCall(): Promise<void> {
+  const call = $call.get()
+
+  if (call) {
+    await startCall(call.sessionId)
+  }
+}
+
 export function endCall(): void {
   generation += 1
   stopPlayback?.()
@@ -671,6 +732,7 @@ export function endCall(): void {
 
 export function setCallMuted(muted: boolean): void {
   duplexAudio?.setMuted(muted)
+  engine?.setMuted?.(muted)
   patch({ muted, partial: '' })
 }
 
