@@ -27,6 +27,7 @@ import { $work } from '@/store/work'
 
 const PORT = 8099
 const REDIAL_MS = 1500
+const IDLE_MS = 4000
 const HOST_TEXT = 6
 
 interface Fiber {
@@ -224,17 +225,51 @@ function dial(): void {
   }
 
   const socket = new WebSocket(`ws://127.0.0.1:${PORT}`)
+  let pending = 0
+  let idle: ReturnType<typeof setTimeout> | null = null
+
+  // A script that ended with no close frame leaves this socket open and deaf. Drop a socket that is quiet after its last answer.
+  const watch = () => {
+    if (idle) {
+      clearTimeout(idle)
+    }
+
+    idle = pending ? null : setTimeout(drop, IDLE_MS)
+  }
+
+  // The close event of a deaf socket may never come, so the next dial does not wait for it.
+  const drop = () => {
+    socket.onclose = null
+    socket.onmessage = null
+    socket.close()
+    setTimeout(dial, REDIAL_MS)
+  }
+
+  const answer = (body: object) => {
+    pending -= 1
+    socket.send(JSON.stringify(body))
+    watch()
+  }
 
   socket.onmessage = event => {
     const { id, code } = JSON.parse(String(event.data)) as { id: number; code: string }
 
+    pending += 1
+    watch()
+
     // The script is the developer's own. Running its text is the purpose of this file.
     Promise.resolve((0, eval)(`(async h => (${code}))`)(helpers))
-      .then(value => socket.send(JSON.stringify({ id, value: value ?? null })))
-      .catch(error => socket.send(JSON.stringify({ id, error: String(error) })))
+      .then(value => answer({ id, value: value ?? null }))
+      .catch(error => answer({ id, error: String(error) }))
   }
 
-  socket.onclose = () => setTimeout(dial, REDIAL_MS)
+  socket.onclose = () => {
+    if (idle) {
+      clearTimeout(idle)
+    }
+
+    setTimeout(dial, REDIAL_MS)
+  }
 }
 
 dial()
