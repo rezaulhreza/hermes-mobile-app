@@ -32,6 +32,7 @@ import { RequestCard } from '@/components/request-card'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
+import { WorkStrip } from '@/components/work-sheet'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
@@ -318,6 +319,7 @@ export default function Chat() {
           </View>
         ))}
 
+        {sessionId ? <WorkStrip sessionId={sessionId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
 

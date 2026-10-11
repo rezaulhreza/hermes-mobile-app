@@ -43,6 +43,7 @@ import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
 import { currentApi, onGatewayEvent, rpc } from './link'
 import { $sessionQuery } from './sessions'
+import { seedTodos } from './work'
 
 export interface Conversation {
   sessionId: string
@@ -95,6 +96,7 @@ export async function resumeConversation(storedId: string, title = ''): Promise<
     info: result.info ?? {},
     transcript: transcriptFromHistory(result.messages ?? [], Boolean(result.running), result.queued?.user)
   })
+  seedTodos(result.session_id, result.todo_state)
 
   return result.session_id
 }

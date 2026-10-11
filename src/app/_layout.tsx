@@ -17,6 +17,7 @@ import { clearSessions, refreshSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
 import { clearVoice } from '@/store/voice'
 import { clearWake } from '@/store/wake'
+import { clearWork } from '@/store/work'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
@@ -46,6 +47,7 @@ export default function RootLayout() {
     clearPreviews()
     clearVoice()
     clearWake()
+    clearWork()
 
     if (workspace) {
       void openLink(workspace)
