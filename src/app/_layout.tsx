@@ -15,6 +15,7 @@ import { clearSchedules } from '@/store/cron'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { loadPreferences } from '@/store/preferences'
 import { clearProviders } from '@/store/providers'
+import { clearPush, installPush, registerPush } from '@/store/push'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
@@ -36,6 +37,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     void loadPreferences().then(loadWorkspaces)
+    installPush()
   }, [])
 
   // One link per active workspace. A switch drops every screen's data first,
@@ -54,6 +56,7 @@ export default function RootLayout() {
     clearBots()
     clearSchedules()
     clearProviders()
+    clearPush()
 
     if (workspace) {
       void openLink(workspace)
@@ -65,6 +68,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (linkState === 'open') {
       void refreshSessions()
+      void registerPush()
     }
   }, [linkState])
 

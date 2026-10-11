@@ -8,12 +8,14 @@
  * copy of it.
  */
 
+import * as Notifications from 'expo-notifications'
 import { router } from 'expo-router'
 
 import { $attachments, stage } from '@/store/attachments'
 import { $previews } from '@/store/browser'
-import { $conversations } from '@/store/chat'
+import { $conversations, $shownSession } from '@/store/chat'
 import { $linkState, currentApi, rpc } from '@/store/link'
+import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
 import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
@@ -130,6 +132,11 @@ const helpers = {
   /** The call audio, for a check of the microphone with no call. */
   audio: duplexAudio,
   voiceTrace,
+  /** The tap on a notification, which a script cannot make. */
+  openFromPush,
+  notifications: Notifications,
+  registerPush,
+  unregisterPush,
   setPreference,
   setWake,
   /** Start the gpt-live engine with no call, to see how far a host with no OpenAI key lets it go. Resolves with what happened. */
@@ -166,7 +173,7 @@ const helpers = {
 
     return 'fed'
   },
-  stores: { $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),

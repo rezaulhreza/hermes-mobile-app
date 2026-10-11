@@ -4,7 +4,7 @@
  * The stored id (the row in the session list) only opens a conversation.
  */
 
-import { map } from 'nanostores'
+import { atom, map } from 'nanostores'
 
 import type {
   CompleteSlashResult,
@@ -63,6 +63,9 @@ function patch(sessionId: string, change: (conversation: Conversation) => Conver
     $conversations.setKey(sessionId, change(current))
   }
 }
+
+/** The live session id of the conversation on screen now. A notification for it shows no banner. */
+export const $shownSession = atom<string | null>(null)
 
 /** The live session id of an open conversation, from its stored id. */
 export function liveSessionId(storedId: string): string | null {

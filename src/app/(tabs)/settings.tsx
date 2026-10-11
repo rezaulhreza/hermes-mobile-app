@@ -1,23 +1,34 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Button, Card } from '@/components/ui'
 import { HermesApi } from '@/core/api'
 import type { Workspace } from '@/core/workspaces'
 import { $linkState } from '@/store/link'
+import { $push, type PushState, unregisterPush } from '@/store/push'
 import { $workspaces, forgetWorkspace, switchWorkspace } from '@/store/workspaces'
 import { space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
 
+/** What the Notifications row says for each answer of the system. */
+const PUSH_TEXT: Record<PushState['permission'], (push: PushState) => string> = {
+  unknown: () => 'Checked when the workspace connects',
+  undetermined: () => 'Not asked yet',
+  denied: () => 'Off. Turn them on in the Settings app.',
+  unavailable: () => 'This build has no notifications',
+  granted: push => (push.error ? `On, but this host did not take the phone: ${push.error}` : push.registered ? 'On. Hermes tells you when it needs you.' : 'On. Not registered with this host yet.')
+}
+
 export default function Settings() {
   const t = useTheme()
   const { workspaces, activeId } = useStore($workspaces)
   const linkState = useStore($linkState)
+  const push = useStore($push)
 
   const signOut = (workspace: Workspace) =>
     Alert.alert(`Sign out of ${workspace.label}?`, 'This removes the workspace and its password from this device.', [
@@ -28,7 +39,11 @@ export default function Settings() {
         onPress: async () => {
           // Revoke on the backend first: a session cookie left alive still
           // grants access to the machine. The local removal happens either way.
-          await new HermesApi(workspace).signOut()
+          const backend = new HermesApi(workspace)
+
+          // While the cookie still works: this phone must get no notification of a host it left.
+          await unregisterPush(backend, workspace.id)
+          await backend.signOut()
           await forgetWorkspace(workspace.id)
         }
       }
@@ -124,6 +139,22 @@ export default function Settings() {
               </Text>
             </View>
             <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+          <Pressable
+            accessibilityHint="Opens the notification settings of this app"
+            accessibilityLabel="Notifications"
+            accessibilityRole="button"
+            onPress={() => void Linking.openSettings()}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="bell" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Notifications</Text>
+              <Text numberOfLines={2} style={[type.small, { color: push.error ? t.red : t.muted }]}>
+                {PUSH_TEXT[push.permission](push)}
+              </Text>
+            </View>
+            <Feather color={t.muted} name="external-link" size={18} />
           </Pressable>
         </Card>
 

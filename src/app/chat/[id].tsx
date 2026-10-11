@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { useStore } from '@nanostores/react'
-import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -43,6 +43,7 @@ import type { Delivery, TranscriptItem } from '@/core/transcript'
 import { $attachments, addAttachments, type AttachSource, clipboardHasImage, removeAttachment } from '@/store/attachments'
 import {
   $conversations,
+  $shownSession,
   completeDraft,
   type Completions,
   type DraftEffect,
@@ -120,6 +121,14 @@ export default function Chat() {
   const list = useRef<FlatList<TranscriptItem>>(null)
 
   const opened = Boolean(conversation)
+
+  useFocusEffect(
+    useCallback(() => {
+      $shownSession.set(sessionId ?? null)
+
+      return () => $shownSession.set(null)
+    }, [sessionId])
+  )
 
   useEffect(() => {
     if (opened || linkState !== 'open') {
