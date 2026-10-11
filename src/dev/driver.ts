@@ -14,7 +14,7 @@ import { router } from 'expo-router'
 import { $attachments, stage } from '@/store/attachments'
 import { $previews } from '@/store/browser'
 import { $conversations, $shownSession } from '@/store/chat'
-import { $linkState, currentApi, rpc } from '@/store/link'
+import { $linkState, currentApi, onGatewayEvent, rpc } from '@/store/link'
 import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
 import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
@@ -123,8 +123,34 @@ function pressOne(hit: Fiber | undefined, what: string): string {
   return `pressed: ${nameOf(hit)}`
 }
 
+/** The last gateway events whose type starts with the traced prefix, each cut to a readable length. */
+const traced: string[] = []
+const TRACE_ROWS = 60
+const TRACE_CHARS = 1200
+let stopTrace: (() => void) | null = null
+
 const helpers = {
   router,
+  /** Record gateway events by the start of their type (`h.trace("tool.")`); `h.traced()` reads them. `h.trace()` stops. */
+  trace: (prefix?: string) => {
+    stopTrace?.()
+    stopTrace = null
+    traced.length = 0
+
+    if (prefix === undefined) {
+      return 'trace off'
+    }
+
+    stopTrace = onGatewayEvent(event => {
+      if (event.type.startsWith(prefix)) {
+        traced.push(JSON.stringify(event).slice(0, TRACE_CHARS))
+        traced.splice(0, Math.max(0, traced.length - TRACE_ROWS))
+      }
+    })
+
+    return `tracing ${prefix}`
+  },
+  traced: () => traced,
   rpc,
   api: currentApi,
   /** Stage a file by its path, past the native picker that a script cannot use. */
