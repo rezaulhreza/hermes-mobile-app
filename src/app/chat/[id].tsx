@@ -110,7 +110,6 @@ export default function Chat() {
   const [putAway, setPutAway] = useState<string | null>(null)
   const previewOpen = Boolean(previewUrl) && putAway !== previewUrl
   // The list follows new text only while the user is at the end. A user who scrolled up is reading.
-  const atEnd = useRef(true)
   const [awayFromEnd, setAwayFromEnd] = useState(false)
   const sessions = useStore($sessions)
   const insets = useSafeAreaInsets()
@@ -141,21 +140,22 @@ export default function Chat() {
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
   const finals = useMemo(() => finalAnswerKeys(transcript?.items ?? [], running), [transcript?.items, running])
+  // The list is inverted: the newest row is its first row. It opens at the newest message with
+  // only the rows on screen drawn. A list in reading order drew every row of a long chat to get there.
+  const newestFirst = useMemo(() => [...(transcript?.items ?? [])].reverse(), [transcript?.items])
 
   // Read the position only after the user moved the list. The list also moves while its rows
   // are measured, and that must not count as "the user scrolled up".
   const onUserScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
-    const away = contentSize.height - layoutMeasurement.height - contentOffset.y > END_SLACK
+    // In an inverted list the newest message is at offset 0.
+    const away = event.nativeEvent.contentOffset.y > END_SLACK
 
-    atEnd.current = !away
     setAwayFromEnd(away)
   }
 
   const toEnd = () => {
-    atEnd.current = true
     setAwayFromEnd(false)
-    list.current?.scrollToEnd({ animated: true })
+    list.current?.scrollToOffset({ offset: 0, animated: true })
   }
   const attachments = useStore($attachments)[sessionId ?? '']
   const staged = attachments ?? NO_ATTACHMENTS
@@ -227,8 +227,8 @@ export default function Chat() {
     setDraft('')
     setCompletions(null)
     // The user's own message is the newest row. Show it, wherever the list was.
-    atEnd.current = true
     setAwayFromEnd(false)
+    list.current?.scrollToOffset({ offset: 0, animated: false })
     void sendDraft(sessionId, text, mode).then(apply)
   }
 
@@ -297,14 +297,19 @@ export default function Chat() {
             <FlatList
               ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
               contentContainerStyle={styles.transcript}
-              data={transcript.items}
+              data={newestFirst}
+              initialNumToRender={12}
+              inverted={newestFirst.length > 0}
               keyExtractor={item => item.key}
               keyboardDismissMode="interactive"
-              onContentSizeChange={() => atEnd.current && list.current?.scrollToEnd({ animated: false })}
+              // A user who reads older rows stays there while the answer grows under them.
+              maintainVisibleContentPosition={awayFromEnd ? { minIndexForVisible: 0 } : undefined}
+              maxToRenderPerBatch={8}
               onMomentumScrollEnd={onUserScroll}
               onScrollEndDrag={onUserScroll}
               ref={list}
               renderItem={({ item }) => <Row final={finals.has(item.key)} item={item} onOpen={setViewing} onTool={setTool} />}
+              windowSize={7}
             />
             {awayFromEnd ? (
               <View style={styles.toEnd}>
