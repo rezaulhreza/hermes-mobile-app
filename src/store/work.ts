@@ -54,6 +54,11 @@ export async function stopHelper(sessionId: string, helperId: string): Promise<b
   return (await rpc<SubagentInterruptResult>('subagent.interrupt', { session_id: sessionId, subagent_id: helperId })).found
 }
 
+/** Drop the plan and the helpers of one conversation that closed. */
+export function forgetWork(sessionId: string): void {
+  $work.setKey(sessionId, undefined as unknown as Work)
+}
+
 export function clearWork(): void {
   $work.set({})
 }

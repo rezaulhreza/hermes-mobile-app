@@ -43,7 +43,7 @@ import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
 import { currentApi, onGatewayEvent, rpc } from './link'
 import { $sessionQuery } from './sessions'
-import { seedTodos } from './work'
+import { forgetWork, seedTodos } from './work'
 
 export interface Conversation {
   sessionId: string
@@ -543,6 +543,22 @@ export async function loadToolOutput(storedId: string, toolId: string): Promise<
   }
 
   return storedToolOutput((await pending).find(message => message.role === 'tool' && message.tool_call_id === toolId)?.content)
+}
+
+/**
+ * Forget a conversation whose screen closed. Its rows are on the host; the
+ * screen resumes it by its stored id the next time. Without this, each open
+ * of a chat left one more copy of its rows in the store.
+ */
+export function closeConversation(sessionId: string): void {
+  const storedId = $conversations.get()[sessionId]?.storedId
+
+  if (storedId) {
+    storedMessages.delete(storedId)
+  }
+
+  $conversations.setKey(sessionId, undefined as unknown as Conversation)
+  forgetWork(sessionId)
 }
 
 export function clearConversations(): void {

@@ -46,6 +46,7 @@ import { $attachments, addAttachments, type AttachSource, clipboardHasImage, rem
 import {
   $conversations,
   $shownSession,
+  closeConversation,
   completeDraft,
   type Completions,
   type DraftEffect,
@@ -147,6 +148,38 @@ export default function Chat() {
       cancelled = true
     }
   }, [opened, linkState, params.id, params.title, params.profile])
+
+  // The socket dropped while this chat was open: the events of that time are
+  // lost, and a turn that ended in it would show as running for ever. Open
+  // the conversation again from the host when the link is back.
+  const dropped = useRef(false)
+
+  useEffect(() => {
+    if (linkState !== 'open') {
+      dropped.current = dropped.current || opened
+
+      return
+    }
+
+    if (!dropped.current || !sessionId) {
+      return
+    }
+
+    dropped.current = false
+
+    let cancelled = false
+
+    resumeConversation(params.id, params.title, params.profile)
+      .then(id => (cancelled ? closeConversation(id) : setSessionId(id)))
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [linkState, opened, sessionId, params.id, params.title, params.profile])
+
+  // The rows of a closed chat must not stay in memory.
+  useEffect(() => () => void (sessionId && closeConversation(sessionId)), [sessionId])
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
