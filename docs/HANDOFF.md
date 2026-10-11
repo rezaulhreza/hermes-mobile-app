@@ -81,6 +81,17 @@ What to take over at the switch, and where each value is:
   changes the running backend at its next start.
 - Remove test data from the owner's Hermes after each check and say what
   is left.
+- The Hermes host may be Linux or Windows, not only this Mac (owner,
+  2026-10-09). The app must not assume a Mac host, and a host-side change
+  must be portable or say its Linux and Windows form.
+- A change to the Hermes backend is a PATCH, small and recorded: the ledger
+  is `scripts/local-features/README.md` in `~/Developer/hermes-mobile` (what,
+  why, how to tell that upstream fixed it, when to drop it). Add a row and a
+  numbered `.patch` file for every backend change. The owner updates Hermes
+  from upstream; an update must be able to keep or drop each patch.
+- A tap on a notification opens the EXACT place where the user answers, and
+  the text names the bot by its readable name. Every request that waits for
+  the owner (approval, question, secret, sudo, vault) sends a push.
 - Builds are local: `npx expo run:ios` / `eas build --local`. No EAS cloud.
 - Near 500k tokens of context, stop and update this file.
 - Commits are atomic, imperative mood, no AI attribution lines.
@@ -432,6 +443,52 @@ Done on 2026-10-09, sixth session. Checked in the Simulator:
   mode (`playbackOnly`, no microphone opened): sound about 1.8 s after the
   tap; the same button stops it.
 
+- Push notifications (item 6), on the placeholder bundle ID: the permission,
+  the Settings row, the banner rule (a simulated push for the chat on screen
+  shows no banner; one for another chat shows), the register and unregister
+  requests against the real backend with a throwaway token, and the tap: a
+  real `clarify` request waited, the app was started cold, and the tap path
+  opened the exact chat with its request card (`h.openFromPush`).
+- The chat list is an inverted virtual list (the newest row first).
+
+Push, what is left for the release item (needs a phone and the old bundle ID):
+a real token (a Simulator gives 160 hex characters; the backend takes only
+64), a real push from the backend, a tap on a real banner, a cold start from
+a tap (`getLastNotificationResponse`), and the `aps-environment` value of a
+release build (the plugin writes `development`; a TestFlight build needs
+`production`: set `"mode": "production"` on the `expo-notifications` plugin
+or let the export set it, and check the built entitlements).
+
+Backend work of the sixth session, on the LOCAL branch `native-app/backend`
+of `~/Developer/hermes-mobile` (not pushed; the worktree is on that branch, so
+the phone's backend on port 9130 runs it):
+- `56f3e7124e` the push text names the bot by its roster title ("Manager",
+  not "default") and each request kind has its own words. Patch
+  `scripts/local-features/0004-push-readable-names.patch`.
+- `2dc096f85f` and one more: the patch ledger `scripts/local-features/README.md`.
+- Host config: `push.kinds` in `~/.hermes/config.yaml` now lists all
+  human-facing kinds (before: the default `clarify`, `approval`, `mention`).
+  Backup: `~/.hermes/backups/voice-speed-2026-10-09/config.before-push-kinds.yaml`.
+- A stale `index.lock` (2 hours old, no holder) was removed from the git
+  directory of that worktree.
+- FINDING for the owner: the live install `~/.hermes/hermes-agent` (`main`,
+  the backend on port 9119) carries NO local patch since its update on
+  2026-10-07 21:48: no lease fix, no push. Nothing was applied there. See
+  `~/.hermes/hermes-upgrade-in-progress.md`, section 2026-10-09.
+
+Open memory finding: about 4 MB stays after each open of a LONG chat (151
+rows) in a development build; a short chat and a light screen keep nothing;
+the JavaScript heap grows only 0.4 MB an open. Before the inverted list it
+was 8 MB. Measure again in the release build. If it stays, use Instruments
+(Allocations) on the Simulator: the growth is native, per drawn row.
+
+How to get past the system's "Allow notifications" alert with no tap: copy
+the entry of another app that has the permission inside
+`<device>/data/Library/BulletinBoard/VersionedSectionInfo.plist` to this
+app's bundle ID (the two IDs must have the same length, the value is a
+binary plist with the ID inside), with the Simulator shut down. A simulated
+push: `xcrun simctl push <device> com.example.hermesnative payload.json`.
+
 NOT checked on a real phone, and only a phone can show them: echo
 cancellation (the Simulator's microphone was muted in the checks, see below),
 a call with the screen locked, the earpiece and a headset, the wake word in a
@@ -588,12 +645,12 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `components/work-sheet.tsx`). Left: check steer and stop on a helper that
    runs long, the spawn tree (`spawn_tree.*`), failed async delegations
    (`delegations` of `subagent.list`), `delegation.pause`.
-6. **Push notifications (iOS)**: expo-notifications, register the APNs token
-   with `POST /api/push/register`, open the named session on tap. Use the
-   old app's push setup, not a new key: see "This app replaces the old one".
-   A push test needs the old app's bundle ID, so it needs the owner's word. Backend
-   code: `hermes_cli/push/` and `hermes_cli/web_routers/push.py` in the Hermes
-   repo. Sandbox vs production environment must match the build type.
+6. **Push notifications (iOS)**: DONE on the placeholder bundle ID
+   (`core/push.ts`, `store/push.ts`). Left for the release item: see "Push,
+   what is left" above. A possible next step, not asked for yet: answer an
+   approval from the notification itself (Approve / Deny buttons). It needs
+   `aps.category` in the backend payload (a patch) and a background answer
+   path in the app.
 7. **Voice**: DONE in the Simulator: full duplex, live words, speech while
    the answer streams, barge-in, wake word, gpt-live (built, see what is
    untested above), background audio. Left:
@@ -608,8 +665,11 @@ Each item is one or more commits. Check the contract file for the RPC names.
      while it speaks.
    - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
      `store/voice-relay.ts` are first guesses.
-7b. **Bot screen (computer use)**: not started; needs a Linux or Docker host
-   to run. Plan: a card with `display.status`, a picture from
+7b. **Bot screen (computer use)**: NEXT (the owner's order: bot screen,
+   then the Workspace tab, then the "Left" lines, then items 11, 12, 14, 15,
+   then release). Not started; needs a Linux or Docker host to run. The owner
+   wants it to work on this Mac; the host may also be Linux or Windows, so
+   use the backend's own way (Xvnc or Docker), not a Mac-only method. Plan: a card with `display.status`, a picture from
    `display.thumbnail` every 2 s, "Take over" / "Hand back" with
    `display.lease.acquire` / `.release`, then the live screen with noVNC in a
    WebView on `/api/display/ws` (ticket from `display.observe`).
@@ -630,7 +690,7 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `/api/cron/delivery-targets`), a schedule for another bot than the main
    one (the create form sends no profile), blueprints
    (`/api/cron/blueprints`), the whole text of a past run.
-10. **Workspace tab**: NEXT. Not started. File tree with edit and save (REST `files` router),
+10. **Workspace tab**: Not started. File tree with edit and save (REST `files` router),
     terminal (interactive; a small xterm WebView is acceptable here, or a
     native text view over `agent.terminal.output` + `shell.exec`), preview
     (WebView onto the backend preview host, `preview.*` events, take over and
