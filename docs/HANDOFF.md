@@ -727,9 +727,10 @@ last, then ask about the notification buttons.
 
 1. **Finish the device check**: the "Not checked yet" list above.
 2. **Chat quality**: DONE (tables, tool detail sheet, copy and share,
-   scroll-to-newest button, reading position). Left: haptics (needs
-   expo-haptics and a native build), copy for a user message, syntax colour
-   in code blocks. Also left: a faster open of a long chat (the resume
+   scroll-to-newest button, reading position; seventh session: haptics
+   (`native/haptics.ts`; the pod was in the build already), a long press
+   copies a user message, colour in code blocks (`core/highlight.ts`)).
+   Left: a faster open of a long chat (the resume
    answer is up to 1 MB; try `inline_images: false`, `defer_history` or a
    page of history), a capture picture inside the tool row and the tool
    sheet (`result.screenshot_path`), a check that a host file exists before
@@ -854,7 +855,11 @@ last, then ask about the notification buttons.
     keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Left: custom
     endpoints (`/api/providers/custom-endpoints`), the auxiliary models
     (`POST /api/model/set` with `scope: "auxiliary"`), a key check before the
-    save (`/api/providers/validate`), memory, notifications, appearance.
+    save (`/api/providers/validate`), memory, notifications. Appearance is
+    DONE (seventh session): System, Light or Dark in Settings, stored in the
+    preferences and applied with `Appearance.setColorScheme` (the value for
+    "system" is `'unspecified'` in this React Native, not null). Every new
+    screen must be checked in dark mode too (the owner asked for both).
 14. **Ops**: System (gateway status, logs, restart, update), Usage (tokens,
     cost), Maintenance (doctor, audit, backup, debug share, curator, memory
     reset), session import (`session.foreign.*`).
