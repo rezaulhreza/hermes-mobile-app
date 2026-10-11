@@ -11,6 +11,7 @@ import { clearBots } from '@/store/bots'
 import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
+import { clearSchedules } from '@/store/cron'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { loadPreferences } from '@/store/preferences'
 import { clearProviders } from '@/store/providers'
@@ -51,6 +52,7 @@ export default function RootLayout() {
     clearWake()
     clearWork()
     clearBots()
+    clearSchedules()
     clearProviders()
 
     if (workspace) {
@@ -89,6 +91,7 @@ export default function RootLayout() {
           <Stack.Screen name="voice" />
           <Stack.Screen name="providers" />
           <Stack.Screen name="keys" />
+          <Stack.Screen name="cron" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>

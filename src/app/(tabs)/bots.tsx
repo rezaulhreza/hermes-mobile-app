@@ -67,6 +67,7 @@ export default function Bots() {
     <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={styles.top}>
         <Text style={[type.title, styles.fill, { color: t.ink }]}>Bots</Text>
+        <IconButton icon="clock" label="Schedules" onPress={() => router.push('/cron')} />
         <IconButton disabled={!bots} filled icon="plus" label="Add a bot" onPress={() => setAdding(true)} />
       </View>
 
@@ -312,7 +313,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   shrink: { flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm },
+  top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },
   content: { padding: space.lg, gap: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },
   search: { minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, marginBottom: space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },

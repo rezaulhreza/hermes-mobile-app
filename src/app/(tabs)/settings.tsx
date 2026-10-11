@@ -89,6 +89,22 @@ export default function Settings() {
             </View>
             <Feather color={t.muted} name="chevron-right" size={20} />
           </Pressable>
+          <Pressable
+            accessibilityHint="Work your agent does at a time, with nobody there"
+            accessibilityLabel="Schedules"
+            accessibilityRole="button"
+            onPress={() => router.push('/cron')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="clock" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Schedules</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                Work your agent does at a time, with nobody there
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
         </Card>
 
         <Text style={[type.small, styles.section, { color: t.muted }]}>This phone</Text>
