@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Keyboard,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   KeyboardAvoidingView,
@@ -67,6 +66,7 @@ import { $screenHold } from '@/store/screen'
 import { $sessions } from '@/store/sessions'
 import { $call, $callEnded, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
+import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
 
 export default function Chat() {
@@ -561,20 +561,6 @@ const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
   { id: 'files', label: 'Choose a file', icon: 'file' },
   { id: 'clipboard', label: 'Paste a picture', icon: 'clipboard' }
 ]
-
-function useKeyboardOpen(): boolean {
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    // iOS says "will", so the layout moves with the keyboard. Android only says "did".
-    const [show, hide] = Platform.OS === 'ios' ? (['keyboardWillShow', 'keyboardWillHide'] as const) : (['keyboardDidShow', 'keyboardDidHide'] as const)
-    const subscriptions = [Keyboard.addListener(show, () => setOpen(true)), Keyboard.addListener(hide, () => setOpen(false))]
-
-    return () => subscriptions.forEach(subscription => subscription.remove())
-  }, [])
-
-  return open
-}
 
 const DELIVERY_LABEL: Record<Delivery, string> = {
   queued: 'Queued. Runs after this turn.',

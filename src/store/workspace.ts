@@ -195,6 +195,7 @@ export async function runCommand(command: string): Promise<void> {
   }
 
   const key = (nextKey += 1)
+  const started = Date.now()
   const { cwd } = terminal
   const target = cdTarget(command)
   const finish = (output: string, failed: boolean, nextCwd = cwd) => {
@@ -204,7 +205,7 @@ export async function runCommand(command: string): Promise<void> {
       $terminal.set({
         cwd: nextCwd,
         running: false,
-        entries: current.entries.map(entry => (entry.key === key ? { ...entry, output, failed } : entry))
+        entries: current.entries.map(entry => (entry.key === key ? { ...entry, output, failed, seconds: (Date.now() - started) / 1000 } : entry))
       })
     }
   }

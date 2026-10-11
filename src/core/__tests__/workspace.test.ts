@@ -9,6 +9,7 @@ import {
   parentPath,
   pathUnderRoot,
   previewTarget,
+  recentCommands,
   resolveCdCommand,
   shellCommand,
   TERMINAL_KEEP,
@@ -80,6 +81,12 @@ describe('terminal', () => {
     expect(commandOutput({ stdout: 'a\n', stderr: 'warn\n', code: 0 })).toBe('a\nwarn')
     expect(commandOutput({ stdout: '', stderr: '', code: 0 })).toBe('(no output)')
     expect(commandOutput({ stdout: '', stderr: '', code: 2 })).toBe('(ended with code 2)')
+  })
+
+  it('offers the last different commands, the newest first', () => {
+    const entry = (key: number, command: string) => ({ key, cwd: '/', command, output: '', failed: false })
+
+    expect(recentCommands([entry(1, 'ls'), entry(2, 'git status'), entry(3, 'ls'), entry(4, ' ')])).toEqual(['ls', 'git status'])
   })
 
   it('keeps the last commands only', () => {

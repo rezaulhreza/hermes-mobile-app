@@ -146,6 +146,8 @@ export interface TerminalEntry {
   /** Null while the command runs. */
   output: string | null
   failed: boolean
+  /** How long the command ran, in seconds. */
+  seconds?: number
 }
 
 /** The terminal keeps the last commands only. An old one is in the host's own history, not in the phone's memory. */
@@ -153,6 +155,21 @@ export const TERMINAL_KEEP = 60
 
 export function withEntry(entries: readonly TerminalEntry[], entry: TerminalEntry): TerminalEntry[] {
   return [...entries, entry].slice(-TERMINAL_KEEP)
+}
+
+/** The last different commands, the newest first: one tap runs a command again. */
+export function recentCommands(entries: readonly TerminalEntry[], keep = 5): string[] {
+  const seen: string[] = []
+
+  for (let index = entries.length - 1; index >= 0 && seen.length < keep; index -= 1) {
+    const command = entries[index]!.command.trim()
+
+    if (command && !seen.includes(command)) {
+      seen.push(command)
+    }
+  }
+
+  return seen
 }
 
 /** What a finished command shows: its output, then its error text. An empty answer says so. */
