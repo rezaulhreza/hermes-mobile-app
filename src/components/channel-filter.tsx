@@ -1,8 +1,11 @@
 import { Feather } from '@expo/vector-icons'
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useStore } from '@nanostores/react'
+import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { type Bot, botInitials } from '@/core/bots'
 import { channel } from '@/core/sessions'
+import { $botAvatars } from '@/store/bots'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -15,11 +18,13 @@ interface ButtonProps {
   on: boolean
   /** The button opens a list. */
   opens?: boolean
+  /** Only the icon shows. The label is still what a screen reader says. */
+  compact?: boolean
   onPress: () => void
 }
 
 /** One filter of the chat list, under the search field. */
-export function FilterButton({ icon, label, on, opens, onPress }: ButtonProps) {
+export function FilterButton({ icon, label, on, opens, compact, onPress }: ButtonProps) {
   const t = useTheme()
   const ink = on ? t.accent : t.ink
 
@@ -29,12 +34,19 @@ export function FilterButton({ icon, label, on, opens, onPress }: ButtonProps) {
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: on ? t.accentBg : t.paper, borderColor: on ? t.accent : t.line }, pressed && styles.dim]}
+      style={({ pressed }) => [
+        styles.button,
+        !compact && styles.shrink,
+        { backgroundColor: on ? t.accentBg : t.paper, borderColor: on ? t.accent : t.line },
+        pressed && styles.dim
+      ]}
     >
       <Feather color={on ? t.accent : t.muted} name={icon} size={16} />
-      <Text numberOfLines={1} style={[type.small, styles.shrink, { color: ink, fontWeight: '600' }]}>
-        {label}
-      </Text>
+      {compact ? null : (
+        <Text numberOfLines={1} style={[type.small, styles.shrink, { color: ink, fontWeight: '600' }]}>
+          {label}
+        </Text>
+      )}
       {opens ? <Feather color={on ? t.accent : t.muted} name="chevron-down" size={14} /> : null}
     </Pressable>
   )
@@ -81,6 +93,75 @@ export function ChannelSheet({ visible, sources, active, onPick, onClose }: Shee
                   <Feather color={on ? t.accent : t.muted} name={icon} size={18} />
                 </View>
                 <Text style={[type.label, styles.fill, { color: t.ink }]}>{label}</Text>
+                {on ? <Feather color={t.accent} name="check" size={18} /> : null}
+              </Pressable>
+            )
+          }}
+        />
+      </View>
+    </Modal>
+  )
+}
+
+interface ProfileSheetProps {
+  visible: boolean
+  bots: readonly Bot[]
+  /** The profile that is shown now. Null shows all. */
+  active: string | null
+  onPick: (profile: string | null) => void
+  onClose: () => void
+}
+
+/** Whose conversations the list shows: every profile, or one bot. A new chat then starts with that bot. */
+export function ProfileSheet({ visible, bots, active, onPick, onClose }: ProfileSheetProps) {
+  const t = useTheme()
+  const insets = useSafeAreaInsets()
+  const avatars = useStore($botAvatars)
+  const rows: (Bot | null)[] = [null, ...bots]
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
+      <View style={[styles.fill, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
+        <View style={styles.head}>
+          <Text style={[type.heading, styles.fill, { color: t.ink }]}>Profiles</Text>
+          <IconButton icon="x" label="Close" onPress={onClose} />
+        </View>
+        <FlatList
+          data={rows}
+          keyExtractor={bot => bot?.name ?? 'all'}
+          renderItem={({ item }) => {
+            const on = (item?.name ?? null) === active
+            const picture = item ? avatars[item.name] : undefined
+
+            return (
+              <Pressable
+                accessibilityLabel={`Profile: ${item?.title ?? 'All profiles'}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                onPress={() => (onPick(item?.name ?? null), onClose())}
+                style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
+              >
+                {picture ? (
+                  <Image source={{ uri: picture }} style={styles.badge} />
+                ) : (
+                  <View style={[styles.badge, { backgroundColor: on ? t.accentBg : t.soft }]}>
+                    {item ? (
+                      <Text style={[type.small, { color: on ? t.accent : t.muted, fontWeight: '700' }]}>{botInitials(item.title)}</Text>
+                    ) : (
+                      <Feather color={on ? t.accent : t.muted} name="users" size={18} />
+                    )}
+                  </View>
+                )}
+                <View style={styles.fill}>
+                  <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+                    {item?.title ?? 'All profiles'}
+                  </Text>
+                  {item?.description ? (
+                    <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                      {item.description}
+                    </Text>
+                  ) : null}
+                </View>
                 {on ? <Feather color={t.accent} name="check" size={18} /> : null}
               </Pressable>
             )

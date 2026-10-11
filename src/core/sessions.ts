@@ -30,6 +30,18 @@ export interface SessionRow {
   pinned?: boolean | null
   archived?: boolean | null
   unread?: boolean | null
+  /** The profile (the bot) that owns the conversation. The list of all profiles sets it. */
+  profile?: string | null
+  is_default_profile?: boolean | null
+}
+
+/**
+ * The profile to name in a call for this conversation. A conversation of the
+ * host's own profile needs none; one of a bot is in that bot's store, and a
+ * call with no profile does not find it.
+ */
+export function rowProfile(row: Pick<SessionRow, 'profile' | 'is_default_profile'>): string | undefined {
+  return row.profile && !row.is_default_profile ? row.profile : undefined
 }
 
 /** `current`: the normal list. `archived`: only what the user put away. */
@@ -42,12 +54,20 @@ export interface SessionPage {
   /** Only the conversations from this source. The backend filters: a rare source is not in the newest rows. */
   source?: string | null
   offset?: number
+  /** Only the conversations of this profile (a bot). Null lists every profile. */
+  profile?: string | null
 }
 
-export function sessionListPath(view: SessionView, { source, offset = 0 }: SessionPage = {}): string {
-  const base = `/api/sessions?limit=${SESSION_PAGE}&order=recent&archived=${view === 'archived' ? 'only' : 'exclude'}`
+export function sessionListPath(view: SessionView, { source, offset = 0, profile }: SessionPage = {}): string {
+  // The list across profiles: each bot is a profile with its own store of conversations.
+  const base = `/api/profiles/sessions?limit=${SESSION_PAGE}&order=recent&archived=${view === 'archived' ? 'only' : 'exclude'}`
 
-  return `${base}${offset ? `&offset=${offset}` : ''}${source ? `&source=${encodeURIComponent(source)}` : ''}`
+  return [
+    base,
+    `&profile=${profile ? encodeURIComponent(profile) : 'all'}`,
+    offset ? `&offset=${offset}` : '',
+    source ? `&source=${encodeURIComponent(source)}` : ''
+  ].join('')
 }
 
 /** One more page under the rows on screen. A row that moved between two requests shows once. */

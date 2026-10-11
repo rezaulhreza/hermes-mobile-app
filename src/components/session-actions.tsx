@@ -65,20 +65,20 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props & { row
 
       case 'pin':
         return run(async () => {
-          await updateSession(row.id, { pinned: !row.pinned })
+          await updateSession(row, { pinned: !row.pinned })
           onClose()
         })
 
       case 'archive':
         return run(async () => {
-          await updateSession(row.id, { archived: !row.archived })
+          await updateSession(row, { archived: !row.archived })
           onClose()
           onRemoved?.()
         })
 
       case 'branch':
         return run(async () => {
-          const storedId = await branchSession(row.id)
+          const storedId = await branchSession(row)
 
           onClose()
           onBranched(storedId)
@@ -96,14 +96,14 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props & { row
 
   const rename = () =>
     run(async () => {
-      await updateSession(row.id, { title: title.trim() })
+      await updateSession(row, { title: title.trim() })
       onRenamed?.(title.trim())
       onClose()
     })
 
   const remove = () =>
     run(async () => {
-      await deleteSession(row.id)
+      await deleteSession(row)
       onClose()
       onRemoved?.()
     })

@@ -5,16 +5,18 @@ import { useMemo, useState } from 'react'
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { ChannelSheet, FilterButton } from '@/components/channel-filter'
+import { ChannelSheet, FilterButton, ProfileSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
-import { channel, filterSessions, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
+import { channel, filterSessions, rowProfile, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
+import { $bots } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
 import {
+  $sessionProfile,
   $sessionQuery,
   $sessions,
   $sessionsLoading,
@@ -23,6 +25,7 @@ import {
   $sessionView,
   loadMoreSessions,
   refreshSessions,
+  showSessionProfile,
   showSessionSource,
   showSessionView
 } from '@/store/sessions'
@@ -59,15 +62,23 @@ export default function Chats() {
   const sources = useStore($sessionSources)
   const activeSource = source
   const [picking, setPicking] = useState(false)
+  // Each bot is a profile with its own conversations. The list shows every profile, or one.
+  const profile = useStore($sessionProfile)
+  const bots = useStore($bots)
+  const botTitles = useMemo(() => new Map((bots ?? []).map(bot => [bot.name, bot.title])), [bots])
+  const shownBot = bots?.find(bot => bot.name === profile)
+  const [choosingProfile, setChoosingProfile] = useState(false)
   const sections = useMemo(() => sessionSections(filterSessions(sessions, query, activeSource)), [sessions, query, activeSource])
 
   const startChat = async () => {
     setStarting(true)
 
     try {
-      const { storedId } = await createConversation()
+      // With one bot shown, a new chat is a chat with that bot.
+      const owner = shownBot && !shownBot.isDefault ? shownBot.name : undefined
+      const { storedId } = await createConversation(owner)
 
-      router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1' } })
+      router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1', ...(owner ? { profile: owner } : {}) } })
     } finally {
       setStarting(false)
     }
@@ -134,7 +145,8 @@ export default function Chats() {
           onPress={() => setPicking(true)}
           opens
         />
-        <FilterButton icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
+        <FilterButton icon="users" label={shownBot?.title ?? 'All profiles'} on={Boolean(profile)} onPress={() => setChoosingProfile(true)} opens />
+        <FilterButton compact icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
       </View>
     </View>
   )
@@ -160,16 +172,17 @@ export default function Chats() {
         onEndReached={() => void loadMoreSessions()}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl onRefresh={refreshSessions} refreshing={loading} tintColor={t.muted} />}
-        renderItem={({ item }) => <SessionRow onActions={() => setActing(item)} row={item} />}
+        renderItem={({ item }) => <SessionRow bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)} onActions={() => setActing(item)} row={item} />}
         renderSectionHeader={({ section }) =>
           section.title ? <Text style={[type.small, styles.section, { color: t.muted, backgroundColor: t.bg }]}>{section.title}</Text> : null
         }
         sections={sections}
         stickySectionHeadersEnabled={false}
       />
+      <ProfileSheet active={profile} bots={bots ?? []} onClose={() => setChoosingProfile(false)} onPick={showSessionProfile} visible={choosingProfile} />
       <ChannelSheet active={source} onClose={() => setPicking(false)} onPick={showSessionSource} sources={sources} visible={picking} />
       <SessionActionsSheet
-        onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId } })}
+        onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId, ...(acting && rowProfile(acting) ? { profile: rowProfile(acting) } : {}) } })}
         onClose={() => setActing(null)}
         row={acting}
       />
@@ -177,7 +190,8 @@ export default function Chats() {
   )
 }
 
-function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
+/** `bot` names the owner of a row that is not the host's own profile, in the list of all profiles. */
+function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions: () => void }) {
   const t = useTheme()
   const preview = sessionPreview(row)
   const title = sessionTitle(row)
@@ -190,7 +204,7 @@ function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
       accessibilityRole="button"
       delayLongPress={350}
       onLongPress={onActions}
-      onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, title } })}
+      onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
       style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
     >
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
@@ -198,9 +212,11 @@ function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
         <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
           {title}
         </Text>
-        {row.title && preview ? (
+        {bot || (row.title && preview) ? (
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {preview}
+            {bot ? <Text style={{ color: t.accent, fontWeight: '600' }}>{bot}</Text> : null}
+            {bot && row.title && preview ? '  ·  ' : ''}
+            {row.title ? preview : ''}
           </Text>
         ) : null}
       </View>

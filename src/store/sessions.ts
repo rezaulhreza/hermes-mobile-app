@@ -4,6 +4,7 @@ import { atom } from 'nanostores'
 import type { SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
 import {
   exportFileName,
+  rowProfile,
   rowsInView,
   SESSION_PAGE,
   SESSION_SOURCE,
@@ -26,6 +27,8 @@ export const $sessionsError = atom<string | null>(null)
 export const $sessionView = atom<SessionView>('current')
 /** Show only the conversations from this source. Null shows all. */
 export const $sessionSource = atom<string | null>(null)
+/** Show only the conversations of this profile (a bot). Null shows every profile. */
+export const $sessionProfile = atom<string | null>(null)
 
 function api() {
   const current = currentApi()
@@ -60,7 +63,7 @@ async function probeSources(): Promise<void> {
   const counts = await Promise.all(
     SOURCES_TO_PROBE.map(source =>
       api()
-        .request<SessionList>({ path: `/api/sessions?limit=0&source=${source}` })
+        .request<SessionList>({ path: `/api/profiles/sessions?limit=0&profile=all&source=${source}` })
         .then(result => (result.total ? source : null))
         .catch(() => null)
     )
@@ -72,15 +75,16 @@ async function probeSources(): Promise<void> {
 export async function refreshSessions(): Promise<void> {
   const view = $sessionView.get()
   const source = $sessionSource.get()
+  const profile = $sessionProfile.get()
 
   $sessionsLoading.set(true)
 
   try {
-    const result = await api().request<SessionList>({ path: sessionListPath(view, { source }) })
+    const result = await api().request<SessionList>({ path: sessionListPath(view, { source, profile }) })
     const page = result.sessions ?? []
 
-    // The user can change the view or the source while the request runs. An answer for the other one is not shown.
-    if (view === $sessionView.get() && source === $sessionSource.get()) {
+    // The user can change the view, the source or the profile while the request runs. An answer for another one is not shown.
+    if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get()) {
       $sessions.set(rowsInView(page, view))
       $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > page.length)
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
@@ -105,16 +109,17 @@ export async function loadMoreSessions(): Promise<void> {
 
   const view = $sessionView.get()
   const source = $sessionSource.get()
+  const profile = $sessionProfile.get()
   const offset = $sessions.get().length
 
   loadingMore = true
 
   try {
-    const result = await api().request<SessionList>({ path: sessionListPath(view, { source, offset }) })
+    const result = await api().request<SessionList>({ path: sessionListPath(view, { source, offset, profile }) })
     const page = result.sessions ?? []
 
     // The offset counts the rows on screen. A refresh or another filter in the meantime makes this page wrong.
-    if (view === $sessionView.get() && source === $sessionSource.get() && offset === $sessions.get().length) {
+    if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get() && offset === $sessions.get().length) {
       $sessions.set(withSessionPage($sessions.get(), rowsInView(page, view)))
       $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > offset + page.length)
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
@@ -143,6 +148,15 @@ export function showSessionSource(source: string | null): void {
   }
 }
 
+/** Show the conversations of one profile (a bot), or of every profile with null. */
+export function showSessionProfile(profile: string | null): void {
+  if (profile !== $sessionProfile.get()) {
+    $sessionProfile.set(profile)
+    $sessions.set([])
+    void refreshSessions()
+  }
+}
+
 export function clearSessions(): void {
   $sessions.set([])
   $sessionsError.set(null)
@@ -150,6 +164,7 @@ export function clearSessions(): void {
   $sessionSources.set([])
   $sessionView.set('current')
   $sessionSource.set(null)
+  $sessionProfile.set(null)
   probed = false
 }
 
@@ -157,13 +172,14 @@ export function clearSessions(): void {
  * Change the title or a flag of a conversation. The list shows the change at
  * once and goes back to the backend's state if the backend refuses.
  */
-export async function updateSession(id: string, change: Pick<SessionRow, 'title' | 'pinned' | 'archived'>): Promise<void> {
+export async function updateSession(row: SessionRow, change: Pick<SessionRow, 'title' | 'pinned' | 'archived'>): Promise<void> {
   const before = $sessions.get()
 
-  $sessions.set(withSessionChange(before, id, change))
+  $sessions.set(withSessionChange(before, row.id, change))
 
   try {
-    await api().request({ path: `/api/sessions/${encodeURIComponent(id)}`, method: 'PATCH', body: change })
+    // This route reads the profile from the body, not from the address.
+    await api().request({ path: `/api/sessions/${encodeURIComponent(row.id)}`, method: 'PATCH', body: { ...change, profile: rowProfile(row) } })
   } catch (error) {
     $sessions.set(before)
     throw error
@@ -171,14 +187,19 @@ export async function updateSession(id: string, change: Pick<SessionRow, 'title'
 }
 
 /** Delete a conversation and its messages. The backend refuses while a turn writes to it. */
-export async function deleteSession(id: string): Promise<void> {
-  await api().request({ path: `/api/sessions/${encodeURIComponent(id)}`, method: 'DELETE' })
-  $sessions.set($sessions.get().filter(row => row.id !== id))
+export async function deleteSession(row: SessionRow): Promise<void> {
+  await api().request({ path: `/api/sessions/${encodeURIComponent(row.id)}`, method: 'DELETE', profile: rowProfile(row) })
+  $sessions.set($sessions.get().filter(other => other.id !== row.id))
 }
 
 /** Copy a stored conversation into a new one. Returns the stored id of the copy. */
-export async function branchSession(id: string): Promise<string> {
-  const result = await rpc<SessionBranchStoredResult>('session.branch_stored', { parent_session_id: id, source: SESSION_SOURCE })
+export async function branchSession(row: SessionRow): Promise<string> {
+  const profile = rowProfile(row)
+  const result = await rpc<SessionBranchStoredResult>('session.branch_stored', {
+    parent_session_id: row.id,
+    source: SESSION_SOURCE,
+    ...(profile ? { profile } : {})
+  })
 
   return result.stored_session_id || result.session_id
 }
@@ -192,8 +213,10 @@ export async function exportSession(row: SessionRow): Promise<string> {
   }
 
   const { workspace } = api()
+  const profile = rowProfile(row)
+  const query = profile ? `?profile=${encodeURIComponent(profile)}` : ''
 
-  await File.downloadFileAsync(`${workspace.baseUrl}/api/sessions/${encodeURIComponent(row.id)}/export`, target, { headers: workspace.headers })
+  await File.downloadFileAsync(`${workspace.baseUrl}/api/sessions/${encodeURIComponent(row.id)}/export${query}`, target, { headers: workspace.headers })
 
   return target.uri
 }

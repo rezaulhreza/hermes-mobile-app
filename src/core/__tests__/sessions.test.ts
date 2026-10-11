@@ -1,6 +1,7 @@
 import {
   channel,
   exportFileName,
+  rowProfile,
   rowsInView,
   filterSessions,
   sessionActions,
@@ -60,6 +61,18 @@ describe('filters', () => {
     expect(withSources(known, ['mobile', null, 'telegram', 'telegram'])).toEqual(['desktop', 'mobile', 'telegram'])
     // Nothing new: the same list, so a screen that reads it does not draw again.
     expect(withSources(known, ['desktop', undefined])).toBe(known)
+  })
+
+  it('lists every profile, or one bot', () => {
+    expect(sessionListPath('current')).toContain('/api/profiles/sessions?')
+    expect(sessionListPath('current')).toContain('&profile=all')
+    expect(sessionListPath('current', { profile: 'backend' })).toContain('&profile=backend')
+  })
+
+  it('names the profile of a conversation of a bot, and none for the host profile', () => {
+    expect(rowProfile({ profile: 'backend', is_default_profile: false })).toBe('backend')
+    expect(rowProfile({ profile: 'default', is_default_profile: true })).toBeUndefined()
+    expect(rowProfile({})).toBeUndefined()
   })
 
   it('asks the backend for one source and for the next page', () => {
