@@ -691,6 +691,19 @@ Each item is one or more commits. Check the contract file for the RPC names.
      `human`; `epoch` moves on each change), `display.observe` (the ticket),
      the event `display.lease`. The live screen is raw RFB over
      `/api/display/ws` (`hermes_cli/web_routers/display.py`).
+   - The viewer library: the desktop app uses `@novnc/novnc` 1.7.0
+     (`apps/desktop/package.json`). For the phone, bundle its `RFB` class
+     into one generated file with a script (like
+     `scripts/vendor-preview-engine.mjs`) and load it in a WebView whose
+     HTML has `baseUrl` = the workspace address, so the socket's Origin is
+     the host (`_ws_request_is_allowed` checks Host and Origin). The socket
+     address is `wss://<host>/api/display/ws?display_ticket=<ticket>`; the
+     ticket is single-use, 30 s, from `display.observe {profile}`, which
+     also gives the `viewer_id` for the lease. Close code 4000 means
+     another viewer took control, 4001 the screen is gone, 4401 get a new
+     ticket.
+   - NOT done yet: the screen bot (no profile was made, no host config was
+     changed for this item), the store, the phone view.
    - Phone view, planned: a card in the bot's page with the status; a
      picture from `display.thumbnail` every 2 s only while the card is on
      screen (stop the timer on blur); Start / Stop; "Take over" / "Hand
