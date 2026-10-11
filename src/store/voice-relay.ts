@@ -18,7 +18,7 @@ import { advanceListen, audioExtension, dataUrlParts, type Listen, NEW_LISTEN } 
 import { duplexAudio } from '@/native/duplex-audio'
 
 import { openSiblingSocket } from './link'
-import { type EngineEvents, SampleJoiner, type VoiceEngine } from './voice-engine'
+import { type EngineEvents, SampleJoiner, trace, type VoiceEngine } from './voice-engine'
 
 // The native level is the loudness of one frame, 0 to 1. A quiet room is under 0.03.
 const SPEECH_LEVEL = 0.07
@@ -28,9 +28,13 @@ const START_MS = 160
 const BARGE_MS = 320
 // A pause inside a sentence is shorter than this.
 const END_QUIET_MS = 900
+// With live words, a sentence that reads complete needs less quiet to end the turn.
+const END_QUIET_SENTENCE_MS = 550
 // A sound that never became speech is dropped after this much quiet.
 const NOISE_QUIET_MS = 700
 const PREROLL_FRAMES = 6
+// The host cuts a sentence when white space follows it. A sentence with nothing after it for this long is said now.
+const SENTENCE_FLUSH_MS = 150
 /** After text goes to the voice, sound is expected for this long. */
 const SOUND_EXPECTED_MS = 2500
 
@@ -45,6 +49,8 @@ interface Reply {
   closed: boolean
   /** The user stopped this reply. Its sound is dropped. */
   hushed: boolean
+  /** Sound has come for this reply. */
+  heard: boolean
 }
 
 export class RelayEngine implements VoiceEngine {
@@ -55,6 +61,7 @@ export class RelayEngine implements VoiceEngine {
   private playbackEndedAt = 0
   private said = 0
   private soundTimer: ReturnType<typeof setTimeout> | null = null
+  private flushTimer: ReturnType<typeof setTimeout> | null = null
 
   private preroll: Uint8Array[] = []
   private frames: Uint8Array[] | null = null
@@ -64,6 +71,10 @@ export class RelayEngine implements VoiceEngine {
   private finishNow = false
   private busy = false
   private stream: WebSocket | null = null
+  /** Live sessions in a row that the host refused. One refusal may be a slow provider; two means the host has no live words. */
+  private streamRefusals = 0
+  /** The live words read as a whole sentence. */
+  private sentenceHeard = false
   private streamFinal: ((text: string | null) => void) | null = null
 
   private reply: Reply | null = null
@@ -103,6 +114,13 @@ export class RelayEngine implements VoiceEngine {
     if (this.soundTimer) {
       clearTimeout(this.soundTimer)
       this.soundTimer = null
+    }
+  }
+
+  private cancelFlush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer)
+      this.flushTimer = null
     }
   }
 
@@ -168,7 +186,7 @@ export class RelayEngine implements VoiceEngine {
     }
 
     // The level as decibels: 0 is the loudest.
-    const step = advanceListen(this.listen, 20 * Math.log10(Math.max(level, 0.0001) / 6), FRAME_MS, END_QUIET_MS)
+    const step = advanceListen(this.listen, 20 * Math.log10(Math.max(level, 0.0001) / 6), FRAME_MS, this.sentenceHeard ? END_QUIET_SENTENCE_MS : END_QUIET_MS)
 
     this.listen = step.listen
 
@@ -186,6 +204,7 @@ export class RelayEngine implements VoiceEngine {
     this.listen = { ...NEW_LISTEN, loudMs: this.loudRun, totalMs: this.loudRun }
     this.loudRun = 0
     this.finishNow = false
+    this.sentenceHeard = false
 
     if (audible) {
       this.hush()
@@ -226,7 +245,14 @@ export class RelayEngine implements VoiceEngine {
       }
 
       // A turn that began under the voice may be the voice itself.
-      this.events.utterance(turn.duringPlayback && this.echo.isEcho(words, Date.now()) ? '' : words, turn)
+      const said = turn.duringPlayback && this.echo.isEcho(words, Date.now()) ? '' : words
+
+      this.events.utterance(said, turn)
+
+      if (said && this.active && !this.bySentence) {
+        // Dial the voice now, while the agent thinks: the first sentence then has no wait for a socket.
+        this.reply ??= this.openReply()
+      }
     } catch (error) {
       this.events.utterance('', turn)
       this.events.lost(error instanceof Error ? error.message : String(error))
@@ -249,12 +275,22 @@ export class RelayEngine implements VoiceEngine {
         const data = parse(String(event.data))
 
         if (data?.type === 'partial' && typeof data.text === 'string') {
+          this.streamRefusals = 0
+          this.sentenceHeard = /[.?!]$/.test(data.text.trim())
           this.events.partial(data.text)
         } else if (data?.type === 'final') {
           this.streamFinal?.(String(data.transcript ?? '').trim())
         } else if (data?.type === 'error') {
-          // This host has no live speech-to-text. The recording path takes over, now and for the rest of the call.
-          this.liveStt = false
+          // The recording path takes over for this turn, and for the rest of the call when the host refuses again.
+          trace(`transcribe-stream error ${String((data as { message?: unknown }).message ?? '')}`)
+          this.streamRefusals += 1
+          this.liveStt = this.streamRefusals < 2
+
+          if (this.stream === socket) {
+            this.stream = null
+          }
+
+          socket.close()
           this.streamFinal?.(null)
         }
       }
@@ -275,6 +311,7 @@ export class RelayEngine implements VoiceEngine {
     const socket = this.stream
 
     if (!socket || socket.readyState !== WebSocket.OPEN || !this.liveStt) {
+      trace(`transcribe-stream not ready ${socket?.readyState ?? 'none'}`)
       socket?.close()
       this.stream = null
 
@@ -325,7 +362,19 @@ export class RelayEngine implements VoiceEngine {
     const out = text + (final && this.reply ? '\n' : '')
 
     if (out) {
+      this.cancelFlush()
       this.send({ text: out })
+
+      // Not after a digit: "3." may be the start of "3.14".
+      if (/[^\d\s][.?!]["')\]]?$/.test(out)) {
+        this.flushTimer = setTimeout(() => {
+          this.flushTimer = null
+
+          if (this.active && this.reply && !this.reply.closed) {
+            this.send({ text: '\n' })
+          }
+        }, SENTENCE_FLUSH_MS)
+      }
     }
   }
 
@@ -378,6 +427,8 @@ export class RelayEngine implements VoiceEngine {
     const reply = this.reply
     const text = JSON.stringify(frame)
 
+    trace(`say ${text.slice(0, 60)}`)
+
     if (frame.text) {
       reply.text += frame.text
       this.said = Date.now()
@@ -398,7 +449,7 @@ export class RelayEngine implements VoiceEngine {
   }
 
   private openReply(): Reply {
-    const reply: Reply = { socket: null, queue: [], rate: 24_000, text: '', closed: false, hushed: false }
+    const reply: Reply = { socket: null, queue: [], rate: 24_000, text: '', closed: false, hushed: false, heard: false }
 
     void openSiblingSocket('/api/audio/speak-stream')
       .then(socket => {
@@ -411,12 +462,18 @@ export class RelayEngine implements VoiceEngine {
         socket.binaryType = 'arraybuffer'
         reply.socket = socket
         socket.onopen = () => {
+          trace('speak-stream open')
           reply.queue.forEach(text => socket.send(text))
           reply.queue = []
         }
         socket.onmessage = event => {
           if (typeof event.data !== 'string') {
             const pcm = this.samples.push(event.data as ArrayBuffer)
+
+            if (!reply.heard) {
+              reply.heard = true
+              trace(`speak-stream first bytes ${(event.data as ArrayBuffer).byteLength}`)
+            }
 
             if (pcm && this.active && !reply.hushed) {
               duplexAudio?.play(pcm, reply.rate)
@@ -428,9 +485,11 @@ export class RelayEngine implements VoiceEngine {
           const data = parse(event.data)
 
           if (data?.type === 'start' && typeof data.sample_rate === 'number') {
+            trace(`speak-stream pcm ${data.sample_rate}`)
             reply.rate = data.sample_rate
           } else if (data?.type === 'fallback' && !reply.hushed) {
             // Say this reply again by the other path, and use that path for the rest of the call.
+            trace('speak-stream fallback')
             this.bySentence = true
             this.closeReply(false)
             this.speakLines(this.sentences.feed(reply.text, reply.closed))
@@ -493,6 +552,8 @@ export class RelayEngine implements VoiceEngine {
 
   private closeReply(stop: boolean): void {
     const reply = this.reply
+
+    this.cancelFlush()
 
     this.reply = null
 
