@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { CodeText } from '@/components/markdown'
 import { IconButton, Notice } from '@/components/ui'
 import { fileSize } from '@/core/format'
 import { baseName, editProblem, type TextFile } from '@/core/workspace'
@@ -118,9 +119,7 @@ export default function FileScreen() {
         <ScrollView>
           {refusal ? <Text style={[type.small, styles.refusal, { color: t.muted }]}>{refusal}</Text> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text selectable style={[styles.mono, { color: t.ink }]}>
-              {file.text}
-            </Text>
+            <CodeText language={file.language ?? null} style={styles.mono} text={file.text} />
           </ScrollView>
         </ScrollView>
       )}

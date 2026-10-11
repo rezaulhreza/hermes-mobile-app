@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react'
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, ScrollView, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native'
 
+import { type CodeTokenKind, highlightCode } from '@/core/highlight'
 import { type Block, columnWidths, parseMarkdown, type Span } from '@/core/markdown'
-import { MONO, radius, space, type } from '@/theme/tokens'
+import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
@@ -72,9 +73,7 @@ function BlockView({ block, muted }: { block: Block; muted: boolean }) {
           {block.language ? <Text style={[styles.language, { color: t.muted }]}>{block.language}</Text> : null}
           {/* Code scrolls sideways: wrapping it would break its indentation. */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text selectable style={[styles.codeText, { color: t.ink }]}>
-              {block.text}
-            </Text>
+            <CodeText language={block.language} style={styles.codeText} text={block.text} />
           </ScrollView>
         </View>
       )
@@ -178,3 +177,25 @@ const styles = StyleSheet.create({
   tableLine: { borderTopWidth: StyleSheet.hairlineWidth },
   cell: { paddingHorizontal: space.md, paddingVertical: space.sm }
 })
+
+const CODE_COLOUR: Record<CodeTokenKind, keyof Palette> = { plain: 'ink', comment: 'muted', string: 'green', number: 'purple', keyword: 'accent' }
+
+/** Code with colour. The scan runs once for a text, not on every draw of the list. */
+export function CodeText({ text, language, style }: { text: string; language: string | null; style: StyleProp<TextStyle> }) {
+  const t = useTheme()
+  const tokens = useMemo(() => highlightCode(text, language), [text, language])
+
+  return (
+    <Text selectable style={[style, { color: t.ink }]}>
+      {tokens.map((token, index) =>
+        token.kind === 'plain' ? (
+          token.text
+        ) : (
+          <Text key={index} style={{ color: t[CODE_COLOUR[token.kind]] }}>
+            {token.text}
+          </Text>
+        )
+      )}
+    </Text>
+  )
+}

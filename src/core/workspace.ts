@@ -33,6 +33,8 @@ export interface TextFile {
   binary: boolean
   truncated: boolean
   byteSize: number
+  /** The language the host reads from the name: `json`, `python`. */
+  language?: string | null
 }
 
 const WINDOWS_PATH = /^[A-Za-z]:[\\/]/
