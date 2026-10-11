@@ -2,12 +2,13 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { ChannelSheet, FilterButton, ProfileSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
+import { botInitials } from '@/core/bots'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import {
@@ -23,7 +24,7 @@ import {
   withMessageHits
 } from '@/core/sessions'
 import { tap } from '@/native/haptics'
-import { $bots } from '@/store/bots'
+import { $botAvatars, $bots } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
@@ -187,7 +188,15 @@ export default function Chats() {
         onEndReached={() => void loadMoreSessions()}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl onRefresh={refreshSessions} refreshing={loading} tintColor={t.muted} />}
-        renderItem={({ item }) => <SessionRow bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)} onActions={() => setActing(item)} row={item} />}
+        renderItem={({ item }) => (
+          <SessionRow
+            bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)}
+            onActions={() => setActing(item)}
+            // In the list of every profile, each row shows whose conversation it is.
+            owner={profile ? undefined : (item.profile ?? undefined)}
+            row={item}
+          />
+        )}
         renderSectionHeader={({ section }) =>
           section.title ? <Text style={[type.small, styles.section, { color: t.muted, backgroundColor: t.bg }]}>{section.title}</Text> : null
         }
@@ -206,8 +215,10 @@ export default function Chats() {
 }
 
 /** `bot` names the owner of a row that is not the host's own profile, in the list of all profiles. */
-function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions: () => void }) {
+function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; owner?: string; onActions: () => void }) {
   const t = useTheme()
+  // The picture of the bot that owns the conversation: the same one the Bots tab shows.
+  const picture = useStore($botAvatars)[owner ?? '']
   const snippet = (row as SearchHit).snippet
   const preview = sessionPreview(row)
   const title = sessionTitle(row)
@@ -224,6 +235,15 @@ function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions
       style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
     >
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
+      {owner ? (
+        picture ? (
+          <Image accessibilityIgnoresInvertColors accessibilityLabel={bot ?? 'Main profile'} source={{ uri: picture }} style={styles.owner} />
+        ) : (
+          <View accessibilityLabel={bot ?? 'Main profile'} style={[styles.owner, styles.initials, { backgroundColor: t.soft }]}>
+            <Text style={[type.small, { color: t.muted, fontWeight: '700' }]}>{botInitials(bot ?? owner)}</Text>
+          </View>
+        )
+      ) : null}
       <View style={styles.fill}>
         <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
           {title}
@@ -276,6 +296,8 @@ const styles = StyleSheet.create({
   filters: { flexDirection: 'row', gap: space.sm },
   section: { fontWeight: '700', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
   unread: { width: 8, height: 8, borderRadius: 4 },
+  owner: { width: 34, height: 34, borderRadius: 17 },
+  initials: { alignItems: 'center', justifyContent: 'center' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
