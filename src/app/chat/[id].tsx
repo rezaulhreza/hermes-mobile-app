@@ -38,6 +38,7 @@ import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
+import { answerFiles } from '@/core/host-files'
 import { modelLabel } from '@/core/models'
 import { finalAnswerKeys, hasToolDetail } from '@/core/tools'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
@@ -542,6 +543,26 @@ const DELIVERY_LABEL: Record<Delivery, string> = {
   dropped: 'Not sent. The turn was stopped first.'
 }
 
+/**
+ * The words of the agent. A file on the host that the words name shows under
+ * them as a picture or a file row, because a host path opens nothing on a
+ * phone. The text is read for paths only when it is complete.
+ */
+function Answer({ text, streaming, onOpen }: { text: string; streaming: boolean; onOpen: (target: ViewerTarget) => void }) {
+  const shown = useMemo(() => (streaming ? { text, files: [] } : answerFiles(text)), [streaming, text])
+
+  if (!shown.files.length) {
+    return <Markdown text={shown.text} />
+  }
+
+  return (
+    <View style={styles.answerFiles}>
+      <Markdown text={shown.text} />
+      <SentAttachments items={shown.files} onOpen={index => onOpen({ items: shown.files, index })} />
+    </View>
+  )
+}
+
 interface RowProps {
   item: TranscriptItem
   /** This row is the answer that ends a turn. Copy and share sit under it. */
@@ -572,11 +593,11 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
     case 'assistant':
       return final ? (
         <View style={styles.answer}>
-          <Markdown text={item.text} />
+          <Answer onOpen={onOpen} streaming={item.streaming} text={item.text} />
           <AnswerActions id={item.key} text={item.text} />
         </View>
       ) : (
-        <Markdown text={item.text} />
+        <Answer onOpen={onOpen} streaming={item.streaming} text={item.text} />
       )
 
     case 'thinking':
@@ -753,6 +774,7 @@ const styles = StyleSheet.create({
   },
   pillText: { fontWeight: '600', flexShrink: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  answerFiles: { gap: space.sm },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusText: { flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
