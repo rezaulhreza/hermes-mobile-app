@@ -17,7 +17,7 @@ import { $conversations, $shownSession } from '@/store/chat'
 import { $linkState, currentApi, onGatewayEvent, rpc } from '@/store/link'
 import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
-import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
+import { $sessions, $sessionSource, $sessionView, loadMoreSessions } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
 import { GptLiveEngine } from '@/store/voice-gpt-live'
@@ -163,6 +163,8 @@ const helpers = {
   notifications: Notifications,
   registerPush,
   unregisterPush,
+  /** The end of the chat list, which a script cannot scroll to. */
+  loadMoreSessions,
   setPreference,
   setWake,
   /** Start the gpt-live engine with no call, to see how far a host with no OpenAI key lets it go. Resolves with what happened. */

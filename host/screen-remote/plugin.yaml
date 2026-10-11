@@ -1,0 +1,8 @@
+manifest_version: 1
+name: screen-remote
+version: 0.1.0
+description: "Watch and take over the agent's screen work from the Hermes phone app: a live picture of the window the agent works in, a hold that stops its screen tools and tells it why, and taps and keys from the phone."
+author: rezaulhreza
+kind: backend
+provides_hooks:
+  - pre_tool_call

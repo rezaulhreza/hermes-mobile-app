@@ -7,8 +7,9 @@ import {
   sessionPreview,
   sessionSections,
   sessionTitle,
-  sourceChoices,
-  withSessionChange
+  withSessionChange,
+  withSessionPage,
+  withSources
 } from '../sessions'
 
 const rows = [
@@ -41,9 +42,22 @@ describe('rowsInView', () => {
 })
 
 describe('filters', () => {
-  it('lists the sources, most used first, only when there is a choice', () => {
-    expect(sourceChoices(rows)).toEqual(['desktop', 'mobile'])
-    expect(sourceChoices([rows[0], rows[2]])).toEqual([])
+  it('keeps the sources it knows and adds a new one once', () => {
+    const known = ['desktop', 'mobile']
+
+    expect(withSources(known, ['mobile', null, 'telegram', 'telegram'])).toEqual(['desktop', 'mobile', 'telegram'])
+    // Nothing new: the same list, so a screen that reads it does not draw again.
+    expect(withSources(known, ['desktop', undefined])).toBe(known)
+  })
+
+  it('asks the backend for one source and for the next page', () => {
+    expect(sessionListPath('current', { source: 'api_server' })).toContain('&source=api_server')
+    expect(sessionListPath('current', { offset: 100 })).toContain('&offset=100')
+    expect(sessionListPath('current')).not.toMatch(/offset|source/)
+  })
+
+  it('adds a page under the rows and shows a row that moved only once', () => {
+    expect(withSessionPage(rows, [rows[2], { id: 'd' }]).map(row => row.id)).toEqual(['a', 'b', 'c', 'd'])
   })
 
   it('filters by words and by source', () => {

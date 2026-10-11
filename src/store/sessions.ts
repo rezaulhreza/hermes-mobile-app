@@ -2,7 +2,19 @@ import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
 import type { SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
-import { exportFileName, rowsInView, SESSION_SOURCE, sessionListPath, type SessionRow, type SessionView, withSessionChange } from '@/core/sessions'
+import {
+  exportFileName,
+  rowsInView,
+  SESSION_PAGE,
+  SESSION_SOURCE,
+  sessionListPath,
+  type SessionRow,
+  type SessionView,
+  SOURCES_TO_PROBE,
+  withSessionChange,
+  withSessionPage,
+  withSources
+} from '@/core/sessions'
 
 import { currentApi, onGatewayEvent, rpc } from './link'
 
@@ -25,23 +37,92 @@ function api() {
   return current
 }
 
+interface SessionList {
+  sessions?: SessionRow[]
+  total?: number
+}
+
+/** The backend has rows after the ones on screen. */
+export const $sessionsMore = atom(false)
+/** Every source the filter offers. It outlives a filter: the rows of one source name only that source. */
+export const $sessionSources = atom<string[]>([])
+
+let probed = false
+
+/** Ask once a connection which of the rare sources have a conversation. Each answer is a count, with no rows. */
+async function probeSources(): Promise<void> {
+  if (probed) {
+    return
+  }
+
+  probed = true
+
+  const counts = await Promise.all(
+    SOURCES_TO_PROBE.map(source =>
+      api()
+        .request<SessionList>({ path: `/api/sessions?limit=0&source=${source}` })
+        .then(result => (result.total ? source : null))
+        .catch(() => null)
+    )
+  )
+
+  $sessionSources.set(withSources($sessionSources.get(), counts))
+}
+
 export async function refreshSessions(): Promise<void> {
   const view = $sessionView.get()
+  const source = $sessionSource.get()
 
   $sessionsLoading.set(true)
 
   try {
-    const result = await api().request<{ sessions?: SessionRow[] }>({ path: sessionListPath(view) })
+    const result = await api().request<SessionList>({ path: sessionListPath(view, { source }) })
+    const page = result.sessions ?? []
 
-    // The user can change the view while the request runs. An answer for the other view is not shown.
-    if (view === $sessionView.get()) {
-      $sessions.set(rowsInView(result.sessions ?? [], view))
+    // The user can change the view or the source while the request runs. An answer for the other one is not shown.
+    if (view === $sessionView.get() && source === $sessionSource.get()) {
+      $sessions.set(rowsInView(page, view))
+      $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > page.length)
+      $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
       $sessionsError.set(null)
     }
+
+    void probeSources().catch(() => undefined)
   } catch (error) {
     $sessionsError.set(error instanceof Error ? error.message : String(error))
   } finally {
     $sessionsLoading.set(false)
+  }
+}
+
+let loadingMore = false
+
+/** The next page, when the list reaches its end. */
+export async function loadMoreSessions(): Promise<void> {
+  if (loadingMore || !$sessionsMore.get() || $sessionsLoading.get()) {
+    return
+  }
+
+  const view = $sessionView.get()
+  const source = $sessionSource.get()
+  const offset = $sessions.get().length
+
+  loadingMore = true
+
+  try {
+    const result = await api().request<SessionList>({ path: sessionListPath(view, { source, offset }) })
+    const page = result.sessions ?? []
+
+    // The offset counts the rows on screen. A refresh or another filter in the meantime makes this page wrong.
+    if (view === $sessionView.get() && source === $sessionSource.get() && offset === $sessions.get().length) {
+      $sessions.set(withSessionPage($sessions.get(), rowsInView(page, view)))
+      $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > offset + page.length)
+      $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
+    }
+  } catch {
+    // The list keeps what it has. The next reach of the end asks again.
+  } finally {
+    loadingMore = false
   }
 }
 
@@ -53,11 +134,23 @@ export function showSessionView(view: SessionView): void {
   }
 }
 
+/** Show one source, or all with null. The backend filters, so the rows are asked for again. */
+export function showSessionSource(source: string | null): void {
+  if (source !== $sessionSource.get()) {
+    $sessionSource.set(source)
+    $sessions.set([])
+    void refreshSessions()
+  }
+}
+
 export function clearSessions(): void {
   $sessions.set([])
   $sessionsError.set(null)
+  $sessionsMore.set(false)
+  $sessionSources.set([])
   $sessionView.set('current')
   $sessionSource.set(null)
+  probed = false
 }
 
 /**

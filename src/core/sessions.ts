@@ -35,8 +35,47 @@ export interface SessionRow {
 /** `current`: the normal list. `archived`: only what the user put away. */
 export type SessionView = 'current' | 'archived'
 
-export function sessionListPath(view: SessionView): string {
-  return `/api/sessions?limit=100&order=recent&archived=${view === 'archived' ? 'only' : 'exclude'}`
+/** The backend gives at most this many rows a request. The list asks for the next page at its end. */
+export const SESSION_PAGE = 100
+
+export interface SessionPage {
+  /** Only the conversations from this source. The backend filters: a rare source is not in the newest rows. */
+  source?: string | null
+  offset?: number
+}
+
+export function sessionListPath(view: SessionView, { source, offset = 0 }: SessionPage = {}): string {
+  const base = `/api/sessions?limit=${SESSION_PAGE}&order=recent&archived=${view === 'archived' ? 'only' : 'exclude'}`
+
+  return `${base}${offset ? `&offset=${offset}` : ''}${source ? `&source=${encodeURIComponent(source)}` : ''}`
+}
+
+/** One more page under the rows on screen. A row that moved between two requests shows once. */
+export function withSessionPage(rows: readonly SessionRow[], page: readonly SessionRow[]): SessionRow[] {
+  const seen = new Set(rows.map(row => row.id))
+
+  return [...rows, ...page.filter(row => !seen.has(row.id))]
+}
+
+/**
+ * Sources that the newest rows may not show: a host with many desktop chats
+ * has its Telegram and API chats far down the list. The app asks the backend
+ * once for the count of each, so the filter offers every source that has a
+ * conversation.
+ */
+export const SOURCES_TO_PROBE = ['telegram', 'api_server', 'discord', 'slack', 'whatsapp', 'signal', 'matrix', 'email', 'cron', 'kanban'] as const
+
+/** The filter choices: the sources already known, then the new ones, in the order they were found. */
+export function withSources(known: readonly string[], found: readonly (string | null | undefined)[]): string[] {
+  const next = [...known]
+
+  for (const source of found) {
+    if (source && !next.includes(source)) {
+      next.push(source)
+    }
+  }
+
+  return next.length === known.length ? (known as string[]) : next
 }
 
 /**
@@ -57,19 +96,6 @@ export function sessionPreview(row: SessionRow): string {
 
 export function sessionTitle(row: SessionRow): string {
   return row.title?.trim() || sessionPreview(row) || 'Untitled conversation'
-}
-
-/** The sources in the list, most used first. Empty when a filter would have one choice. */
-export function sourceChoices(rows: readonly SessionRow[]): string[] {
-  const counts = new Map<string, number>()
-
-  for (const row of rows) {
-    if (row.source) {
-      counts.set(row.source, (counts.get(row.source) ?? 0) + 1)
-    }
-  }
-
-  return counts.size > 1 ? [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([source]) => source) : []
 }
 
 export function filterSessions(rows: readonly SessionRow[], query: string, source: string | null): SessionRow[] {

@@ -1,0 +1,8 @@
+{
+  "name": "screen-remote",
+  "label": "Screen Remote",
+  "description": "Backend routes for the phone app's screen view: the live picture, the hold and remote input.",
+  "version": "0.1.0",
+  "tab": { "path": "/screen-remote", "hidden": true },
+  "api": "plugin_api.py"
+}

@@ -9,11 +9,22 @@ import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
-import { filterSessions, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle, sourceChoices } from '@/core/sessions'
+import { filterSessions, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
-import { $sessionQuery, $sessions, $sessionsLoading, $sessionSource, $sessionView, refreshSessions, showSessionView } from '@/store/sessions'
+import {
+  $sessionQuery,
+  $sessions,
+  $sessionsLoading,
+  $sessionSource,
+  $sessionSources,
+  $sessionView,
+  loadMoreSessions,
+  refreshSessions,
+  showSessionSource,
+  showSessionView
+} from '@/store/sessions'
 import { $activeWorkspace } from '@/store/workspaces'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -43,9 +54,10 @@ export default function Chats() {
   const source = useStore($sessionSource)
   const [acting, setActing] = useState<Row | null>(null)
 
-  const sources = useMemo(() => sourceChoices(sessions), [sessions])
-  // A source that left the list (the other view, a refresh) must not hide every row.
-  const activeSource = source && sources.includes(source) ? source : null
+  // The backend filters by source. A filter with one choice is no filter.
+  const known = useStore($sessionSources)
+  const sources = known.length > 1 ? known : []
+  const activeSource = source
   const sections = useMemo(() => sessionSections(filterSessions(sessions, query, activeSource)), [sessions, query, activeSource])
 
   const startChat = async () => {
@@ -114,9 +126,9 @@ export default function Chats() {
       </View>
 
       <ScrollView contentContainerStyle={styles.chips} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
-        <Chip label="All" on={view === 'current' && !activeSource} onPress={() => (showSessionView('current'), $sessionSource.set(null))} />
+        <Chip label="All" on={view === 'current' && !activeSource} onPress={() => (showSessionView('current'), showSessionSource(null))} />
         {sources.map(name => (
-          <Chip key={name} label={name} on={activeSource === name} onPress={() => $sessionSource.set(activeSource === name ? null : name)} />
+          <Chip key={name} label={name} on={activeSource === name} onPress={() => showSessionSource(activeSource === name ? null : name)} />
         ))}
         <Chip icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
       </ScrollView>
@@ -141,6 +153,8 @@ export default function Chats() {
         contentContainerStyle={styles.list}
         keyExtractor={row => row.id}
         keyboardDismissMode="on-drag"
+        onEndReached={() => void loadMoreSessions()}
+        onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl onRefresh={refreshSessions} refreshing={loading} tintColor={t.muted} />}
         renderItem={({ item }) => <SessionRow onActions={() => setActing(item)} row={item} />}
         renderSectionHeader={({ section }) =>
