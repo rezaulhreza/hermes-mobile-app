@@ -665,51 +665,44 @@ Each item is one or more commits. Check the contract file for the RPC names.
      while it speaks.
    - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
      `store/voice-relay.ts` are first guesses.
-7b. **Bot screen (computer use)**: IN PROGRESS, NEXT (the owner's order: bot
-   screen, then the Workspace tab, then the "Left" lines, then items 11, 12,
-   14, 15, then release). What it needs, found in the sixth session:
-   - `tools/bot_desktop/runtime.py::is_supported_host()` is true on Linux
-     only. On a Mac or Windows host the screen runs INSIDE the terminal
-     sandbox: `tools/bot_desktop/placement.py` puts it in the container when
-     the profile's `terminal.backend` is `docker` (or `ssh`, `singularity`).
-     The image is `nousresearch/hermes-sandbox:desktop` (it is the default
-     `terminal.docker_image`; arm64 and amd64 exist). This way is the same
-     on a Mac, Linux and Windows host with Docker. No backend patch.
-   - The owner's main bot has `terminal.backend: local`. Do NOT change that:
-     it would move all its terminal work into a container. Make the screen
-     the screen of ONE dedicated bot whose own `config.yaml` has
-     `terminal.backend: docker`. Every `display.*` call takes `profile`.
-   - Docker Desktop 29.8.1 runs on this Mac. The image is on this Mac
-     (`docker images | grep hermes-sandbox`).
-     `terminal.container_memory` is 5120 MB by default: set a lower limit
-     for the screen bot (the Mac has 16 GB); Xvnc + Xfce idle at about 220 MB.
-   - Calls (`tui_gateway/contracts/display.py`, `methods_display.py`):
-     `display.status {profile}` (supported, installed, running, blocker,
-     lease), `display.start`, `display.stop {force}`, `display.thumbnail`
-     (a JPEG `data_url`; null with `suppressed: human_has_control`),
-     `display.lease.acquire` / `.release` (the lease holder is `agent` or
-     `human`; `epoch` moves on each change), `display.observe` (the ticket),
-     the event `display.lease`. The live screen is raw RFB over
-     `/api/display/ws` (`hermes_cli/web_routers/display.py`).
-   - The viewer library: the desktop app uses `@novnc/novnc` 1.7.0
-     (`apps/desktop/package.json`). For the phone, bundle its `RFB` class
-     into one generated file with a script (like
-     `scripts/vendor-preview-engine.mjs`) and load it in a WebView whose
-     HTML has `baseUrl` = the workspace address, so the socket's Origin is
-     the host (`_ws_request_is_allowed` checks Host and Origin). The socket
-     address is `wss://<host>/api/display/ws?display_ticket=<ticket>`; the
-     ticket is single-use, 30 s, from `display.observe {profile}`, which
-     also gives the `viewer_id` for the lease. Close code 4000 means
-     another viewer took control, 4001 the screen is gone, 4401 get a new
-     ticket.
-   - NOT done yet: the screen bot (no profile was made, no host config was
-     changed for this item), the store, the phone view.
-   - Phone view, planned: a card in the bot's page with the status; a
-     picture from `display.thumbnail` every 2 s only while the card is on
-     screen (stop the timer on blur); Start / Stop; "Take over" / "Hand
-     back" with the lease; the live screen with noVNC in a WebView on
-     `/api/display/ws` (cookies shared, `sharedCookiesEnabled`), closed when
-     the screen closes. Clear the store when the page closes.
+7b. **Watch and take over the agent's screen work**: NEXT (the owner's
+   order: this, then the Workspace tab, then the "Left" lines, then items
+   11, 12, 14, 15, then release). NOT a per-bot screen. The owner's
+   requirement, 2026-10-09, in his words: "doesn't matter which profile, if
+   computer use or browser control or browser use is being used I should be
+   able to see it if I want to, take control if I want to, and the agent
+   should know I stopped it."
+   - Scope: any profile, any chat. Three surfaces: `computer_use` on the
+     host's real screen, the agent's own browser on the host (browser tool,
+     Chrome bridge), and the in-app browser preview (already has "Take
+     control" / "Hand back"; check it on screen).
+   - See: a view the user opens from the chat while such a tool runs. Not
+     forced on the user.
+   - Take control, and tell the agent: a stop must reach the agent with its
+     reason ("the user stopped you and took over; wait"), so it does not go
+     on blind. Find the call first (a steer with the interrupt, or a lease
+     outside the virtual desktop).
+   - Facts found: `computer_use` uses `cua-driver` (ships with Hermes for
+     macOS, Windows, Linux) and, with `terminal.backend: local`, drives the
+     host itself. No Docker. Each capture is saved on the host and the tool
+     result has `screenshot_path` (`tools/computer_use/tool.py`); the app
+     can fetch it with `GET /api/fs/download?path=`. Acting steps go
+     through the approval gate (`cua:<action>:...`), so the request cards
+     and the push cover them.
+   - To check first: do the live tool events carry the capture path while
+     the turn runs; what the browser tools save; which permission mode the
+     host uses (`hermes computer-use doctor`).
+   - Remote input from the phone to the host's real screen has no route in
+     Hermes on a Mac host. It would be a backend patch (record it in the
+     ledger). Size it before building; ask the owner if it is large.
+   - A mistake of the sixth session, do not repeat: the `display.*` calls
+     (the "Screen" pane) are a live VNC view of a SEPARATE virtual desktop,
+     for a Linux host or a Docker, SSH or Singularity sandbox. That is not
+     what the owner asked for. The image
+     `nousresearch/hermes-sandbox:desktop` (3.04 GB) was pulled for it and
+     is not needed; the owner decides if it is removed. If the screen ever
+     runs in a sandbox, `display.observe` and `/api/display/ws` are the
+     live view, with noVNC (`@novnc/novnc` 1.7.0 in the desktop app).
 8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
    `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
    its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
