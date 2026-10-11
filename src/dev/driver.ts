@@ -16,7 +16,8 @@ import { $conversations } from '@/store/chat'
 import { $linkState, currentApi, rpc } from '@/store/link'
 import { $requests } from '@/store/requests'
 import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
-import { $call, $dictation } from '@/store/voice'
+import { duplexAudio } from '@/native/duplex-audio'
+import { $call, $dictation, $enginePreference, $engines } from '@/store/voice'
 
 const PORT = 8099
 const REDIAL_MS = 1500
@@ -119,7 +120,9 @@ const helpers = {
   api: currentApi,
   /** Stage a file by its path, past the native picker that a script cannot use. */
   stage,
-  stores: { $attachments, $previews, $call, $dictation, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  /** The call audio, for a check of the microphone with no call. */
+  audio: duplexAudio,
+  stores: { $attachments, $previews, $call, $dictation, $enginePreference, $engines, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),

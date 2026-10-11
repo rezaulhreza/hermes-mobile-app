@@ -10,17 +10,23 @@
  */
 
 export type CallPhase =
+  /** The audio and the speech engine start. */
+  | 'connecting'
   /** The microphone is open and waits for the user. */
   | 'listening'
+  /** The user talks. */
+  | 'hearing'
   /** The recording is at the backend, which writes it down. */
   | 'transcribing'
   /** The agent works on the answer. */
   | 'thinking'
-  /** The answer plays. */
+  /** The answer plays. The microphone is still open. */
   | 'speaking'
 
 export const PHASE_HEADING: Readonly<Record<CallPhase, string>> = {
+  connecting: 'Connecting.',
   listening: 'I’m listening.',
+  hearing: 'I hear you.',
   transcribing: 'Got it.',
   thinking: 'Working on it.',
   speaking: 'Speaking.'
@@ -28,10 +34,12 @@ export const PHASE_HEADING: Readonly<Record<CallPhase, string>> = {
 
 /** The line under the heading when there are no words to show yet. */
 export const PHASE_HINT: Readonly<Record<CallPhase, string>> = {
+  connecting: 'One moment.',
   listening: 'Say what you need. The conversation stays in this chat.',
+  hearing: 'Go on. I answer when you stop.',
   transcribing: 'Writing down what you said.',
-  thinking: 'Your agent is on it. Tap the circle to stop it.',
-  speaking: 'Tap the circle to stop the voice and talk.'
+  thinking: 'Your agent is on it. Talk, or tap the circle, to stop it.',
+  speaking: 'Talk over the voice, or tap the circle, to stop it.'
 }
 
 /** "00:07", "12:40", "1:02:03" for the call timer. */
@@ -73,7 +81,7 @@ const LISTEN_MAX_MS = 60_000
 export type ListenStep = { listen: Listen; done: false } | { listen: Listen; done: true; reason: 'said' | 'long' }
 
 /** One level sample later. `done` says the recording is ready to send. */
-export function advanceListen(listen: Listen, levelDb: number | undefined, stepMs: number): ListenStep {
+export function advanceListen(listen: Listen, levelDb: number | undefined, stepMs: number, endQuietMs = END_QUIET_MS): ListenStep {
   const loud = (levelDb ?? -160) > SPEECH_DB
   const loudMs = listen.loudMs + (loud ? stepMs : 0)
   const next: Listen = {
@@ -83,7 +91,7 @@ export function advanceListen(listen: Listen, levelDb: number | undefined, stepM
     totalMs: listen.totalMs + stepMs
   }
 
-  if (next.spoke && next.quietMs >= END_QUIET_MS) {
+  if (next.spoke && next.quietMs >= endQuietMs) {
     return { listen: next, done: true, reason: 'said' }
   }
 

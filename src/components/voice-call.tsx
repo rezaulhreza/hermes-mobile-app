@@ -39,7 +39,7 @@ function phaseColours(phase: CallPhase, muted: boolean, t: Palette): { strong: s
     return { strong: t.muted, soft: t.soft }
   }
 
-  return phase === 'listening' ? { strong: t.green, soft: t.greenBg } : { strong: t.accent, soft: t.accentBg }
+  return phase === 'listening' || phase === 'hearing' ? { strong: t.green, soft: t.greenBg } : { strong: t.accent, soft: t.accentBg }
 }
 
 const BAR_SHAPE = [0.45, 0.8, 1, 0.7, 0.9]
@@ -88,6 +88,8 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
   const colours = phaseColours(call.phase, call.muted, t)
   // The last exchange stays on screen while the call listens again: the user may want to read what was said.
   const answer = call.heard ? answerText(items) : ''
+  // The microphone is open in every phase of a duplex call, so the circle always follows the voice of the user.
+  const open = !call.muted && call.phase !== 'connecting'
   const hide = () => showCallFull(false)
 
   return (
@@ -110,10 +112,10 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
             accessibilityLabel={call.muted ? 'Muted' : PHASE_HEADING[call.phase]}
             accessibilityRole="button"
             onPress={interruptCall}
-            style={[styles.halo, { backgroundColor: colours.soft, transform: [{ scale: 1 + (call.phase === 'listening' && !call.muted ? call.level * 0.12 : 0) }] }]}
+            style={[styles.halo, { backgroundColor: colours.soft, transform: [{ scale: 1 + (open ? call.level * 0.12 : 0) }] }]}
           >
             <View style={[styles.orb, { backgroundColor: t.bg }]}>
-              {call.muted ? <Feather color={colours.strong} name="mic-off" size={44} /> : <Bars colour={colours.strong} height={64} level={call.phase === 'listening' ? call.level : 0.3} />}
+              {call.muted ? <Feather color={colours.strong} name="mic-off" size={44} /> : <Bars colour={colours.strong} height={64} level={open ? Math.max(call.level, call.phase === 'speaking' || call.phase === 'thinking' ? 0.3 : 0) : 0.3} />}
             </View>
           </Pressable>
 
@@ -121,13 +123,13 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
 
           {/* The words of both sides. This is the part of a call a person checks: "did it hear me right?" */}
           <ScrollView contentContainerStyle={styles.words} style={styles.wordsBox}>
-            {call.heard ? (
-              <Text style={[type.body, { color: t.muted, textAlign: 'center' }]}>
+            {call.partial || call.heard ? (
+              <Text style={[type.body, { color: call.partial ? t.ink : t.muted, textAlign: 'center' }]}>
                 <Text style={styles.strong}>You  </Text>
-                {call.heard}
+                {call.partial || call.heard}
               </Text>
             ) : null}
-            {answer ? (
+            {call.partial ? null : answer ? (
               <Text style={[type.body, { color: t.ink, textAlign: 'center' }]}>{answer}</Text>
             ) : !call.heard ? (
               <Text style={[type.body, { color: t.muted, textAlign: 'center' }]}>{call.muted ? 'The microphone is off. Hermes hears nothing.' : PHASE_HINT[call.phase]}</Text>
@@ -181,7 +183,7 @@ function Strip({ call, t }: { call: Call; t: Palette }) {
   return (
     <View style={[styles.strip, { backgroundColor: colours.soft }]}>
       <Pressable accessibilityLabel="Show the call" accessibilityRole="button" onPress={() => showCallFull(true)} style={styles.stripMain}>
-        <Bars colour={colours.strong} height={18} level={call.phase === 'listening' && !call.muted ? call.level : 0.3} />
+        <Bars colour={colours.strong} height={18} level={!call.muted && call.phase !== 'connecting' ? Math.max(call.level, 0.15) : 0.3} />
         <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.ink, fontWeight: '700' }]}>
           {call.muted ? 'Muted' : PHASE_HEADING[call.phase].replace(/\.$/, '')}
         </Text>

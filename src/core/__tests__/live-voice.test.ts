@@ -1,0 +1,183 @@
+import {
+  advanceTurn,
+  approvalQuestion,
+  bytesBase64,
+  type DeepgramSettings,
+  EchoMemory,
+  flushWait,
+  isStopPhrase,
+  listenUrl,
+  NEW_TURN,
+  pcmBytes,
+  SentenceFeed,
+  speakableLine,
+  speakParts,
+  speakUrl,
+  spokenVerdict,
+  toolLine,
+  wavFile
+} from '../live-voice'
+
+const SETTINGS: DeepgramSettings = {
+  available: true,
+  voice: 'aura-2-thalia-en',
+  listen_model: 'flux-general-en',
+  eot_threshold: 0.7,
+  eot_timeout_ms: 3000,
+  speed: 1,
+  keyterms: ['Hermes', 'Rez'],
+  mip_opt_out: true
+}
+
+describe('the socket addresses', () => {
+  it('asks the listening model for 16 kHz PCM, with every key term', () => {
+    const url = listenUrl(SETTINGS)
+
+    expect(url).toContain('wss://api.deepgram.com/v2/listen?')
+    expect(url).toContain('sample_rate=16000')
+    expect(url).toContain('model=flux-general-en')
+    expect(url).toContain('keyterm=Hermes&keyterm=Rez')
+    expect(url).toContain('mip_opt_out=true')
+  })
+
+  it('names the speed only when it is not 1', () => {
+    expect(speakUrl(SETTINGS)).not.toContain('speed')
+    expect(speakUrl({ ...SETTINGS, speed: 1.2 })).toContain('speed=1.2')
+  })
+})
+
+describe('SentenceFeed', () => {
+  it('gives a sentence when it is complete, and keeps the rest', () => {
+    const feed = new SentenceFeed()
+
+    expect(feed.feed('The Moon moves away from ')).toEqual([])
+    expect(feed.feed('Earth each year. It is slo')).toEqual(['The Moon moves away from Earth each year. '])
+    expect(feed.feed('w.', true)).toEqual(['It is slow.'])
+  })
+
+  it('joins a short part to what follows', () => {
+    expect(new SentenceFeed().feed('Sure. Here is the long answer you asked for. ')).toEqual(['Sure. Here is the long answer you asked for. '])
+  })
+
+  it('never reads code, and holds back text after an open code block', () => {
+    const feed = new SentenceFeed()
+
+    expect(feed.feed('Here is the script for you. ```js\nlet a = 1')).toEqual(['Here is the script for you. '])
+    expect(feed.feed('\n``` That is all of it, I think. ').join('')).not.toContain('let a')
+  })
+
+  it('gives nothing for an empty end', () => {
+    expect(new SentenceFeed().feed('', true)).toEqual([])
+  })
+})
+
+describe('EchoMemory', () => {
+  it('knows the words of the voice, and forgets them after a while', () => {
+    const echo = new EchoMemory()
+
+    echo.remember('The Moon is slowly moving away from Earth.', 1000)
+    expect(echo.isEcho('moon is slowly moving away', 2000)).toBe(true)
+    expect(echo.isEcho('the moon', 2000)).toBe(true)
+    expect(echo.isEcho('stop that please now', 2000)).toBe(false)
+    expect(echo.isEcho('the moon', 30_000)).toBe(false)
+  })
+
+  it('takes an empty transcript as an echo', () => {
+    expect(new EchoMemory().isEcho(' ... ', 0)).toBe(true)
+  })
+})
+
+describe('advanceTurn', () => {
+  const never = () => false
+  const always = () => true
+
+  it('shows the words while the user talks, then gives the utterance', () => {
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'What' }, false, never)
+
+    expect(start).toMatchObject({ hearing: true, hush: false, partial: 'What', utterance: null })
+
+    const end = advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'What is the time?' }, false, never)
+
+    expect(end.utterance).toBe('What is the time?')
+  })
+
+  it('stops the voice when the user talks over it', () => {
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: '' }, true, never)
+    const update = advanceTurn(start.turn, { event: 'Update', transcript: 'wait stop' }, true, never)
+
+    expect(start.hush).toBe(false)
+    expect(update).toMatchObject({ hush: true, partial: 'wait stop' })
+    expect(advanceTurn(update.turn, { event: 'EndOfTurn', transcript: 'wait stop' }, false, never).utterance).toBe('wait stop')
+  })
+
+  it('drops a turn that is only the voice itself', () => {
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'the moon' }, true, always)
+
+    expect(start).toMatchObject({ hush: false, partial: '' })
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'the moon is slowly' }, false, always).utterance).toBeNull()
+  })
+})
+
+describe('spoken answers', () => {
+  it('ends the call on a stop phrase only when it is the whole utterance', () => {
+    expect(isStopPhrase('Goodbye.')).toBe(true)
+    expect(isStopPhrase('stop the server')).toBe(false)
+  })
+
+  it('allows only on a clear answer given after the question', () => {
+    expect(spokenVerdict('Yes, go ahead.', NEW_TURN)).toBe('once')
+    expect(spokenVerdict('yes', { duringPlayback: true, barged: true })).toBe('unclear')
+    expect(spokenVerdict('maybe later', NEW_TURN)).toBe('unclear')
+  })
+
+  it('blocks at any time', () => {
+    expect(spokenVerdict("No, don't.", { duringPlayback: true, barged: true })).toBe('deny')
+  })
+
+  it('asks with no accepting word', () => {
+    const question = approvalQuestion({ description: 'delete the build folder', command: 'rm -rf build' })
+
+    expect(question).toBe('Hermes wants to delete the build folder. The command is: rm -rf build. Should I let it?')
+    expect(spokenVerdict(question, NEW_TURN)).toBe('unclear')
+  })
+})
+
+describe('lines for the voice', () => {
+  it('says a stock line for a tool', () => {
+    expect(toolLine('terminal')).toBe('Running a command.')
+    expect(toolLine('open_preview')).toBe('Using the browser.')
+    expect(toolLine('kanban_add')).toBe('Using kanban add.')
+    expect(toolLine(undefined)).toBe('Working on it.')
+  })
+
+  it('takes Markdown marks out of a line', () => {
+    expect(speakableLine('## **Done.** See [the log](https://x.test/a) and `run.sh` 🎉')).toBe('Done. See the log and run.sh')
+  })
+
+  it('cuts a long line for the speak socket', () => {
+    expect(speakParts('a'.repeat(2500)).map(part => part.length)).toEqual([1000, 1000, 500])
+  })
+
+  it('waits between flushes', () => {
+    expect(flushWait(0, 10_000)).toBe(0)
+    expect(flushWait(10_000, 11_000)).toBe(2200)
+  })
+})
+
+describe('PCM helpers', () => {
+  it('reads base64 frames of every padding', () => {
+    for (const bytes of [[1, 2, 3], [1, 2, 3, 4], [250, 251, 252, 253, 254]]) {
+      expect([...pcmBytes(bytesBase64(new Uint8Array(bytes)))]).toEqual(bytes)
+    }
+  })
+
+  it('wraps frames in a WAV file', () => {
+    const file = wavFile([new Uint8Array([1, 2]), new Uint8Array([3, 4])], 16_000)
+    const view = new DataView(file.buffer)
+
+    expect(String.fromCharCode(...file.subarray(0, 4))).toBe('RIFF')
+    expect(view.getUint32(24, true)).toBe(16_000)
+    expect(view.getUint32(40, true)).toBe(4)
+    expect([...file.subarray(44)]).toEqual([1, 2, 3, 4])
+  })
+})

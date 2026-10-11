@@ -52,6 +52,25 @@ export function rpc<T>(method: string, params: Record<string, unknown> = {}, tim
   return link.client.request<T>(method, params, timeoutMs)
 }
 
+/**
+ * A socket beside `/api/ws` on the same host (voice PCM is not JSON-RPC and
+ * cannot share the gateway socket). It signs in the same way: its own ticket
+ * and the proxy headers.
+ */
+export async function openSiblingSocket(path: string): Promise<WebSocket> {
+  const target = link
+
+  if (!target) {
+    throw new Error('Not connected to a Hermes workspace.')
+  }
+
+  const ticket = await target.api.wsTicket()
+
+  return new (WebSocket as unknown as HeaderSocket)(`${wsOriginFor(target.workspace.baseUrl)}${path}?ticket=${encodeURIComponent(ticket)}`, undefined, {
+    headers: target.workspace.headers
+  })
+}
+
 export function onGatewayEvent(handler: EventHandler): () => void {
   eventHandlers.add(handler)
 

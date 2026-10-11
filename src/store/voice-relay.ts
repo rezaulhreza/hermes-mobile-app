@@ -1,0 +1,453 @@
+/**
+ * The relay engine: Hermes's own speech providers, on the Hermes host. It
+ * works with every provider the host has, also one that runs only there.
+ *
+ * Ears: the phone decides when the user's turn ends (from the level of the
+ * microphone). With live speech-to-text on the host (`stt.streaming`), the
+ * frames go to `/api/audio/transcribe-stream` while the user talks and the
+ * words come back at once. Without it, the frames of one turn go to
+ * `POST /api/audio/transcribe` as one recording.
+ *
+ * Mouth: `/api/audio/speak-stream`. The text of the answer goes in while it
+ * streams; the host cuts sentences and sends PCM back.
+ */
+
+import type { HermesApi } from '@/core/api'
+import { bytesBase64, EchoMemory, FRAME_MS, INPUT_SAMPLE_RATE, PLAYBACK_TAIL_MS, SentenceFeed, speakableLine, type UserTurn, wavFile } from '@/core/live-voice'
+import { advanceListen, type Listen, NEW_LISTEN } from '@/core/voice'
+import { duplexAudio } from '@/native/duplex-audio'
+
+import { openSiblingSocket } from './link'
+import { type EngineEvents, SampleJoiner, type VoiceEngine } from './voice-engine'
+
+// The native level is the loudness of one frame, 0 to 1. A quiet room is under 0.03.
+const SPEECH_LEVEL = 0.07
+// Over the voice, only a clear voice near the phone counts: what is left of the speaker after echo cancellation is quieter.
+const BARGE_LEVEL = 0.22
+const START_MS = 160
+const BARGE_MS = 320
+// A pause inside a sentence is shorter than this.
+const END_QUIET_MS = 900
+// A sound that never became speech is dropped after this much quiet.
+const NOISE_QUIET_MS = 700
+const PREROLL_FRAMES = 6
+/** After text goes to the voice, sound is expected for this long. */
+const SOUND_EXPECTED_MS = 2500
+
+interface Reply {
+  socket: WebSocket | null
+  /** Frames that wait for the socket to open. */
+  queue: string[]
+  rate: number
+  /** The text is complete. The sound of it may still come. */
+  closed: boolean
+  /** The user stopped this reply. Its sound is dropped. */
+  hushed: boolean
+}
+
+export class RelayEngine implements VoiceEngine {
+  readonly name = 'relay' as const
+
+  private active = false
+  private playing = false
+  private playbackEndedAt = 0
+  private said = 0
+  private soundTimer: ReturnType<typeof setTimeout> | null = null
+
+  private preroll: Uint8Array[] = []
+  private frames: Uint8Array[] | null = null
+  private listen: Listen = NEW_LISTEN
+  private loudRun = 0
+  private turn: UserTurn = { duringPlayback: false, barged: false }
+  private finishNow = false
+  private busy = false
+  private stream: WebSocket | null = null
+  private streamFinal: ((text: string | null) => void) | null = null
+
+  private reply: Reply | null = null
+  private readonly lines = new SentenceFeed()
+  private readonly echo = new EchoMemory()
+  private readonly samples = new SampleJoiner()
+
+  constructor(
+    private readonly api: HermesApi,
+    private liveStt: boolean,
+    private readonly events: EngineEvents
+  ) {}
+
+  async start(): Promise<void> {
+    this.active = true
+  }
+
+  stop(): void {
+    this.active = false
+    this.frames = null
+    this.preroll = []
+    this.stream?.close()
+    this.stream = null
+    this.streamFinal?.(null)
+    this.closeReply(true)
+
+    if (this.soundTimer) {
+      clearTimeout(this.soundTimer)
+      this.soundTimer = null
+    }
+  }
+
+  playback(playing: boolean): void {
+    if (playing === this.playing) {
+      return
+    }
+
+    this.playing = playing
+
+    if (!playing) {
+      this.playbackEndedAt = Date.now()
+    }
+
+    this.events.changed()
+  }
+
+  speaking(): boolean {
+    return this.playing || (Boolean(this.reply) && Date.now() - this.said < SOUND_EXPECTED_MS)
+  }
+
+  audible(): boolean {
+    return this.playing || Date.now() - this.playbackEndedAt < PLAYBACK_TAIL_MS
+  }
+
+  lastSayAt(): number {
+    return this.said
+  }
+
+  finishTurn(): void {
+    this.finishNow = true
+  }
+
+  // ── hearing ──────────────────────────────────────────────────────────────────────────────────
+
+  frame(pcm: Uint8Array, level: number): void {
+    if (!this.active || this.busy) {
+      return
+    }
+
+    if (!this.frames) {
+      this.preroll.push(pcm)
+
+      if (this.preroll.length > PREROLL_FRAMES) {
+        this.preroll.shift()
+      }
+
+      const audible = this.audible()
+
+      this.loudRun = level > (audible ? BARGE_LEVEL : SPEECH_LEVEL) ? this.loudRun + FRAME_MS : 0
+
+      if (this.loudRun >= (audible ? BARGE_MS : START_MS)) {
+        this.begin(audible)
+      }
+
+      return
+    }
+
+    this.frames.push(pcm)
+
+    if (this.stream?.readyState === WebSocket.OPEN) {
+      this.stream.send(pcm)
+    }
+
+    // The level as decibels: 0 is the loudest.
+    const step = advanceListen(this.listen, 20 * Math.log10(Math.max(level, 0.0001) / 6), FRAME_MS, END_QUIET_MS)
+
+    this.listen = step.listen
+
+    if (step.done || (this.finishNow && this.listen.totalMs > 300)) {
+      void this.end()
+    } else if (!this.listen.spoke && this.listen.quietMs >= NOISE_QUIET_MS) {
+      this.cancel()
+    }
+  }
+
+  private begin(audible: boolean): void {
+    this.turn = { duringPlayback: audible, barged: audible }
+    this.frames = [...this.preroll]
+    this.preroll = []
+    this.listen = { ...NEW_LISTEN, loudMs: this.loudRun, totalMs: this.loudRun }
+    this.loudRun = 0
+    this.finishNow = false
+
+    if (audible) {
+      this.hush()
+      this.events.barge()
+    }
+
+    this.events.hearing()
+
+    if (this.liveStt) {
+      void this.openStream(this.frames)
+    }
+  }
+
+  private cancel(): void {
+    const turn = this.turn
+
+    this.frames = null
+    this.stream?.close()
+    this.stream = null
+    this.events.utterance('', turn)
+  }
+
+  private async end(): Promise<void> {
+    const frames = this.frames ?? []
+    const turn = this.turn
+
+    this.frames = null
+    this.busy = true
+    this.events.transcribing()
+
+    try {
+      let words = await this.finishStream()
+
+      words ??= await this.transcribe(frames)
+
+      if (!this.active) {
+        return
+      }
+
+      // A turn that began under the voice may be the voice itself.
+      this.events.utterance(turn.duringPlayback && this.echo.isEcho(words, Date.now()) ? '' : words, turn)
+    } catch (error) {
+      this.events.utterance('', turn)
+      this.events.lost(error instanceof Error ? error.message : String(error))
+    } finally {
+      this.busy = false
+    }
+  }
+
+  private async openStream(backlog: readonly Uint8Array[]): Promise<void> {
+    try {
+      const socket = await openSiblingSocket('/api/audio/transcribe-stream')
+
+      this.stream = socket
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ sample_rate: INPUT_SAMPLE_RATE }))
+        // The frames from before the socket opened, with those that came while it dialled.
+        ;(this.frames ?? backlog).forEach(frame => socket.send(frame))
+      }
+      socket.onmessage = event => {
+        const data = parse(String(event.data))
+
+        if (data?.type === 'partial' && typeof data.text === 'string') {
+          this.events.partial(data.text)
+        } else if (data?.type === 'final') {
+          this.streamFinal?.(String(data.transcript ?? '').trim())
+        } else if (data?.type === 'error') {
+          // This host has no live speech-to-text. The recording path takes over, now and for the rest of the call.
+          this.liveStt = false
+          this.streamFinal?.(null)
+        }
+      }
+      socket.onclose = () => {
+        if (this.stream === socket) {
+          this.stream = null
+        }
+
+        this.streamFinal?.(null)
+      }
+    } catch {
+      this.liveStt = false
+    }
+  }
+
+  /** The words from the live socket, or null when there is none (the recording path then runs). */
+  private finishStream(): Promise<string | null> {
+    const socket = this.stream
+
+    if (!socket || socket.readyState !== WebSocket.OPEN || !this.liveStt) {
+      socket?.close()
+      this.stream = null
+
+      return Promise.resolve(null)
+    }
+
+    return new Promise(resolve => {
+      const timer = setTimeout(() => this.streamFinal?.(null), 15_000)
+
+      this.streamFinal = text => {
+        clearTimeout(timer)
+        this.streamFinal = null
+        this.stream = null
+        socket.close()
+        resolve(text)
+      }
+      socket.send(JSON.stringify({ eos: true }))
+    })
+  }
+
+  private async transcribe(frames: readonly Uint8Array[]): Promise<string> {
+    const result = await this.api.request<{ transcript?: string }>({
+      path: '/api/audio/transcribe',
+      method: 'POST',
+      body: { data_url: `data:audio/wav;base64,${bytesBase64(wavFile(frames, INPUT_SAMPLE_RATE))}`, mime_type: 'audio/wav' },
+      timeoutMs: 60_000
+    })
+
+    return (result.transcript ?? '').trim()
+  }
+
+  // ── speaking ─────────────────────────────────────────────────────────────────────────────────
+
+  feed(text: string, final = false): void {
+    if (!this.active) {
+      return
+    }
+
+    for (const line of this.lines.feed(text, final)) {
+      this.echo.remember(speakableLine(line), Date.now())
+    }
+
+    // The host cuts sentences at white space. A finished thought gets a line end, so it is said now.
+    const out = text + (final && this.reply ? '\n' : '')
+
+    if (out) {
+      this.send({ text: out })
+    }
+  }
+
+  endReply(): void {
+    this.feed('', true)
+
+    if (this.reply) {
+      this.send({ done: true })
+      this.reply.closed = true
+    }
+  }
+
+  say(line: string): void {
+    const alone = !this.reply || this.reply.closed
+
+    this.echo.remember(speakableLine(line), Date.now())
+    this.send({ text: `${line}\n` })
+
+    if (alone) {
+      this.send({ done: true })
+
+      if (this.reply) {
+        this.reply.closed = true
+      }
+    }
+  }
+
+  hush(): void {
+    this.lines.clear()
+    this.closeReply(true)
+    this.samples.reset()
+    duplexAudio?.clear()
+    this.events.changed()
+  }
+
+  private send(frame: { text?: string; done?: boolean }): void {
+    if (!this.reply || this.reply.closed) {
+      this.reply = this.openReply()
+    }
+
+    const reply = this.reply
+    const text = JSON.stringify(frame)
+
+    if (frame.text) {
+      this.said = Date.now()
+
+      if (this.soundTimer) {
+        clearTimeout(this.soundTimer)
+      }
+
+      this.soundTimer = setTimeout(() => this.events.changed(), SOUND_EXPECTED_MS + 50)
+      this.events.changed()
+    }
+
+    if (reply.socket?.readyState === WebSocket.OPEN) {
+      reply.socket.send(text)
+    } else {
+      reply.queue.push(text)
+    }
+  }
+
+  private openReply(): Reply {
+    const reply: Reply = { socket: null, queue: [], rate: 24_000, closed: false, hushed: false }
+
+    void openSiblingSocket('/api/audio/speak-stream')
+      .then(socket => {
+        if (reply.hushed) {
+          socket.close()
+
+          return
+        }
+
+        socket.binaryType = 'arraybuffer'
+        reply.socket = socket
+        socket.onopen = () => {
+          reply.queue.forEach(text => socket.send(text))
+          reply.queue = []
+        }
+        socket.onmessage = event => {
+          if (typeof event.data !== 'string') {
+            const pcm = this.samples.push(event.data as ArrayBuffer)
+
+            if (pcm && this.active && !reply.hushed) {
+              duplexAudio?.play(pcm, reply.rate)
+            }
+
+            return
+          }
+
+          const data = parse(event.data)
+
+          if (data?.type === 'start' && typeof data.sample_rate === 'number') {
+            reply.rate = data.sample_rate
+          } else if (data?.type === 'fallback') {
+            this.events.lost('The voice of this Hermes host gave no sound. Check the text-to-speech provider.')
+          }
+        }
+        socket.onclose = () => {
+          if (this.reply === reply) {
+            this.reply = null
+            this.events.changed()
+          }
+        }
+      })
+      .catch(error => {
+        if (this.reply === reply) {
+          this.reply = null
+          this.events.lost(`The voice did not connect: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      })
+
+    return reply
+  }
+
+  private closeReply(stop: boolean): void {
+    const reply = this.reply
+
+    this.reply = null
+
+    if (!reply) {
+      return
+    }
+
+    reply.queue = []
+    reply.hushed = true
+
+    if (stop && reply.socket?.readyState === WebSocket.OPEN) {
+      reply.socket.send(JSON.stringify({ stop: true }))
+    }
+
+    reply.socket?.close()
+  }
+}
+
+function parse(text: string): { type?: string; text?: unknown; transcript?: unknown; sample_rate?: unknown } | null {
+  try {
+    return JSON.parse(text) as { type?: string }
+  } catch {
+    return null
+  }
+}

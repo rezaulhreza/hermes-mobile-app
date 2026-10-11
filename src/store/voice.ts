@@ -3,30 +3,46 @@
  * read `$call` and draw it; two views of a call (the full screen and the strip
  * in the chat) are the same call.
  *
- * The loop is: listen, transcribe, ask, speak, listen again. Every await is
- * followed by a check that the call is still this call: the user can end it,
- * or start another, at any point.
+ * The call is full duplex: the microphone stays open while the agent speaks,
+ * and the answer is spoken while it streams. A speech engine
+ * (`voice-engine.ts`) is the ears and the mouth. This file owns the turn:
+ * each finished utterance goes to the chat as a normal message, and the
+ * events of the answer go to the voice. The rules are those of the desktop's
+ * `deepgram-live` plugin.
+ *
+ * Every await is followed by a check that the call is still this call: the
+ * user can end it, or start another, at any point.
  */
 
 import { AudioModule, type AudioRecorder, createAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio'
 import { File, Paths } from 'expo-file-system'
+import * as Haptics from 'expo-haptics'
 import { atom } from 'nanostores'
 
+import type { GatewayEvent } from '@/core/gateway/gateway-events'
 import {
-  advanceListen,
-  audioExtension,
-  base64Bytes,
-  type CallPhase,
-  dataUrlParts,
-  isGoodbye,
-  levelFraction,
-  NEW_LISTEN,
-  recordingMime,
-  speakable
-} from '@/core/voice'
+  approvalQuestion,
+  type DeepgramSettings,
+  FRAME_MS,
+  INPUT_SAMPLE_RATE,
+  isStopPhrase,
+  MIC_GAIN_DURING_PLAYBACK,
+  pcmBytes,
+  spokenVerdict,
+  TOOL_LINE_QUIET_MS,
+  toolLine,
+  type UserTurn
+} from '@/core/live-voice'
+import { requestSummary } from '@/core/requests'
+import { advanceListen, audioExtension, base64Bytes, type CallPhase, dataUrlParts, levelFraction, NEW_LISTEN, recordingMime, speakable } from '@/core/voice'
+import { duplexAudio } from '@/native/duplex-audio'
 
 import { $conversations, sendDraft, stopTurn } from './chat'
-import { currentApi } from './link'
+import { currentApi, onGatewayEvent } from './link'
+import { $requests, answerRequest } from './requests'
+import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
+import type { EngineEvents, EngineName, VoiceEngine } from './voice-engine'
+import { RelayEngine } from './voice-relay'
 
 export interface Call {
   sessionId: string
@@ -36,8 +52,12 @@ export interface Call {
   startedAt: number
   /** The microphone level, 0 to 1. */
   level: number
-  /** What the user said last, as the backend wrote it down. */
+  /** What the user said last, as the engine wrote it down. */
   heard: string
+  /** The words of the user so far, while they talk. */
+  partial: string
+  /** The speech engine of this call. */
+  engine: EngineName
   error: string | null
   /** The full-screen view is up. False: only the strip in the chat shows. */
   full: boolean
@@ -196,95 +216,411 @@ async function speak(text: string, alive: () => boolean): Promise<void> {
   })
 }
 
-/** The answer of the turn that just ended: every assistant row after the last message of the user. */
-function lastAnswer(sessionId: string): string {
-  const items = $conversations.get()[sessionId]?.transcript.items ?? []
-  const from = items.map(item => item.kind).lastIndexOf('user')
-
-  return items
-    .slice(from + 1)
-    .flatMap(item => (item.kind === 'assistant' ? [item.text.trim()] : []))
-    .filter(Boolean)
-    .join('\n\n')
+/** A way to hold a call on this host. `reason` says why it cannot be chosen. */
+export interface EngineChoice {
+  name: EngineName
+  label: string
+  detail: string
+  reason: string | null
 }
 
-/** Send the words as a message and wait for the end of the turn. Returns the answer. */
-async function ask(sessionId: string, words: string, alive: () => boolean): Promise<string> {
-  await sendDraft(sessionId, words)
+/** What the user chose. `auto` takes the fastest engine the host has. */
+export const $enginePreference = atom<EngineName | 'auto'>('auto')
+/** The engines of the active workspace. Null until `loadEngines` has answered. */
+export const $engines = atom<EngineChoice[] | null>(null)
 
-  while (alive() && $conversations.get()[sessionId]?.transcript.running) {
-    await wait(150)
+interface Host {
+  deepgram: DeepgramSettings | null
+  liveStt: boolean
+}
+
+let host: Host | null = null
+
+/** Ask the host which engines it has. The answer is kept for the link. */
+export async function loadEngines(): Promise<EngineChoice[]> {
+  const api = currentApi()
+
+  if (!api) {
+    throw new Error('Not connected to a Hermes workspace.')
   }
 
-  return alive() ? lastAnswer(sessionId) : ''
+  const [deepgram, config] = await Promise.all([
+    deepgramStatus(api),
+    api.request<{ stt?: { streaming?: boolean } }>({ path: '/api/audio/voice-config', timeoutMs: 8000 }).catch(() => null)
+  ])
+
+  host = { deepgram, liveStt: Boolean(config?.stt?.streaming) }
+
+  const choices: EngineChoice[] = [
+    {
+      name: 'deepgram',
+      label: 'Deepgram live',
+      detail: 'The fastest. The same voice path as the desktop plugin.',
+      reason: deepgram ? null : 'The deepgram-live plugin is not ready on this host.'
+    },
+    {
+      name: 'relay',
+      label: 'Hermes voice',
+      detail: 'The speech providers of your Hermes host.',
+      reason: null
+    }
+  ]
+
+  $engines.set(choices)
+
+  return choices
 }
 
-async function loop(sessionId: string, mine: number): Promise<void> {
+/** The engine a call starts with: the choice of the user when the host has it, else the first one that works. */
+function pickEngine(choices: readonly EngineChoice[]): EngineName {
+  const wanted = $enginePreference.get()
+  const usable = choices.filter(choice => !choice.reason)
+
+  return usable.find(choice => choice.name === wanted)?.name ?? usable[0]?.name ?? 'relay'
+}
+
+/** One turn of the agent, as the call follows it. */
+interface AgentTurn {
+  done: boolean
+  /** The user talked over this answer, or stopped it. The rest of it stays silent. */
+  muted: boolean
+  /** Text of this turn went to the voice. */
+  spoke: boolean
+  /** Only text that streams after the start of this turn is spoken: late text of a stopped answer stays silent. */
+  started: boolean
+}
+
+let engine: VoiceEngine | null = null
+let turn: AgentTurn | null = null
+/** The approval that waits for a spoken answer. */
+let approval: string | null = null
+const announced = new Set<string>()
+let subscriptions: { remove(): void }[] = []
+
+function tap(): void {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined)
+}
+
+function refreshPhase(): void {
+  const call = $call.get()
+
+  if (!call || !engine || call.phase === 'connecting') {
+    return
+  }
+
+  const phase: CallPhase = engine.speaking() ? 'speaking' : turn && !turn.done ? 'thinking' : 'listening'
+
+  if (phase !== call.phase) {
+    patch({ phase })
+  }
+}
+
+function engineEvents(sessionId: string, mine: number): EngineEvents {
   const alive = () => generation === mine && $call.get()?.sessionId === sessionId
 
-  while (alive()) {
-    try {
-      patch({ phase: 'listening', error: null })
-
-      const uri = await listen(alive, level => patch({ level }), () => $call.get()?.muted ?? false)
-
-      if (!uri || !alive()) {
-        continue
+  return {
+    partial: text => alive() && patch({ partial: text }),
+    hearing: () => alive() && $call.get()?.phase !== 'hearing' && patch({ phase: 'hearing' }),
+    barge: () => {
+      if (alive() && turn) {
+        turn.muted = true
       }
 
-      patch({ phase: 'transcribing' })
-
-      const words = await transcribe(uri)
-
-      if (!alive() || !words) {
-        continue
-      }
-
-      if (isGoodbye(words)) {
-        return endCall()
-      }
-
-      patch({ heard: words, phase: 'thinking' })
-
-      const answer = await ask(sessionId, words, alive)
-
-      if (alive() && answer) {
-        patch({ phase: 'speaking' })
-        await speak(answer, alive)
-      }
-    } catch (error) {
+      tap()
+    },
+    transcribing: () => alive() && patch({ phase: 'transcribing' }),
+    utterance: (text, userTurn) => {
       if (!alive()) {
         return
       }
 
-      // The call goes on: one failed round (a dropped request) must not hang up.
-      patch({ error: message(error) })
-      await wait(1500)
-    }
+      patch({ partial: '' })
+      refreshPhase()
+
+      if (text) {
+        void onUtterance(sessionId, text, userTurn, alive).catch(error => patch({ error: message(error) }))
+      }
+    },
+    changed: () => alive() && refreshPhase(),
+    lost: text => alive() && patch({ error: text })
   }
 }
+
+async function onUtterance(sessionId: string, text: string, userTurn: UserTurn, alive: () => boolean): Promise<void> {
+  if (approval) {
+    return answerApproval(approval, text, userTurn)
+  }
+
+  if (isStopPhrase(text)) {
+    await interruptIfBusy(sessionId)
+
+    return endCall()
+  }
+
+  engine?.hush()
+  patch({ heard: text, error: null })
+  await interruptIfBusy(sessionId)
+
+  const api = currentApi()
+
+  // Tell the agent half that this turn was spoken, so the answer comes back as plain sentences.
+  if (api && host?.deepgram) {
+    await announceSpokenTurn(api, text)
+  }
+
+  if (!alive()) {
+    return
+  }
+
+  turn = { done: false, muted: false, spoke: false, started: false }
+  tap()
+  refreshPhase()
+  await sendDraft(sessionId, text)
+}
+
+/** Stop the running turn and wait until it is gone, so the next message starts a turn of its own. */
+async function interruptIfBusy(sessionId: string): Promise<void> {
+  const running = () => $conversations.get()[sessionId]?.transcript.running ?? false
+
+  if (!running()) {
+    return
+  }
+
+  if (turn) {
+    turn.muted = true
+  }
+
+  await stopTurn(sessionId).catch(() => undefined)
+
+  const deadline = Date.now() + 4000
+
+  while (running() && Date.now() < deadline) {
+    await wait(100)
+  }
+}
+
+function answerApproval(id: string, text: string, userTurn: UserTurn): void {
+  const verdict = spokenVerdict(text, userTurn)
+
+  if (verdict === 'unclear') {
+    engine?.say('I need a clear answer. Should I let it run?')
+
+    return
+  }
+
+  approval = null
+  answerRequest(id, { kind: 'approval', choice: verdict })
+  engine?.say(verdict === 'deny' ? 'Okay, I blocked it.' : 'Okay, going ahead.')
+}
+
+/** The agent stopped for the user. Say so: on a call the user may not look at the screen. */
+$requests.listen(requests => {
+  const call = $call.get()
+
+  if (!call || !engine) {
+    return
+  }
+
+  const waiting = requests.filter(request => request.sessionId === call.sessionId)
+
+  if (approval && !waiting.some(request => request.id === approval)) {
+    // Answered on the screen, or withdrawn.
+    approval = null
+  }
+
+  const next = waiting.find(request => !announced.has(request.id))
+
+  if (!next) {
+    return
+  }
+
+  announced.add(next.id)
+  engine.feed('', true)
+
+  if (next.kind === 'approval') {
+    approval = next.id
+    engine.say(approvalQuestion(next))
+  } else {
+    engine.say(`Hermes needs you. ${requestSummary(next)}. Please answer on the screen.`)
+  }
+})
+
+function speaks(): boolean {
+  return Boolean(turn?.started && !turn.muted)
+}
+
+function payloadText(event: GatewayEvent): string {
+  const text = (event.payload as { text?: unknown } | undefined)?.text
+
+  return typeof text === 'string' ? text : ''
+}
+
+/** The events of the answer go to the voice as they come. */
+onGatewayEvent(event => {
+  const call = $call.get()
+
+  if (!call || !engine || event.session_id !== call.sessionId) {
+    return
+  }
+
+  switch (event.type) {
+    case 'message.start':
+      // A typed message during a call is spoken too.
+      turn = turn && !turn.done ? { ...turn, started: true } : { done: false, muted: false, spoke: false, started: true }
+      break
+
+    case 'message.delta':
+      if (speaks() && payloadText(event)) {
+        turn!.spoke = true
+        engine.feed(payloadText(event))
+      }
+
+      break
+
+    case 'message.interim':
+      if (speaks()) {
+        if (!(event.payload as { already_streamed?: boolean } | undefined)?.already_streamed && payloadText(event)) {
+          turn!.spoke = true
+          engine.feed(payloadText(event))
+        }
+
+        // The words before a tool call are a finished thought: say them now.
+        engine.feed('', true)
+      }
+
+      break
+
+    case 'tool.start':
+      if (speaks()) {
+        engine.feed('', true)
+
+        if (Date.now() - engine.lastSayAt() > TOOL_LINE_QUIET_MS && !engine.audible()) {
+          engine.say(toolLine((event.payload as { name?: unknown } | undefined)?.name))
+        }
+      }
+
+      break
+
+    case 'message.complete':
+      if (turn?.started) {
+        if (!turn.muted) {
+          engine.feed(turn.spoke ? '' : payloadText(event), true)
+          engine.endReply()
+        }
+
+        turn.done = true
+      }
+
+      break
+
+    default:
+      // A turn that ended with no answer (stopped, or an error) is over too.
+      if (turn?.started && !turn.done && !($conversations.get()[call.sessionId]?.transcript.running ?? false)) {
+        turn.done = true
+
+        if (!turn.muted) {
+          engine.endReply()
+        }
+      }
+  }
+
+  refreshPhase()
+})
 
 /** Start a call in this conversation. Throws when the microphone cannot be used. */
 export async function startCall(sessionId: string): Promise<void> {
   endCall()
-  await openMicrophone()
+
+  const audio = duplexAudio
+  const api = currentApi()
+
+  if (!audio) {
+    throw new Error('This build of the app has no call audio. Install the newest build.')
+  }
+
+  if (!api) {
+    throw new Error('Not connected to a Hermes workspace.')
+  }
+
+  const permission = await requestRecordingPermissionsAsync()
+
+  if (!permission.granted) {
+    throw new Error('Hermes has no access to the microphone. Turn it on in the Settings app.')
+  }
 
   const mine = ++generation
+  const alive = () => generation === mine
 
-  $call.set({ sessionId, phase: 'listening', muted: false, startedAt: Date.now(), level: 0, heard: '', error: null, full: true })
-  void loop(sessionId, mine)
+  $call.set({ sessionId, phase: 'connecting', muted: false, startedAt: Date.now(), level: 0, heard: '', partial: '', error: null, full: true, engine: 'relay' })
+
+  try {
+    const name = pickEngine(await loadEngines())
+
+    if (!alive()) {
+      return
+    }
+
+    const events = engineEvents(sessionId, mine)
+    const next: VoiceEngine = name === 'deepgram' && host?.deepgram ? new DeepgramEngine(api, host.deepgram, events) : new RelayEngine(api, host?.liveStt ?? false, events)
+
+    patch({ engine: next.name })
+    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_DURING_PLAYBACK, speaker: true })
+
+    if (!alive()) {
+      return audio.stop()
+    }
+
+    engine = next
+    subscriptions = [
+      audio.addListener('onFrame', frame => {
+        if (alive()) {
+          next.frame(pcmBytes(frame.data), frame.level)
+          patch({ level: frame.level })
+        }
+      }),
+      audio.addListener('onPlayback', state => alive() && next.playback(state.playing)),
+      audio.addListener('onInterruption', state => alive() && state.reason === 'failed' && patch({ error: state.message ?? 'The audio stopped.' }))
+    ]
+    await next.start()
+
+    if (!alive()) {
+      return
+    }
+
+    patch({ phase: 'listening' })
+    tap()
+  } catch (error) {
+    if (alive()) {
+      endCall()
+    }
+
+    throw error
+  }
 }
 
 export function endCall(): void {
   generation += 1
   stopPlayback?.()
+  subscriptions.forEach(subscription => subscription.remove())
+  subscriptions = []
+
+  if (engine) {
+    engine.stop()
+    engine = null
+    duplexAudio?.stop()
+  } else if ($call.get()) {
+    duplexAudio?.stop()
+  }
+
+  turn = null
+  approval = null
+  announced.clear()
   $call.set(null)
-  // The recorder stops in the loop, which sees the new generation on its next step.
-  void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined)
 }
 
 export function setCallMuted(muted: boolean): void {
-  patch({ muted })
+  duplexAudio?.setMuted(muted)
+  patch({ muted, partial: '' })
 }
 
 export function showCallFull(full: boolean): void {
@@ -293,22 +629,30 @@ export function showCallFull(full: boolean): void {
 
 /**
  * The tap on the circle. While the user talks: send what was said now. While
- * the agent works: stop the turn. While the voice plays: stop it. Each one
- * takes the call back to listening.
+ * the agent works: stop the turn. While the voice plays: stop it. The
+ * microphone stays open through all of them.
  */
 export function interruptCall(): void {
   const call = $call.get()
 
-  if (!call) {
+  if (!call || !engine) {
     return
   }
 
-  if (call.phase === 'listening') {
-    finishNow = true
-  } else if (call.phase === 'thinking') {
-    void stopTurn(call.sessionId).catch(() => undefined)
-  } else if (call.phase === 'speaking') {
-    stopPlayback?.()
+  if (call.phase === 'hearing') {
+    engine.finishTurn()
+  } else if (call.phase === 'thinking' || call.phase === 'speaking') {
+    if (turn) {
+      turn.muted = true
+    }
+
+    engine.hush()
+
+    if (turn && !turn.done) {
+      void stopTurn(call.sessionId).catch(() => undefined)
+    }
+
+    refreshPhase()
   }
 }
 
