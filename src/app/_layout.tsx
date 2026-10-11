@@ -23,6 +23,7 @@ import { clearVault } from '@/store/vault'
 import { clearVoice } from '@/store/voice'
 import { clearWake } from '@/store/wake'
 import { clearWork } from '@/store/work'
+import { clearWorkspace } from '@/store/workspace'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
@@ -56,6 +57,7 @@ export default function RootLayout() {
     clearWork()
     clearBots()
     clearSchedules()
+    clearWorkspace()
     clearProviders()
     clearPush()
 
@@ -100,6 +102,7 @@ export default function RootLayout() {
           <Stack.Screen name="providers" />
           <Stack.Screen name="keys" />
           <Stack.Screen name="cron" />
+          <Stack.Screen name="file" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>

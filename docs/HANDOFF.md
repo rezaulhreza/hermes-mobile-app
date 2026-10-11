@@ -165,6 +165,7 @@ src/store/               nanostores atoms + side effects
   vault.ts               vault items and password manager sources
   sessions.ts            the list (REST) and rename, pin, archive, delete, branch, export
   screen.ts              the live view of the agent's screen work: picture loop, hold, input
+  workspace.ts           the Workspace tab: the folder, files, git changes, the terminal
 host/screen-remote/      the Hermes plugin of the screen view (install.sh puts it on the host)
 src/native/duplex-audio.ts  the wrapper of the native call audio
 modules/hermes-duplex-audio/  local Expo module (Swift): AVAudioEngine with voice processing.
@@ -811,14 +812,38 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `/api/cron/delivery-targets`), a schedule for another bot than the main
    one (the create form sends no profile), blueprints
    (`/api/cron/blueprints`), the whole text of a past run.
-10. **Workspace tab**: NEXT. Not started. File tree with edit and save (REST `files` router),
-    terminal (interactive; a small xterm WebView is acceptable here, or a
-    native text view over `agent.terminal.output` + `shell.exec`), preview
-    (WebView onto the backend preview host, `preview.*` events, take over and
-    hand back), git review (diff, stage, commit, push, PR).
-11. **Kanban**: boards, tasks, comments (plugin REST API).
+10. **Workspace tab**: DONE (seventh session; `core/workspace.ts`,
+    `store/workspace.ts`, `src/app/(tabs)/workspace.tsx`, `src/app/file.tsx`,
+    `src/components/workspace/`). The user opens a folder of the host (the
+    folder Hermes runs in, a project, a recent folder, a typed path). Four
+    panels, only the one on screen is mounted. Checked in the Simulator on a
+    scratch repository with a scratch remote: Files (one level at a time,
+    folder above, text editor with save; a save is refused when the file
+    changed on the host after it was opened), Changes (status, stage, unstage,
+    diff, commit, commit and push: the commit reached the remote), Terminal
+    (`shell.exec` in the folder, `cd` kept by the app, the host refused
+    `rm -rf /` by its own guard), Preview (a port of the host loaded through
+    the preview route). Host facts: `GET /api/fs/list|read-text`,
+    `POST /api/fs/write-text {path, content}`, `GET /api/git/status`,
+    `/api/git/review/list|diff`, `POST /api/git/review/stage|unstage|revert|
+    commit|push {path, file?, message?, push?}`; a commit with nothing staged
+    stages everything first; `shell.exec {command}` is one process with a 30 s
+    limit and the last 4000 characters of output, no folder parameter.
+    Left: a pull request (`/api/git/review/create-pr`, `ship-info`), branch
+    switch and worktrees, new file, new folder, rename and delete
+    (`/api/files/mkdir`, `DELETE /api/files`), a search in the folder, an
+    interactive terminal (a program that waits for keys does not work),
+    the `profile` of a folder (a bot with a remote file backend), syntax
+    colour, "Throw the changes away" was not pressed (a system alert).
+    The driver finds a row of the folder list by its name ("ws-repo"), not by
+    "Folder: ws-repo": a component with a `label` prop hides its inner label.
+11. **Kanban**: NEXT. Boards, tasks, comments (plugin REST API).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
-    (`connectors.*`).
+    (`connectors.*`). The owner (2026-10-09): Hermes configures all of
+    these PER PROFILE (each bot has its own). The screen must start from a
+    profile choice (the Profiles list of the Chats tab is the model), and
+    every call must send that `profile`. Check each route for its profile
+    parameter first.
 13. **Settings**: DONE: the vault (`src/app/vault.tsx`), Voice
     (`src/app/voice.tsx`), providers and models (`src/app/providers.tsx`), API
     keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Left: custom

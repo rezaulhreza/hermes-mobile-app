@@ -13,10 +13,12 @@ export interface Preferences {
   engine: EngineName | 'auto'
   /** This phone listens for the wake word while the app is open. */
   wake: boolean
+  /** The folders the Workspace tab opened last, the newest first. */
+  roots: string[]
 }
 
 const STORAGE_KEY = 'hermes.preferences'
-const DEFAULTS: Preferences = { engine: 'auto', wake: false }
+const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [] }
 const ENGINES: readonly string[] = ['auto', 'deepgram', 'relay', 'gpt-live']
 
 export const $preferences = atom<Preferences>(DEFAULTS)
@@ -27,7 +29,8 @@ export async function loadPreferences(): Promise<void> {
 
     $preferences.set({
       engine: ENGINES.includes(String(stored.engine)) ? (stored.engine as Preferences['engine']) : DEFAULTS.engine,
-      wake: stored.wake === true
+      wake: stored.wake === true,
+      roots: Array.isArray(stored.roots) ? stored.roots.filter((root): root is string => typeof root === 'string') : []
     })
   } catch {
     // Unreadable text is the same as no choice.
