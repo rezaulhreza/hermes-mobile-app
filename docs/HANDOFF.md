@@ -720,6 +720,11 @@ its file is deleted.
 
 Each item is one or more commits. Check the contract file for the RPC names.
 
+The owner's order (2026-10-09): items 7b and 10 are DONE. NEXT is every
+"Left" line of items 2, 3, 4, 4b, 5, 7, 8, 9 and 13 (close each one, or say
+why it cannot be closed), then items 11, 12, 14, then 15, then 17 (release)
+last, then ask about the notification buttons.
+
 1. **Finish the device check**: the "Not checked yet" list above.
 2. **Chat quality**: DONE (tables, tool detail sheet, copy and share,
    scroll-to-newest button, reading position). Left: haptics (needs
@@ -837,7 +842,7 @@ Each item is one or more commits. Check the contract file for the RPC names.
     colour, "Throw the changes away" was not pressed (a system alert).
     The driver finds a row of the folder list by its name ("ws-repo"), not by
     "Folder: ws-repo": a component with a `label` prop hides its inner label.
-11. **Kanban**: NEXT. Boards, tasks, comments (plugin REST API).
+11. **Kanban**: boards, tasks, comments (plugin REST API).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`). The owner (2026-10-09): Hermes configures all of
     these PER PROFILE (each bot has its own). The screen must start from a
