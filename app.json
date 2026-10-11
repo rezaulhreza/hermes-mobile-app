@@ -15,7 +15,10 @@
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
-        "NSLocalNetworkUsageDescription": "Hermes connects to a Hermes host on your Wi-Fi or private network when you choose that connection."
+        "NSLocalNetworkUsageDescription": "Hermes connects to a Hermes host on your Wi-Fi or private network when you choose that connection.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
