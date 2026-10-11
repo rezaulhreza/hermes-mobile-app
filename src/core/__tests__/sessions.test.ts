@@ -1,4 +1,5 @@
 import {
+  channel,
   exportFileName,
   rowsInView,
   filterSessions,
@@ -38,6 +39,17 @@ describe('rowsInView', () => {
 
     expect(rowsInView(mixed, 'archived').map(row => row.id)).toEqual(['a'])
     expect(rowsInView(mixed, 'current').map(row => row.id)).toEqual(['b', 'c'])
+  })
+})
+
+describe('channel', () => {
+  it('names a source for a person and gives it an icon', () => {
+    expect(channel('api_server')).toEqual({ label: 'API', icon: 'code' })
+    expect(channel('telegram').label).toBe('Telegram')
+  })
+
+  it('keeps the name of a source it does not know, readable', () => {
+    expect(channel('home_assistant')).toEqual({ label: 'Home assistant', icon: 'message-circle' })
   })
 })
 

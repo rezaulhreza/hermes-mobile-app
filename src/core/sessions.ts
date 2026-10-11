@@ -98,6 +98,37 @@ export function sessionTitle(row: SessionRow): string {
   return row.title?.trim() || sessionPreview(row) || 'Untitled conversation'
 }
 
+/** The icon of a channel, as a Feather icon name. */
+export type ChannelIcon = 'monitor' | 'smartphone' | 'terminal' | 'send' | 'code' | 'clock' | 'columns' | 'zap' | 'slack' | 'mail' | 'message-circle'
+
+const CHANNELS: Record<string, { label: string; icon: ChannelIcon }> = {
+  desktop: { label: 'Desktop app', icon: 'monitor' },
+  mobile: { label: 'Phone', icon: 'smartphone' },
+  cli: { label: 'Terminal', icon: 'terminal' },
+  tui: { label: 'Terminal app', icon: 'terminal' },
+  telegram: { label: 'Telegram', icon: 'send' },
+  api_server: { label: 'API', icon: 'code' },
+  cron: { label: 'Schedules', icon: 'clock' },
+  kanban: { label: 'Kanban', icon: 'columns' },
+  oneshot: { label: 'One-shot runs', icon: 'zap' },
+  slack: { label: 'Slack', icon: 'slack' },
+  discord: { label: 'Discord', icon: 'message-circle' },
+  whatsapp: { label: 'WhatsApp', icon: 'message-circle' },
+  signal: { label: 'Signal', icon: 'message-circle' },
+  matrix: { label: 'Matrix', icon: 'message-circle' },
+  email: { label: 'Email', icon: 'mail' }
+}
+
+/**
+ * How a source reads to a person: "API", not "api_server". A source the app
+ * does not know keeps its own name, with spaces and a capital.
+ */
+export function channel(source: string): { label: string; icon: ChannelIcon } {
+  const words = source.replace(/[_-]+/g, ' ').trim()
+
+  return CHANNELS[source] ?? { label: words ? `${words[0]!.toUpperCase()}${words.slice(1)}` : source, icon: 'message-circle' }
+}
+
 export function filterSessions(rows: readonly SessionRow[], query: string, source: string | null): SessionRow[] {
   const needle = query.trim().toLowerCase()
 

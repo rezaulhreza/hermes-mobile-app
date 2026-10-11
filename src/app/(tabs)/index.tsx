@@ -2,14 +2,15 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { ChannelSheet, FilterButton } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
-import { filterSessions, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
+import { channel, filterSessions, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
@@ -54,10 +55,10 @@ export default function Chats() {
   const source = useStore($sessionSource)
   const [acting, setActing] = useState<Row | null>(null)
 
-  // The backend filters by source. A filter with one choice is no filter.
-  const known = useStore($sessionSources)
-  const sources = known.length > 1 ? known : []
+  // The backend filters by source.
+  const sources = useStore($sessionSources)
   const activeSource = source
+  const [picking, setPicking] = useState(false)
   const sections = useMemo(() => sessionSections(filterSessions(sessions, query, activeSource)), [sessions, query, activeSource])
 
   const startChat = async () => {
@@ -125,13 +126,16 @@ export default function Chats() {
         />
       </View>
 
-      <ScrollView contentContainerStyle={styles.chips} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
-        <Chip label="All" on={view === 'current' && !activeSource} onPress={() => (showSessionView('current'), showSessionSource(null))} />
-        {sources.map(name => (
-          <Chip key={name} label={name} on={activeSource === name} onPress={() => showSessionSource(activeSource === name ? null : name)} />
-        ))}
-        <Chip icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
-      </ScrollView>
+      <View style={styles.filters}>
+        <FilterButton
+          icon={source ? channel(source).icon : 'message-circle'}
+          label={source ? channel(source).label : 'All channels'}
+          on={Boolean(source)}
+          onPress={() => setPicking(true)}
+          opens
+        />
+        <FilterButton icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
+      </View>
     </View>
   )
 
@@ -163,30 +167,13 @@ export default function Chats() {
         sections={sections}
         stickySectionHeadersEnabled={false}
       />
+      <ChannelSheet active={source} onClose={() => setPicking(false)} onPick={showSessionSource} sources={sources} visible={picking} />
       <SessionActionsSheet
         onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId } })}
         onClose={() => setActing(null)}
         row={acting}
       />
     </SafeAreaView>
-  )
-}
-
-function Chip({ label, on, onPress, icon }: { label: string; on: boolean; onPress: () => void; icon?: 'archive' }) {
-  const t = useTheme()
-
-  return (
-    <Pressable
-      accessibilityLabel={`Filter: ${label}`}
-      accessibilityRole="button"
-      accessibilityState={{ selected: on }}
-      hitSlop={{ top: 6, bottom: 6 }}
-      onPress={onPress}
-      style={[styles.chip, { backgroundColor: on ? t.ink : t.soft }]}
-    >
-      {icon ? <Feather color={on ? t.bg : t.muted} name={icon} size={14} /> : null}
-      <Text style={[type.small, { color: on ? t.bg : t.ink, fontWeight: '600' }]}>{label}</Text>
-    </Pressable>
   )
 }
 
@@ -221,9 +208,10 @@ function SessionRow({ row, onActions }: { row: Row; onActions: () => void }) {
         ) : null}
       </View>
       {row.pinned ? <Feather color={t.muted} name="bookmark" size={14} /> : null}
-      <Text style={[type.small, { color: t.muted }]}>
-        {[row.source && !APP_SOURCES.has(row.source) ? row.source : null, at ? relativeTime(at) : null].filter(Boolean).join(' · ')}
-      </Text>
+      {row.source && !APP_SOURCES.has(row.source) ? (
+        <Feather accessibilityLabel={channel(row.source).label} color={t.muted} name={channel(row.source).icon} size={14} />
+      ) : null}
+      <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>
     </Pressable>
   )
 }
@@ -243,8 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: radius.md
   },
-  chips: { gap: space.sm },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 32, paddingHorizontal: space.md, borderRadius: radius.pill },
+  filters: { flexDirection: 'row', gap: space.sm },
   section: { fontWeight: '700', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
   unread: { width: 8, height: 8, borderRadius: 4 },
   row: {
