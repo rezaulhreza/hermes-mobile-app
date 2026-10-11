@@ -11,10 +11,12 @@ import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
+import { loadPreferences } from '@/store/preferences'
 import { clearRequests } from '@/store/requests'
 import { clearSessions, refreshSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
 import { clearVoice } from '@/store/voice'
+import { clearWake } from '@/store/wake'
 import { $activeWorkspace, loadWorkspaces } from '@/store/workspaces'
 import { useTheme } from '@/theme/use-theme'
 
@@ -29,7 +31,7 @@ export default function RootLayout() {
   const linkState = useStore($linkState)
 
   useEffect(() => {
-    void loadWorkspaces()
+    void loadPreferences().then(loadWorkspaces)
   }, [])
 
   // One link per active workspace. A switch drops every screen's data first,
@@ -43,6 +45,7 @@ export default function RootLayout() {
     clearVault()
     clearPreviews()
     clearVoice()
+    clearWake()
 
     if (workspace) {
       void openLink(workspace)
@@ -77,6 +80,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="chat/[id]" />
           <Stack.Screen name="vault" />
+          <Stack.Screen name="voice" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>

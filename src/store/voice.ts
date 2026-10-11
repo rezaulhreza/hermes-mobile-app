@@ -40,6 +40,7 @@ import { duplexAudio } from '@/native/duplex-audio'
 
 import { $conversations, sendDraft, stopTurn } from './chat'
 import { currentApi, onGatewayEvent } from './link'
+import { $preferences } from './preferences'
 import { $requests, answerRequest } from './requests'
 import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
 import type { EngineEvents, EngineName, VoiceEngine } from './voice-engine'
@@ -225,8 +226,6 @@ export interface EngineChoice {
   reason: string | null
 }
 
-/** What the user chose. `auto` takes the fastest engine the host has. */
-export const $enginePreference = atom<EngineName | 'auto'>('auto')
 /** The engines of the active workspace. Null until `loadEngines` has answered. */
 export const $engines = atom<EngineChoice[] | null>(null)
 
@@ -274,7 +273,7 @@ export async function loadEngines(): Promise<EngineChoice[]> {
 
 /** The engine a call starts with: the choice of the user when the host has it, else the first one that works. */
 function pickEngine(choices: readonly EngineChoice[]): EngineName {
-  const wanted = $enginePreference.get()
+  const wanted = $preferences.get().engine
   const usable = choices.filter(choice => !choice.reason)
 
   return usable.find(choice => choice.name === wanted)?.name ?? usable[0]?.name ?? 'relay'
@@ -299,6 +298,12 @@ const announced = new Set<string>()
 let subscriptions: { remove(): void }[] = []
 
 let injected: Uint8Array[] = []
+/** A check feeds speech. The microphone then stays muted through every start of the audio, so the room is never heard. */
+let fedOnly = false
+
+export function isFedOnly(): boolean {
+  return fedOnly
+}
 
 /**
  * For a check with no sound in the room: this speech (mono int16 PCM at
@@ -306,6 +311,9 @@ let injected: Uint8Array[] = []
  * speech. Mute the call first, so the room is not heard between the frames.
  */
 export function injectSpeech(pcm: Uint8Array): void {
+  fedOnly = true
+  duplexAudio?.setMuted(true)
+
   const size = (INPUT_SAMPLE_RATE * FRAME_MS * 2) / 1000
 
   for (let at = 0; at < pcm.length; at += size) {
@@ -314,6 +322,11 @@ export function injectSpeech(pcm: Uint8Array): void {
     frame.set(pcm.subarray(at, at + size))
     injected.push(frame)
   }
+}
+
+/** The next fed frame of a check, if one waits. */
+export function takeInjected(): Uint8Array | undefined {
+  return injected.shift()
 }
 
 function tap(): void {
@@ -546,8 +559,11 @@ onGatewayEvent(event => {
   refreshPhase()
 })
 
-/** Start a call in this conversation. Throws when the microphone cannot be used. */
-export async function startCall(sessionId: string): Promise<void> {
+/**
+ * Start a call in this conversation. Throws when the microphone cannot be
+ * used. With a `greeting`, the voice says it when the call is open.
+ */
+export async function startCall(sessionId: string, options: { greeting?: string } = {}): Promise<void> {
   endCall()
 
   const audio = duplexAudio
@@ -589,6 +605,11 @@ export async function startCall(sessionId: string): Promise<void> {
       return audio.stop()
     }
 
+    if (fedOnly) {
+      audio.setMuted(true)
+      patch({ muted: true })
+    }
+
     engine = next
     subscriptions = [
       audio.addListener('onFrame', frame => {
@@ -614,6 +635,10 @@ export async function startCall(sessionId: string): Promise<void> {
 
     patch({ phase: 'listening' })
     tap()
+
+    if (options.greeting) {
+      next.say(options.greeting)
+    }
   } catch (error) {
     if (alive()) {
       endCall()

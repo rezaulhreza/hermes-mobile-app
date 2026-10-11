@@ -59,6 +59,26 @@ export default function Settings() {
           </Pressable>
         </Card>
 
+        <Text style={[type.small, styles.section, { color: t.muted }]}>This phone</Text>
+        <Card style={styles.card}>
+          <Pressable
+            accessibilityHint="The speech engine of a call and the wake word"
+            accessibilityLabel="Voice"
+            accessibilityRole="button"
+            onPress={() => router.push('/voice')}
+            style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="mic" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Voice</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                The speech engine of a call, and the wake word
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+        </Card>
+
         <Text style={[type.small, styles.section, { color: t.muted }]}>Workspaces</Text>
         <Card style={styles.card}>
           {workspaces.map((workspace, index) => {

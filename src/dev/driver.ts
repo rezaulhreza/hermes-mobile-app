@@ -19,7 +19,9 @@ import { $sessions, $sessionSource, $sessionView } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
 import { pcmBytes } from '@/core/live-voice'
-import { $call, $dictation, $enginePreference, $engines, injectSpeech, setCallMuted } from '@/store/voice'
+import { $call, $dictation, $engines, injectSpeech, setCallMuted } from '@/store/voice'
+import { $preferences, setPreference } from '@/store/preferences'
+import { $wake, setWake } from '@/store/wake'
 
 const PORT = 8099
 const REDIAL_MS = 1500
@@ -125,14 +127,17 @@ const helpers = {
   /** The call audio, for a check of the microphone with no call. */
   audio: duplexAudio,
   voiceTrace,
+  setPreference,
+  setWake,
   /** Say a recording into the call with the microphone muted: base64 of mono int16 PCM at 16 kHz. See `scripts/say-to-call.sh`. */
   hear: (base64: string) => {
     setCallMuted(true)
+    duplexAudio?.setMuted(true)
     injectSpeech(pcmBytes(base64))
 
     return 'fed'
   },
-  stores: { $attachments, $previews, $call, $dictation, $enginePreference, $engines, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),
