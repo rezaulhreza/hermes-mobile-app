@@ -473,7 +473,8 @@ the phone's backend on port 9130 runs it):
   directory of that worktree.
 - FINDING for the owner: the live install `~/.hermes/hermes-agent` (`main`,
   the backend on port 9119) carries NO local patch since its update on
-  2026-10-07 21:48: no lease fix, no push. Nothing was applied there. See
+  2026-10-07 21:48: no lease fix, no push. Nothing was applied there. The
+  owner's decision (2026-10-09): do NOT apply them; he decides later. See
   `~/.hermes/hermes-upgrade-in-progress.md`, section 2026-10-09.
 
 Open memory finding: about 4 MB stays after each open of a LONG chat (151
@@ -647,8 +648,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
    (`delegations` of `subagent.list`), `delegation.pause`.
 6. **Push notifications (iOS)**: DONE on the placeholder bundle ID
    (`core/push.ts`, `store/push.ts`). Left for the release item: see "Push,
-   what is left" above. A possible next step, not asked for yet: answer an
-   approval from the notification itself (Approve / Deny buttons). It needs
+   what is left" above. Approve / Deny buttons inside the notification itself:
+   the owner said "not now, maybe at the end" (2026-10-09). When ALL other
+   items are done, ASK the owner; do not build them before a yes. They need
    `aps.category` in the backend payload (a patch) and a background answer
    path in the app.
 7. **Voice**: DONE in the Simulator: full duplex, live words, speech while
@@ -699,8 +701,9 @@ Each item is one or more commits. Check the contract file for the RPC names.
      (the "Screen" pane) are a live VNC view of a SEPARATE virtual desktop,
      for a Linux host or a Docker, SSH or Singularity sandbox. That is not
      what the owner asked for. The image
-     `nousresearch/hermes-sandbox:desktop` (3.04 GB) was pulled for it and
-     is not needed; the owner decides if it is removed. If the screen ever
+     `nousresearch/hermes-sandbox:desktop` was pulled for it by mistake;
+     the owner removed it (2026-10-09). Do NOT install or use Docker for
+     this app. If the screen ever
      runs in a sandbox, `display.observe` and `/api/display/ws` are the
      live view, with noVNC (`@novnc/novnc` 1.7.0 in the desktop app).
 8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
