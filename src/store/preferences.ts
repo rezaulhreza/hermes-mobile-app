@@ -5,6 +5,7 @@
 
 import * as SecureStore from 'expo-secure-store'
 import { atom } from 'nanostores'
+import { Appearance } from 'react-native'
 
 import type { EngineName } from './voice-engine'
 
@@ -15,10 +16,19 @@ export interface Preferences {
   wake: boolean
   /** The folders the Workspace tab opened last, the newest first. */
   roots: string[]
+  /** Light, dark, or what the system says. */
+  appearance: AppearanceChoice
+}
+
+export type AppearanceChoice = 'system' | 'light' | 'dark'
+
+/** Make the whole app, its sheets and its keyboard light or dark. `system` gives the choice back to the phone. */
+function applyAppearance(choice: AppearanceChoice): void {
+  Appearance.setColorScheme(choice === 'system' ? 'unspecified' : choice)
 }
 
 const STORAGE_KEY = 'hermes.preferences'
-const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [] }
+const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [], appearance: 'system' }
 const ENGINES: readonly string[] = ['auto', 'deepgram', 'relay', 'gpt-live']
 
 export const $preferences = atom<Preferences>(DEFAULTS)
@@ -30,8 +40,10 @@ export async function loadPreferences(): Promise<void> {
     $preferences.set({
       engine: ENGINES.includes(String(stored.engine)) ? (stored.engine as Preferences['engine']) : DEFAULTS.engine,
       wake: stored.wake === true,
-      roots: Array.isArray(stored.roots) ? stored.roots.filter((root): root is string => typeof root === 'string') : []
+      roots: Array.isArray(stored.roots) ? stored.roots.filter((root): root is string => typeof root === 'string') : [],
+      appearance: stored.appearance === 'light' || stored.appearance === 'dark' ? stored.appearance : 'system'
     })
+    applyAppearance($preferences.get().appearance)
   } catch {
     // Unreadable text is the same as no choice.
   }
@@ -39,5 +51,10 @@ export async function loadPreferences(): Promise<void> {
 
 export function setPreference<K extends keyof Preferences>(key: K, value: Preferences[K]): void {
   $preferences.set({ ...$preferences.get(), [key]: value })
+
+  if (key === 'appearance') {
+    applyAppearance(value as AppearanceChoice)
+  }
+
   void SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify($preferences.get())).catch(() => undefined)
 }

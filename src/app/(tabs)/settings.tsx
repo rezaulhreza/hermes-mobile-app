@@ -8,9 +8,10 @@ import { Button, Card } from '@/components/ui'
 import { HermesApi } from '@/core/api'
 import type { Workspace } from '@/core/workspaces'
 import { $linkState } from '@/store/link'
+import { $preferences, type AppearanceChoice, setPreference } from '@/store/preferences'
 import { $push, type PushState, unregisterPush } from '@/store/push'
 import { $workspaces, forgetWorkspace, switchWorkspace } from '@/store/workspaces'
-import { space, TOUCH, type } from '@/theme/tokens'
+import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
@@ -24,8 +25,15 @@ const PUSH_TEXT: Record<PushState['permission'], (push: PushState) => string> = 
   granted: push => (push.error ? `On, but this host did not take the phone: ${push.error}` : push.registered ? 'On. Hermes tells you when it needs you.' : 'On. Not registered with this host yet.')
 }
 
+const APPEARANCES: readonly { value: AppearanceChoice; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' }
+]
+
 export default function Settings() {
   const t = useTheme()
+  const { appearance } = useStore($preferences)
   const { workspaces, activeId } = useStore($workspaces)
   const linkState = useStore($linkState)
   const push = useStore($push)
@@ -124,6 +132,28 @@ export default function Settings() {
 
         <Text style={[type.small, styles.section, { color: t.muted }]}>This phone</Text>
         <Card style={styles.card}>
+          <View style={styles.row}>
+            <Feather color={t.muted} name="sun" size={20} />
+            <Text style={[type.label, styles.fill, { color: t.ink }]}>Appearance</Text>
+            <View style={[styles.choices, { backgroundColor: t.soft }]}>
+              {APPEARANCES.map(choice => {
+                const on = appearance === choice.value
+
+                return (
+                  <Pressable
+                    accessibilityLabel={`Appearance: ${choice.label}`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    key={choice.value}
+                    onPress={() => setPreference('appearance', choice.value)}
+                    style={[styles.choice, on && { backgroundColor: t.paper }]}
+                  >
+                    <Text style={[type.small, { color: on ? t.ink : t.muted, fontWeight: '600' }]}>{choice.label}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </View>
           <Pressable
             accessibilityHint="The speech engine of a call and the wake word"
             accessibilityLabel="Voice"
@@ -194,6 +224,8 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
+  choices: { flexDirection: 'row', padding: 3, borderRadius: radius.md },
+  choice: { minHeight: 32, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.md - 3 },
   fill: { flex: 1 },
   content: {
     padding: space.lg,
