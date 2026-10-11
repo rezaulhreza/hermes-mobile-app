@@ -1,4 +1,4 @@
-import { actionFromRequest, actScript, isNavKind, paneMessage, previewAddress, readAnswer, readScript, shortAddress } from '../preview/browser'
+import { actionFromRequest, actScript, isLoopbackUrl, isNavKind, paneMessage, previewAddress, readAnswer, readScript, shortAddress } from '../preview/browser'
 
 describe('previewAddress', () => {
   it('sends a loopback address through the host proxy', () => {
@@ -77,5 +77,18 @@ describe('readAnswer', () => {
       total_chars: 0,
       note: 'loading'
     })
+  })
+})
+
+describe('local-development sites', () => {
+  it('loads a site under a local domain through the host', () => {
+    expect(isLoopbackUrl('http://app.test/')).toBe(true)
+    expect(isLoopbackUrl('http://api.shop.localhost:8080/x')).toBe(true)
+    expect(previewAddress('https://h.example', 'http://app.test')).toBe('https://h.example/api/preview/host?url=http%3A%2F%2Fapp.test')
+  })
+
+  it('does not take a public name for a local one', () => {
+    expect(isLoopbackUrl('http://test.example.com/')).toBe(false)
+    expect(isLoopbackUrl('http://my.test.evil.com/')).toBe(false)
   })
 })

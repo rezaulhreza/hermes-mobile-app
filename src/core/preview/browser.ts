@@ -18,8 +18,16 @@ export interface BrowserPreview {
 
 const LOOPBACK = /^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?(\/|$|\?|#)/i
 
+// Domains that only a local resolver serves (RFC 6761): a site of the host's own development tools.
+const LOCAL_DOMAIN = /^https?:\/\/[a-z0-9.-]+\.(test|localhost)(:\d+)?(\/|$|\?|#)/i
+
+/**
+ * The address names the Hermes host itself: `localhost`, or a site under a
+ * local-development domain (`app.test`). The phone cannot reach or resolve
+ * such an address; the host can.
+ */
 export function isLoopbackUrl(url: string): boolean {
-  return LOOPBACK.test(url.trim())
+  return LOOPBACK.test(url.trim()) || LOCAL_DOMAIN.test(url.trim())
 }
 
 /**
