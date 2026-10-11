@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { Animated, Easing, StyleSheet, View } from 'react-native'
 
 import { useTheme } from '@/theme/use-theme'
@@ -14,7 +14,7 @@ const BEAT_MS = 420
  */
 export function WorkingMark() {
   const t = useTheme()
-  const beats = useRef(DOTS.map(() => new Animated.Value(0))).current
+  const [beats] = useState(() => DOTS.map(() => new Animated.Value(0)))
 
   useEffect(() => {
     const loop = Animated.loop(
