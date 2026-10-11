@@ -34,9 +34,11 @@ Capacitor shell). At release it takes the old app's identity and
 configuration, so the phone sees an update of the same app, and push keeps
 working with no backend change. After that, this repo is the one to maintain.
 
-NOT YET. Until this app is complete the owner uses the old app. Keep the
-placeholder bundle ID `com.example.hermesnative` so both apps install side by
-side. Do the switch only when the owner says so.
+The switch is APPROVED (owner, 2026-10-09, sixth session), but it is the LAST
+step, inside the release item. Until then keep the placeholder bundle ID
+`com.example.hermesnative` so both apps install side by side. Push
+notifications are approved too: build them on the old app's push setup; a real
+push needs the old bundle ID, so test it after the switch.
 
 What to take over at the switch, and where each value is:
 
@@ -58,12 +60,27 @@ What to take over at the switch, and where each value is:
 
 - Do the work inline. Subagents only when clearly worth the cost: Sonnet at
   medium effort, or Haiku for a simple search.
-- Protect memory and CPU. The machine has 16 GB and is often loaded. Do not
-  start the iOS Simulator, Playwright or a browser unless the owner asks.
-  When the owner asks for a device check and the Simulator runs, drive it
-  with `scripts/drive.mjs` (see "Build notes"). Check
-  with `npm run verify`, plus `npx expo export --platform ios` for a bundle
-  check. The owner runs the app on a device.
+- Protect memory and CPU. The machine has 16 GB and is often loaded. One
+  Simulator, one Metro (port 8082), no Playwright and no extra browser.
+  Check each item in the Simulator with `scripts/drive.mjs` (see "Build
+  notes"); do not wait for the owner to tap. Also run `npm run verify`.
+  The owner tests on a real phone only at the end, after TestFlight.
+- Memory and speed are part of every item. Measure the app with
+  `footprint $(pgrep -f "Hermes.app/Hermes") | grep phys_footprint:` at the
+  start and after each item. A development build is about 450 MB right
+  after a start, about 480 MB with a chat open. A rise past that is a fault.
+- Never put a value that changes many times a second (a level, a progress)
+  in a store that a whole screen reads. Give it a throttled atom that only
+  the small component reads (`$callLevel`). The level in `$call` froze the
+  app in a long chat and took it past 1 GB.
+- The owner allows changes to the Hermes host that make voice faster. Say
+  exactly what changed and how to undo it. Hermes repo changes go on a new
+  branch in `~/Developer/hermes-mobile`, not pushed. Careful: the backend
+  of the host RUNS from that checkout (`mobile-shell/scripts/run-backend.sh`,
+  launch agent `com.hermes.backend.mobile`), so a branch switch there
+  changes the running backend at its next start.
+- Remove test data from the owner's Hermes after each check and say what
+  is left.
 - Builds are local: `npx expo run:ios` / `eas build --local`. No EAS cloud.
 - Near 500k tokens of context, stop and update this file.
 - Commits are atomic, imperative mood, no AI attribution lines.
@@ -239,14 +256,23 @@ event and payload shape. Grep it before writing a store.
     down). `POST .../turn {text}` marks a turn as spoken, so the agent answers
     in plain sentences. The key never reaches the phone.
   - `relay`: `/api/audio/transcribe-stream` (only when `voice-config` says
-    `stt.streaming`; this host says false, so the phone sends each turn as a
-    WAV to `/api/audio/transcribe`) and `/api/audio/speak-stream`. Both sockets
-    sign in with `?ticket=` like `/api/ws` (`openSiblingSocket`).
+    `stt.streaming`; else the phone sends each turn as a WAV to
+    `/api/audio/transcribe`) and `/api/audio/speak-stream`. Both sockets
+    sign in with `?ticket=` like `/api/ws` (`openSiblingSocket`). This host
+    has both since the sixth session, see "Host changes".
   - `gpt-live`: WebRTC. `POST /api/audio/voice-live/session {sdp, history}`.
-- This host's `speak-stream` answers `{"type":"fallback"}`: its log says
-  "ffmpeg is required to decode TTS audio" (the backend's PATH has no
-  `/opt/homebrew/bin`). The relay engine then asks `/api/audio/speak` for each
-  sentence. To get the faster PCM path, give the backend ffmpeg on its PATH.
+- A host whose `speak-stream` answers `{"type":"fallback"}` has a speech
+  provider that writes a file and no ffmpeg to decode it. The relay engine
+  then asks `/api/audio/speak` for each sentence. This host did that until
+  the sixth session.
+- The host's `speak-stream` cuts a sentence only when white space follows
+  it. The relay engine sends a line end 150 ms after a sentence that nothing
+  follows (`SENTENCE_FLUSH_MS`), or the last sentence waits for the next
+  event of the turn.
+- A new ticket and socket for `speak-stream` cost about 0.7 s through
+  Cloudflare. The relay engine dials it when the user's turn ends.
+- The backend takes up to 4 minutes to open its port after a restart on a
+  new managed runtime. Wait for `curl http://127.0.0.1:9130/api/status`.
 - Deepgram's speak socket still sends sound for a moment after `Clear`. Drop
   it until `Cleared`.
 - Do not duck the microphone on the phone. With voice processing on, a gain
@@ -271,6 +297,35 @@ event and payload shape. Grep it before writing a store.
   could replace the 12 MB frame limit for attachments. Not used yet.
 - More: `~/.hermes/hermes-mobile-handover.md` (sections "Auth contract" and
   "Traps that cost time").
+
+## Host changes (sixth session, 2026-10-09, allowed by the owner)
+
+For a faster voice. Backup of every changed file:
+`~/.hermes/backups/voice-speed-2026-10-09/`. To undo: copy the three items
+back, then `launchctl kickstart -k gui/$(id -u)/com.hermes.backend.mobile`.
+
+- `~/.hermes/plugins/deepgram-voice/` (a plain folder, not in git): new
+  `hermes_deepgram_voice/stt_stream.py`; `stt.py` got `streaming_capable` and
+  `open_stream_session` (Deepgram `/v1/listen` websocket); `tts.py` got
+  `streams_pcm` and `stream(text, format="pcm")` (raw PCM at 24 kHz, one
+  kept-alive HTTPS session). Noted in its `LOCAL-CHANGES.md`.
+- `~/.hermes/config.yaml`: one new line, `stt.streaming: true`.
+- `~/Library/LaunchAgents/com.hermes.backend.mobile.plist`: a `PATH` with
+  `/opt/homebrew/bin`, so the backend finds ffmpeg.
+
+Measured, end of the question to the first sound (`scripts/voice-open.sh
+<engine> <chat>` then `scripts/voice-latency.sh "question"`):
+
+| Engine | Before | After |
+|---|---|---|
+| relay | 5.4 to 9.6 s, no live words, speech by sentence upload | 4.5 to 8.5 s, live words, PCM stream, no fallback |
+| deepgram | 7.0 to 8.1 s | 5.9 to 6.9 s |
+
+The words are written down about 1.2 s after the question ends (relay was
+2.9 s). The model takes 3 to 5 s of every turn (first text of the answer);
+that is the model of the host, and the largest part that is left. The first
+sound comes 1.2 to 1.7 s after the first text: the first sentence must be
+complete, then about 0.7 s for the provider and the way back.
 
 ## State
 
@@ -365,6 +420,18 @@ voice first). Checked in the Simulator against the owner's real Hermes:
   default model set to the same model), API keys (the list, a test key added
   and removed). NOT seen: `model.save_key` with a real key, Disconnect.
 
+Done on 2026-10-09, sixth session. Checked in the Simulator:
+
+- Host speed (see "Host changes"): the relay engine shows live words and
+  plays the PCM stream with no fallback.
+- A fault that froze the app in a call in a long chat (the level in `$call`).
+- Dictation on the call's audio and `transcribe-stream`: the words show above
+  the message field while the user talks, then go into the field. A tap on
+  "Done talking" with nothing said calls it off.
+- Read aloud on `speak-stream`, with the audio module in its speaker-only
+  mode (`playbackOnly`, no microphone opened): sound about 1.8 s after the
+  tap; the same button stops it.
+
 NOT checked on a real phone, and only a phone can show them: echo
 cancellation (the Simulator's microphone was muted in the checks, see below),
 a call with the screen locked, the earpiece and a headset, the wake word in a
@@ -380,8 +447,6 @@ the room.
 
 In code, NOT seen on a screen (a script cannot use a native picker):
 
-- Dictation into the message field and "read aloud" under an answer (they use
-  the same listen, transcribe and speak code as the call).
 - "Take control" / "Hand back" in the preview (the refusal text is unit logic).
 - The tap on the call circle (send now, stop the agent, stop the voice).
 
@@ -430,8 +495,12 @@ Build notes:
   It builds with xcodebuild, installs, grants the microphone and starts the
   app, with no Metro and no tap. About 20 s when only the local module
   changed; about 8 minutes after a new pod.
-- `h.voiceTrace` holds what the Deepgram engine heard and did (development
-  builds). `h.audio.stats()` gives numbers of the native audio. `h.gptLive()`
+- `scripts/voice-open.sh <engine> [chat id]` opens a call with the microphone
+  muted from the start. `scripts/voice-latency.sh "question"` feeds a
+  question and prints the times. A fed call says its answer through the
+  Mac's speakers; only the microphone is muted.
+- `h.voiceTrace` holds what the engines heard and did, with timing marks
+  (development builds). `h.audio.stats()` gives numbers of the native audio. `h.gptLive()`
   starts the gpt-live engine with no call.
 - A system alert (`Alert.alert`) cannot be closed by the driver. Start the
   app again to get rid of one.
@@ -533,12 +602,6 @@ Each item is one or more commits. Check the contract file for the RPC names.
      interrupts itself on a phone, look at `PLAYBACK_TAIL_MS` and the echo
      check first.
    - gpt-live with an OpenAI key on the host.
-   - The relay engine with `stt.streaming` on the host (live words), and with
-     ffmpeg on the host (the PCM stream, with no fallback).
-   - Dictation still records a file with expo-audio and sends it. Move it to
-     the call's audio and `transcribe-stream`, so the words show while the
-     user talks.
-   - Read aloud still waits for the whole speech file. Use `speak-stream`.
    - The earpiece (`duplexAudio.setSpeaker(false)` exists, no button), a
      voice picker, the wake word on Android (the module is iOS only).
    - The level in the call view is the microphone. Show the voice's level
