@@ -57,7 +57,7 @@ import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { $sessions } from '@/store/sessions'
-import { $call, $callEnded, $dictation, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
+import { $call, $callEnded, $callSession, $dictation, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -74,7 +74,8 @@ export default function Chat() {
   const [modelQuery, setModelQuery] = useState('')
   const [acting, setActing] = useState(false)
   const [tool, setTool] = useState<ToolTarget | null>(null)
-  const call = useStore($call)
+  // Only whether a call is open: the words and the phase of a call must not draw this whole screen again.
+  const call = useStore($callSession)
   const dictation = useStore($dictation)
 
   // A call has no view outside this screen. It must not keep the microphone open after the user leaves.

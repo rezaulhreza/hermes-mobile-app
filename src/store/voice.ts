@@ -17,7 +17,7 @@
 import { AudioModule, type AudioRecorder, createAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio'
 import { File, Paths } from 'expo-file-system'
 import * as Haptics from 'expo-haptics'
-import { atom } from 'nanostores'
+import { atom, computed } from 'nanostores'
 
 import type { GatewayEvent } from '@/core/gateway/gateway-events'
 import {
@@ -44,7 +44,7 @@ import { currentApi, onGatewayEvent } from './link'
 import { $preferences } from './preferences'
 import { $requests, answerRequest } from './requests'
 import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
-import type { EngineEvents, EngineName, VoiceEngine } from './voice-engine'
+import { type EngineEvents, type EngineName, trace, type VoiceEngine } from './voice-engine'
 import { GptLiveEngine } from './voice-gpt-live'
 import { RelayEngine } from './voice-relay'
 
@@ -54,8 +54,6 @@ export interface Call {
   muted: boolean
   /** Unix milliseconds. The timer counts from here. */
   startedAt: number
-  /** The microphone level, 0 to 1. */
-  level: number
   /** What the user said last, as the engine wrote it down. */
   heard: string
   /** The words of the user so far, while they talk. */
@@ -86,6 +84,28 @@ let finishNow = false
 let generation = 0
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * The microphone level of the call, 0 to 1. It has an atom of its own: it
+ * changes many times a second, and only the bars and the circle may draw
+ * again for it. In `$call` it made the whole chat screen draw 50 times a second.
+ */
+export const $callLevel = atom(0)
+
+/** True while a call is open in a conversation, and which one. Changes only when a call starts or ends. */
+export const $callSession = computed($call, call => call?.sessionId ?? null)
+
+const LEVEL_EVERY_MS = 80
+let levelShownAt = 0
+
+function showLevel(level: number): void {
+  const now = Date.now()
+
+  if (now - levelShownAt >= LEVEL_EVERY_MS && Math.abs(level - $callLevel.get()) > 0.02) {
+    levelShownAt = now
+    $callLevel.set(level)
+  }
+}
 
 function patch(change: Partial<Call>): void {
   const call = $call.get()
@@ -377,7 +397,12 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
   const alive = () => generation === mine && $call.get()?.sessionId === sessionId
 
   return {
-    partial: text => alive() && patch({ partial: text }),
+    partial: text => {
+      if (alive()) {
+        trace(`partial "${text.slice(-30)}"`)
+        patch({ partial: text })
+      }
+    },
     hearing: () => alive() && $call.get()?.phase !== 'hearing' && patch({ phase: 'hearing' }),
     barge: () => {
       if (alive() && turn) {
@@ -392,6 +417,7 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
         return
       }
 
+      trace(`utterance "${text.slice(0, 40)}"`)
       patch({ partial: '' })
       refreshPhase()
 
@@ -546,6 +572,10 @@ onGatewayEvent(event => {
 
     case 'message.delta':
       if (speaks() && payloadText(event)) {
+        if (!turn!.spoke) {
+          trace('answer-text')
+        }
+
         turn!.spoke = true
         engine.feed(payloadText(event))
       }
@@ -629,7 +659,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
   const mine = ++generation
   const alive = () => generation === mine
 
-  $call.set({ sessionId, phase: 'connecting', muted: false, startedAt: Date.now(), level: 0, heard: '', partial: '', error: null, full: true, engine: 'relay' })
+  $call.set({ sessionId, phase: 'connecting', muted: false, startedAt: Date.now(), heard: '', partial: '', error: null, full: true, engine: 'relay' })
 
   try {
     const name = pickEngine(await loadEngines())
@@ -673,10 +703,19 @@ export async function startCall(sessionId: string, options: { greeting?: string 
         const fed = injected.shift()
         const level = fed ? frameLevel(fed) : frame.level
 
+        if (fed && !injected.length) {
+          trace('fed-end')
+        }
+
         next.frame(fed ?? pcmBytes(frame.data), level)
-        patch({ level })
+        showLevel(level)
       }),
-      audio.addListener('onPlayback', state => alive() && next.playback(state.playing)),
+      audio.addListener('onPlayback', state => {
+        if (alive()) {
+          trace(`sound ${state.playing}`)
+          next.playback(state.playing)
+        }
+      }),
       audio.addListener('onInterruption', state => alive() && state.reason === 'failed' && patch({ error: state.message ?? 'The audio stopped.' }))
     ]
     await next.start()
@@ -727,6 +766,7 @@ export function endCall(): void {
   approval = null
   injected = []
   announced.clear()
+  $callLevel.set(0)
   $call.set(null)
 }
 

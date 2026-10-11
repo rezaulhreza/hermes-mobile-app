@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { type ComponentProps, type ReactNode, useEffect, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -8,7 +8,7 @@ import { requestSummary } from '@/core/requests'
 import type { TranscriptItem } from '@/core/transcript'
 import { callTimer, type CallPhase, PHASE_HEADING, PHASE_HINT } from '@/core/voice'
 import { $requests } from '@/store/requests'
-import { $call, $engines, type Call, endCall, interruptCall, restartCall, setCallMuted, showCallFull } from '@/store/voice'
+import { $call, $callLevel, $engines, type Call, endCall, interruptCall, restartCall, setCallMuted, showCallFull } from '@/store/voice'
 import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -53,6 +53,22 @@ function Bars({ level, colour, height }: { level: number; colour: string; height
         <View key={index} style={{ width: height / 7, borderRadius: height / 14, backgroundColor: colour, height: Math.max(height / 6, height * shape * (0.25 + 0.75 * level)) }} />
       ))}
     </View>
+  )
+}
+
+/** The bars of the live microphone. Only this draws again when the level changes. */
+function LiveBars({ colour, height, floor }: { colour: string; height: number; floor: number }) {
+  return <Bars colour={colour} height={height} level={Math.max(useStore($callLevel), floor)} />
+}
+
+/** The circle of the call. It grows a little with the voice of the user. */
+function Halo({ open, colour, children, ...rest }: { open: boolean; colour: string; children: ReactNode } & Omit<ComponentProps<typeof Pressable>, 'style' | 'children'>) {
+  const level = useStore($callLevel)
+
+  return (
+    <Pressable {...rest} style={[styles.halo, { backgroundColor: colour, transform: [{ scale: 1 + (open ? level * 0.12 : 0) }] }]}>
+      {children}
+    </Pressable>
   )
 }
 
@@ -137,17 +153,24 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
         ) : null}
 
         <View style={styles.stage}>
-          <Pressable
+          <Halo
             accessibilityHint={PHASE_HINT[call.phase]}
             accessibilityLabel={call.muted ? 'Muted' : PHASE_HEADING[call.phase]}
             accessibilityRole="button"
+            colour={colours.soft}
             onPress={interruptCall}
-            style={[styles.halo, { backgroundColor: colours.soft, transform: [{ scale: 1 + (open ? call.level * 0.12 : 0) }] }]}
+            open={open}
           >
             <View style={[styles.orb, { backgroundColor: t.bg }]}>
-              {call.muted ? <Feather color={colours.strong} name="mic-off" size={44} /> : <Bars colour={colours.strong} height={64} level={open ? Math.max(call.level, call.phase === 'speaking' || call.phase === 'thinking' ? 0.3 : 0) : 0.3} />}
+              {call.muted ? (
+                <Feather color={colours.strong} name="mic-off" size={44} />
+              ) : open ? (
+                <LiveBars colour={colours.strong} floor={call.phase === 'speaking' || call.phase === 'thinking' ? 0.3 : 0} height={64} />
+              ) : (
+                <Bars colour={colours.strong} height={64} level={0.3} />
+              )}
             </View>
-          </Pressable>
+          </Halo>
 
           <Text style={[type.title, { color: t.ink, textAlign: 'center' }]}>{call.muted ? 'Muted.' : PHASE_HEADING[call.phase]}</Text>
 
@@ -213,7 +236,7 @@ function Strip({ call, t }: { call: Call; t: Palette }) {
   return (
     <View style={[styles.strip, { backgroundColor: colours.soft }]}>
       <Pressable accessibilityLabel="Show the call" accessibilityRole="button" onPress={() => showCallFull(true)} style={styles.stripMain}>
-        <Bars colour={colours.strong} height={18} level={!call.muted && call.phase !== 'connecting' ? Math.max(call.level, 0.15) : 0.3} />
+        {!call.muted && call.phase !== 'connecting' ? <LiveBars colour={colours.strong} floor={0.15} height={18} /> : <Bars colour={colours.strong} height={18} level={0.3} />}
         <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.ink, fontWeight: '700' }]}>
           {call.muted ? 'Muted' : PHASE_HEADING[call.phase].replace(/\.$/, '')}
         </Text>

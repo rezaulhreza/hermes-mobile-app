@@ -21,7 +21,7 @@ import { duplexAudio } from '@/native/duplex-audio'
 import { $conversations, createConversation } from './chat'
 import { $linkState, onGatewayEvent, rpc } from './link'
 import { $preferences, setPreference } from './preferences'
-import { $call, isFedOnly, startCall, takeInjected } from './voice'
+import { $call, $callSession, isFedOnly, startCall, takeInjected } from './voice'
 
 export const $wake = atom<WakeState>(WAKE_OFF)
 
@@ -192,8 +192,8 @@ onGatewayEvent(event => {
 })
 
 // The call ended: listen for the phrase again.
-$call.listen(call => {
-  if (!call) {
+$callSession.listen(session => {
+  if (!session) {
     void resume()
   }
 })
