@@ -17,6 +17,8 @@ export interface DuplexOptions {
   speaker: boolean
   /** Echo cancellation. On by default; off is for a check of the hardware only. */
   voiceProcessing?: boolean
+  /** The speaker only, with no microphone: an answer read aloud outside a call. */
+  playbackOnly?: boolean
 }
 
 export interface MicFrame {

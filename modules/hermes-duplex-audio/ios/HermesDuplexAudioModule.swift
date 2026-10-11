@@ -22,6 +22,8 @@ struct DuplexOptions: Record {
   @Field var speaker: Bool = true
   /// Echo cancellation. Off is for a check of the hardware only.
   @Field var voiceProcessing: Bool = true
+  /// The speaker only, with no microphone: an answer read aloud outside a call.
+  @Field var playbackOnly: Bool = false
 }
 
 /// The sound of the room may still hold the voice for this long after playback ends.
@@ -115,7 +117,13 @@ public final class HermesDuplexAudioModule: Module {
       sessionOptions.insert(.defaultToSpeaker)
     }
 
-    try session.setCategory(.playAndRecord, mode: .voiceChat, options: sessionOptions)
+    if options.playbackOnly {
+      // No microphone is opened, so the system shows no recording sign.
+      try session.setCategory(.playback, mode: .spokenAudio)
+    } else {
+      try session.setCategory(.playAndRecord, mode: .voiceChat, options: sessionOptions)
+    }
+
     try session.setActive(true)
     try buildEngine()
     running = true
@@ -134,6 +142,11 @@ public final class HermesDuplexAudioModule: Module {
 
   private func buildEngine() throws {
     let engine = AVAudioEngine()
+
+    if options.playbackOnly {
+      return try buildPlayer(engine)
+    }
+
     let input = engine.inputNode
 
     // Voice processing must be set before the engine starts. A device (or a
@@ -194,13 +207,38 @@ public final class HermesDuplexAudioModule: Module {
     player.play()
   }
 
+  /// The engine with a player and no microphone.
+  private func buildPlayer(_ engine: AVAudioEngine) throws {
+    let player = AVAudioPlayerNode()
+
+    guard let format = playFormat ?? AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false) else {
+      throw Exception(name: "DuplexAudioFormat", description: "The playback format is not supported.")
+    }
+
+    engine.attach(player)
+    engine.connect(player, to: engine.mainMixerNode, format: format)
+    voiceProcessing = false
+    hardwareNote = "playback only, out \(engine.outputNode.outputFormat(forBus: 0).sampleRate) Hz"
+    taps = 0
+    convertFailures = 0
+    self.engine = engine
+    self.player = player
+    self.playFormat = format
+    engine.prepare()
+    try engine.start()
+    player.play()
+  }
+
   private func tearDownEngine() {
     lock.lock()
     playGeneration += 1
     pending = 0
     lock.unlock()
 
-    engine?.inputNode.removeTap(onBus: 0)
+    if !options.playbackOnly {
+      engine?.inputNode.removeTap(onBus: 0)
+    }
+
     player?.stop()
     engine?.stop()
     engine = nil
