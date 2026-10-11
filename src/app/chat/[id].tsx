@@ -33,10 +33,11 @@ import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
 import { WorkStrip } from '@/components/work-sheet'
+import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
-import { duration, headLines } from '@/core/format'
+import { duration, headLines, statusWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { finalAnswerKeys, hasToolDetail } from '@/core/tools'
 import type { Delivery, TranscriptItem } from '@/core/transcript'
@@ -270,9 +271,12 @@ export default function Chat() {
             </Text>
             {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
           </View>
-          <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {transcript?.status ?? (running ? 'Working…' : ' ')}
-          </Text>
+          <View style={styles.statusRow}>
+            {running ? <WorkingMark /> : null}
+            <Text numberOfLines={1} style={[type.small, styles.statusText, { color: t.muted }]}>
+              {transcript?.status ? statusWords(transcript.status) : running ? 'Working…' : ' '}
+            </Text>
+          </View>
         </Pressable>
         {conversation?.info.model ? (
           <Pressable
@@ -749,6 +753,8 @@ const styles = StyleSheet.create({
   },
   pillText: { fontWeight: '600', flexShrink: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusText: { flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
   bubble: { padding: space.md, borderRadius: radius.lg, gap: space.sm },

@@ -78,3 +78,21 @@ export function headLines(text: string, limit: number): { head: string; hidden: 
 
   return { head: lines.slice(0, limit).join('\n'), hidden: lines.length - limit }
 }
+
+/**
+ * The words of the backend's "working" line, with its drawn face cut off:
+ * "◉_◉ analyzing..." gives "Analyzing…". The face is the host's skin (a
+ * kaomoji); the phone shows its own animated mark in that place. A line with
+ * no plain words at its end is returned as it is.
+ */
+export function statusWords(text: string): string {
+  const words = /([A-Za-z][A-Za-z' -]*?)\s*(?:\.{2,}|…)?\s*$/.exec(text)?.[1]?.trim()
+
+  if (!words) {
+    return text.trim()
+  }
+
+  const dots = /(?:\.{2,}|…)\s*$/.test(text) ? '…' : ''
+
+  return `${words[0]!.toUpperCase()}${words.slice(1)}${dots}`
+}

@@ -1,4 +1,4 @@
-import { duration, fileSize, headLines, previewLine, relativeTime } from '../format'
+import { duration, fileSize, headLines, previewLine, relativeTime, statusWords } from '../format'
 
 describe('previewLine', () => {
   it('removes terminal prompt glyphs and box drawing from pasted output', () => {
@@ -34,5 +34,21 @@ describe('fileSize', () => {
     expect(fileSize(348_160)).toBe('340 KB')
     expect(fileSize(1_258_291)).toBe('1.2 MB')
     expect(fileSize(12 * 1024 * 1024)).toBe('12 MB')
+  })
+})
+
+describe('statusWords', () => {
+  it('cuts the drawn face off the working line', () => {
+    expect(statusWords('\u25C9_\u25C9 analyzing...')).toBe('Analyzing\u2026')
+    expect(statusWords('(o_o) pondering...')).toBe('Pondering\u2026')
+    expect(statusWords('( \u2022_\u2022) thinking it over\u2026')).toBe('Thinking it over\u2026')
+  })
+
+  it('keeps a line that is only words', () => {
+    expect(statusWords('Compressing context')).toBe('Compressing context')
+  })
+
+  it('returns a line with no plain words as it is', () => {
+    expect(statusWords(' \u25C9_\u25C9 ')).toBe('\u25C9_\u25C9')
   })
 })
