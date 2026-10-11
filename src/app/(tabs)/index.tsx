@@ -11,6 +11,7 @@ import { IconButton, Notice } from '@/components/ui'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import { channel, filterSessions, rowProfile, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
+import { tap } from '@/native/haptics'
 import { $bots } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
@@ -204,7 +205,7 @@ function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions
       accessibilityLabel={title}
       accessibilityRole="button"
       delayLongPress={350}
-      onLongPress={onActions}
+      onLongPress={() => (tap(), onActions())}
       onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
       style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
     >

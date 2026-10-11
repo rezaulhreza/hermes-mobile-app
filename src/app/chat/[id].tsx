@@ -36,7 +36,7 @@ import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
 import { WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
-import { type Attachment, sentAttachment } from '@/core/attachments'
+import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
 import { answerFiles } from '@/core/host-files'
@@ -62,6 +62,7 @@ import {
 import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
+import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions } from '@/store/sessions'
 import { $call, $callEnded, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
@@ -280,6 +281,7 @@ export default function Chat() {
     // The user's own message is the newest row. Show it, wherever the list was.
     setAwayFromEnd(false)
     list.current?.scrollToOffset({ offset: 0, animated: false })
+    tap()
     void sendDraft(sessionId, text, mode).then(apply)
   }
 
@@ -615,6 +617,41 @@ function Working({ status }: { status: string | null }) {
   )
 }
 
+/** A message of the user. A long press copies its words. */
+function UserBubble({ text, attached, waiting, onOpen }: { text: string; attached?: SentAttachment[]; waiting: boolean; onOpen: (target: ViewerTarget) => void }) {
+  const t = useTheme()
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) {
+      return
+    }
+
+    const timer = setTimeout(() => setCopied(false), 1500)
+
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  return (
+    <>
+      <Pressable
+        accessibilityHint="Hold to copy the message"
+        delayLongPress={350}
+        disabled={!text}
+        onLongPress={() => {
+          tap()
+          void Clipboard.setStringAsync(text).then(() => setCopied(true))
+        }}
+        style={[styles.bubble, { backgroundColor: t.soft }, waiting && styles.waiting]}
+      >
+        {attached?.length ? <SentAttachments items={attached} onOpen={index => onOpen({ items: attached, index })} /> : null}
+        {text ? <Text style={[type.body, { color: t.ink }]}>{text}</Text> : null}
+      </Pressable>
+      {copied ? <Text style={[type.small, { color: t.muted }]}>Copied</Text> : null}
+    </>
+  )
+}
+
 interface RowProps {
   item: TranscriptItem
   /** This row is the answer that ends a turn. Copy and share sit under it. */
@@ -630,14 +667,7 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
     case 'user':
       return (
         <View style={styles.sent}>
-          <View style={[styles.bubble, { backgroundColor: t.soft }, (item.delivery === 'queued' || item.delivery === 'dropped') && styles.waiting]}>
-            {item.attached?.length ? <SentAttachments items={item.attached} onOpen={index => onOpen({ items: item.attached ?? [], index })} /> : null}
-            {item.text ? (
-              <Text selectable style={[type.body, { color: t.ink }]}>
-                {item.text}
-              </Text>
-            ) : null}
-          </View>
+          <UserBubble attached={item.attached} onOpen={onOpen} text={item.text} waiting={item.delivery === 'queued' || item.delivery === 'dropped'} />
           {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
       )
