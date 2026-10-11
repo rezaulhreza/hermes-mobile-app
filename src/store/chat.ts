@@ -69,9 +69,9 @@ export function liveSessionId(storedId: string): string | null {
   return Object.values($conversations.get()).find(conversation => conversation.storedId === storedId)?.sessionId ?? null
 }
 
-/** Start a new conversation. */
-export async function createConversation(): Promise<Conversation> {
-  const result = await rpc<SessionCreateResult>('session.create', { source: SESSION_SOURCE })
+/** Start a new conversation. With a `profile` it is a conversation with that bot. */
+export async function createConversation(profile?: string): Promise<Conversation> {
+  const result = await rpc<SessionCreateResult>('session.create', { source: SESSION_SOURCE, ...(profile ? { profile } : {}) })
   const conversation: Conversation = {
     sessionId: result.session_id,
     storedId: result.stored_session_id || result.session_id,
@@ -85,9 +85,9 @@ export async function createConversation(): Promise<Conversation> {
   return conversation
 }
 
-/** Open a stored conversation. Returns its live session id. */
-export async function resumeConversation(storedId: string, title = ''): Promise<string> {
-  const result = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE })
+/** Open a stored conversation. Returns its live session id. A conversation of a bot needs the bot's `profile`: its history is in that profile. */
+export async function resumeConversation(storedId: string, title = '', profile?: string): Promise<string> {
+  const result = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE, ...(profile ? { profile } : {}) })
 
   $conversations.setKey(result.session_id, {
     sessionId: result.session_id,

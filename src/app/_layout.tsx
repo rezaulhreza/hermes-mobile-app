@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { clearAttachments } from '@/store/attachments'
+import { clearBots } from '@/store/bots'
 import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
@@ -49,6 +50,7 @@ export default function RootLayout() {
     clearVoice()
     clearWake()
     clearWork()
+    clearBots()
     clearProviders()
 
     if (workspace) {

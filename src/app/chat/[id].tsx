@@ -63,7 +63,7 @@ import { useTheme } from '@/theme/use-theme'
 
 export default function Chat() {
   const t = useTheme()
-  const params = useLocalSearchParams<{ id: string; title?: string; live?: string }>()
+  const params = useLocalSearchParams<{ id: string; title?: string; live?: string; profile?: string }>()
   // The route carries the stored id. `live=1` means the conversation was just
   // created and is in the store already. When it is not there (the app
   // started again on this route), the stored id opens it like any other.
@@ -128,14 +128,14 @@ export default function Chat() {
 
     let cancelled = false
 
-    resumeConversation(params.id, params.title)
+    resumeConversation(params.id, params.title, params.profile)
       .then(id => !cancelled && setSessionId(id))
       .catch(error => !cancelled && setFailure(error instanceof Error ? error.message : String(error)))
 
     return () => {
       cancelled = true
     }
-  }, [opened, linkState, params.id, params.title])
+  }, [opened, linkState, params.id, params.title, params.profile])
 
   const transcript = conversation?.transcript
   const running = transcript?.running ?? false
