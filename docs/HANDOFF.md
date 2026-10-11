@@ -679,8 +679,8 @@ Each item is one or more commits. Check the contract file for the RPC names.
      it would move all its terminal work into a container. Make the screen
      the screen of ONE dedicated bot whose own `config.yaml` has
      `terminal.backend: docker`. Every `display.*` call takes `profile`.
-   - Docker Desktop 29.8.1 runs on this Mac. The image pull was started
-     (`docker images | grep hermes-sandbox` shows when it is there).
+   - Docker Desktop 29.8.1 runs on this Mac. The image is on this Mac
+     (`docker images | grep hermes-sandbox`).
      `terminal.container_memory` is 5120 MB by default: set a lower limit
      for the screen bot (the Mac has 16 GB); Xvnc + Xfce idle at about 220 MB.
    - Calls (`tui_gateway/contracts/display.py`, `methods_display.py`):
