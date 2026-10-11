@@ -92,6 +92,22 @@ What to take over at the switch, and where each value is:
 - A tap on a notification opens the EXACT place where the user answers, and
   the text names the bot by its readable name. Every request that waits for
   the owner (approval, question, secret, sudo, vault) sends a push.
+- A commit in `~/Developer/hermes-mobile` makes the phone's backend refuse a
+  model switch ("This gateway is running code from X but the checkout on disk
+  is now Y"). After every commit there, also a docs commit, run
+  `launchctl kickstart -k gui/$(id -u)/com.hermes.backend.mobile` and wait for
+  `curl http://127.0.0.1:9130/api/status` (10 s to 4 minutes).
+- Prefer a Hermes PLUGIN to a core patch when a plugin can do the work (the
+  ledger's own rule 2). A plugin has routes under `/api/plugins/<name>/`
+  (`dashboard/manifest.json` + `plugin_api.py`) and hooks (`pre_tool_call` can
+  refuse a tool call with a message). `hermes update` does not touch it. Its
+  source goes in `host/` of this repo, with a row in the ledger table "Local
+  changes outside the checkout".
+- The owner's design notes (seventh session): no raw keys on screen (a
+  readable name and an icon, like the desktop app); no sliding row of chips;
+  follow the prototype's shape (a button that opens a list); no host path in
+  an answer (show the file); no drawn face of the host's skin; plain words for
+  a fault, not the raw error.
 - Builds are local: `npx expo run:ios` / `eas build --local`. No EAS cloud.
 - Near 500k tokens of context, stop and update this file.
 - Commits are atomic, imperative mood, no AI attribution lines.
@@ -128,6 +144,8 @@ src/core/                pure logic, no React, no native modules. Tested.
   providers.ts           providers, the default model, the keys of the host
   bots.ts                bots (profiles): rows, names
   cron.ts                schedules (cron jobs): rows, the next run in words, checks
+  host-files.ts          host paths in an answer: the files to show under it
+  screen.ts              the agent's screen work: which tools count, the stop words, where a tap lands
 src/store/               nanostores atoms + side effects
   workspaces.ts          SecureStore persistence
   link.ts                the ONE live link (REST + socket), redial with backoff
@@ -146,6 +164,8 @@ src/store/               nanostores atoms + side effects
   browser.ts             previews per conversation; answers preview.read / preview.act
   vault.ts               vault items and password manager sources
   sessions.ts            the list (REST) and rename, pin, archive, delete, branch, export
+  screen.ts              the live view of the agent's screen work: picture loop, hold, input
+host/screen-remote/      the Hermes plugin of the screen view (install.sh puts it on the host)
 src/native/duplex-audio.ts  the wrapper of the native call audio
 modules/hermes-duplex-audio/  local Expo module (Swift): AVAudioEngine with voice processing.
                          Microphone PCM out as events, PCM or MP3 in for playback, at the same time.
@@ -306,6 +326,40 @@ event and payload shape. Grep it before writing a store.
   Docker. On this Mac `display.status` says `supported: false`.
 - `POST /api/files/upload-stream` is a multipart upload with no base64. It
   could replace the 12 MB frame limit for attachments. Not used yet.
+- `GET /api/sessions` lists ONE profile, at most 100 rows a request (`limit`
+  over 100 is a 422), with `offset`, `source`, and `total` in the answer.
+  `GET /api/profiles/sessions?profile=all|<name>` lists across profiles (limit
+  up to 500), same parameters; each row has `profile` and
+  `is_default_profile`. The app uses the second one. `limit=0` gives only the
+  count. `DELETE /api/sessions/{id}`, `/messages` and `/export` take
+  `?profile=`; `PATCH /api/sessions/{id}` takes `profile` in the BODY;
+  `session.branch_stored` takes `profile`.
+- The first answer of the host for a kind of request takes 1.5 to 6 s (the
+  session list, a resume, the profile list); a repeat takes 0.1 to 0.3 s.
+  That is the host. A `session.resume` answer for a long chat is 0.3 to 1 MB
+  of JSON (512 messages: 980 KB, 6.6 s through Cloudflare).
+  `session.resume` has `lazy`, `defer_history`, `omit_messages` and
+  `inline_images: false`; not used yet (see "Left" of item 2).
+- `thinking.delta` text starts with a kaomoji of the host's skin
+  (`display.tui_status_indicator: kaomoji`). `statusWords` cuts it.
+- Screen work on this host: a `desktop` session has `computer_use` and the
+  owner's Chrome MCP (`mcp__chrome__*`, `http://127.0.0.1:8790/mcp`), not the
+  `browser_*` tools (those are in the `telegram` toolset list).
+  `approvals.mode` is `off`, so `computer_use` runs with no approval card
+  (cua mode `unrestricted`). A capture is saved in
+  `~/.hermes/cache/images/computer_use_<id>.png` before the tool ends, and the
+  live `tool.complete` event has the path (`result.screenshot_path`, and in
+  `result.summary`). The main model has no vision, so a capture goes through
+  the auxiliary vision model: 13 s a capture. The FIRST capture after a
+  backend start stalled the backend's event loop for 79.5 s and dropped the
+  socket; the second took 13 s. Not found why (cold imports are the guess).
+- `cua-driver` (0.21.0 here) works per WINDOW: `capture(mode="vision", pid,
+  window_id)` gives a PNG in 0.3 s; a click takes pixels of that PNG; a scroll
+  needs a position; `delivery_mode: "foreground"` fronts the window for the
+  action and goes back. A blocked tool call (a plugin veto) sends no
+  `tool.start` and no `tool.complete`: the chat shows no tool row for it.
+- The first turn of a profile can spend a minute in Hermes's own scratch
+  prune (seen: 64 s, 1.9 GB removed from the Backend bot's scratch folder).
 - More: `~/.hermes/hermes-mobile-handover.md` (sections "Auth contract" and
   "Traps that cost time").
 
@@ -477,7 +531,56 @@ the phone's backend on port 9130 runs it):
   owner's decision (2026-10-09): do NOT apply them; he decides later. See
   `~/.hermes/hermes-upgrade-in-progress.md`, section 2026-10-09.
 
-Open memory finding: about 4 MB stays after each open of a LONG chat (151
+Done on 2026-10-09, seventh session. Checked in the Simulator against the
+owner's real Hermes:
+
+- Item 7b, watch and take over the agent's screen work. The host half is the
+  plugin `host/screen-remote` (installed on the owner's host, see "Host
+  changes, seventh session"). A chat where a screen tool ran shows a "Screen"
+  row; "Watch" opens a live picture of the window (about one a second, only
+  while the view is open). "Stop Hermes and take over" with a reason set the
+  hold on the host; the agent's next `computer_use` call was refused and the
+  agent read "BLOCKED: the user stopped your screen work at 17:36 ... Their
+  reason: ..."; a running turn is also stopped with a message (`redirectTurn`,
+  NOT seen on a running turn: the test model answers too fast). From the
+  phone: a click, text, the Return key and a scroll landed in a scratch
+  TextEdit window. "Hand back" removed the hold. NOT seen: "Hand back and
+  continue" on a real task, a right click (a long press cannot be driven),
+  the window list sheet on screen, a Windows or Linux host.
+- A host path in an answer shows as a picture or a file row under the answer
+  (`core/host-files.ts`); the words keep the file name only.
+- The animated working mark (three dots) under the last message, with the
+  words of the status line and no drawn face.
+- The chat list: every profile (`/api/profiles/sessions`), the next page at
+  the end of the list, a Channels button and a Profiles button with a list
+  each (readable names, icons, the bots' pictures), the channel icon on every
+  row, the bot's name on a row of another profile. With one bot chosen, "New
+  chat" is a chat with that bot (the Backend bot answered "backend"). Before,
+  the phone showed 1 of 14 Telegram chats and 1 of 25 API chats.
+- A closed chat leaves the conversation store (`closeConversation`); a chat
+  whose socket dropped in a turn resumes when the link is back.
+- The bot list loads when the link opens. The link banner says the fault in
+  plain words (`linkProblem`).
+
+Host changes, seventh session (allowed by the owner):
+- `~/.hermes/plugins/screen-remote/` (copied by `host/screen-remote/install.sh`)
+  and `screen-remote` in `plugins.enabled` of `~/.hermes/config.yaml`. Backup:
+  `~/.hermes/backups/screen-remote-2026-10-09/config.before.yaml`. Undo:
+  `hermes plugins disable screen-remote`, delete the folder, restart the
+  backends. The main install (port 9119) reads the same plugin folder and
+  loads it at its next start; it is a plugin, not a core patch.
+- The phone's backend was restarted three times (code and checkout out of
+  step, the plugin, the ledger commit).
+- Ledger: one row in `scripts/local-features/README.md`, commit `aa5e5e6896`
+  on `native-app/backend`. No new patch file: no core change.
+
+Memory, seventh session (development build): 452 MB after a start, 477 MB
+with the list loaded, 543 MB after many chats and views (three opens of a
+chat in a row: 542, 542, 543 MB, so nothing stays for each open now). The
+conversation store kept every opened chat before; that was a part of the
+4 MB finding. Measure the release build still.
+
+Open memory finding (older, see the line above): about 4 MB stays after each open of a LONG chat (151
 rows) in a development build; a short chat and a light screen keep nothing;
 the JavaScript heap grows only 0.4 MB an open. Before the inverted list it
 was 8 MB. Measure again in the release build. If it stays, use Instruments
@@ -605,6 +708,13 @@ picked up: the owner knows, and decides whether to delete it. The test bot,
 the test key and the test schedule are gone again. The host's
 `wake_word.enabled` is back to false.
 
+Test data, seventh session: the chats "Screenshot screen and navigate to
+example.com", "One-word greeting" and "Count from one to sixty" are in the
+owner's Hermes (main profile), safe to delete. The test chat of the Backend
+bot is deleted. Eight old chats were resumed for a timing test; nothing in
+them changed. No hold is set. The scratch TextEdit document is closed and
+its file is deleted.
+
 ## Remaining work, in order
 
 Each item is one or more commits. Check the contract file for the RPC names.
@@ -613,7 +723,11 @@ Each item is one or more commits. Check the contract file for the RPC names.
 2. **Chat quality**: DONE (tables, tool detail sheet, copy and share,
    scroll-to-newest button, reading position). Left: haptics (needs
    expo-haptics and a native build), copy for a user message, syntax colour
-   in code blocks.
+   in code blocks. Also left: a faster open of a long chat (the resume
+   answer is up to 1 MB; try `inline_images: false`, `defer_history` or a
+   page of history), a capture picture inside the tool row and the tool
+   sheet (`result.screenshot_path`), a check that a host file exists before
+   its row shows.
 3. **Composer**: queue + steer, attachments, thumbnails, preview, photo
    resize and paste are DONE. Left:
    - A way to see and cancel the backend queue.
@@ -667,45 +781,19 @@ Each item is one or more commits. Check the contract file for the RPC names.
      while it speaks.
    - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
      `store/voice-relay.ts` are first guesses.
-7b. **Watch and take over the agent's screen work**: NEXT (the owner's
-   order: this, then the Workspace tab, then the "Left" lines, then items
-   11, 12, 14, 15, then release). NOT a per-bot screen. The owner's
-   requirement, 2026-10-09, in his words: "doesn't matter which profile, if
-   computer use or browser control or browser use is being used I should be
-   able to see it if I want to, take control if I want to, and the agent
-   should know I stopped it."
-   - Scope: any profile, any chat. Three surfaces: `computer_use` on the
-     host's real screen, the agent's own browser on the host (browser tool,
-     Chrome bridge), and the in-app browser preview (already has "Take
-     control" / "Hand back"; check it on screen).
-   - See: a view the user opens from the chat while such a tool runs. Not
-     forced on the user.
-   - Take control, and tell the agent: a stop must reach the agent with its
-     reason ("the user stopped you and took over; wait"), so it does not go
-     on blind. Find the call first (a steer with the interrupt, or a lease
-     outside the virtual desktop).
-   - Facts found: `computer_use` uses `cua-driver` (ships with Hermes for
-     macOS, Windows, Linux) and, with `terminal.backend: local`, drives the
-     host itself. No Docker. Each capture is saved on the host and the tool
-     result has `screenshot_path` (`tools/computer_use/tool.py`); the app
-     can fetch it with `GET /api/fs/download?path=`. Acting steps go
-     through the approval gate (`cua:<action>:...`), so the request cards
-     and the push cover them.
-   - To check first: do the live tool events carry the capture path while
-     the turn runs; what the browser tools save; which permission mode the
-     host uses (`hermes computer-use doctor`).
-   - Remote input from the phone to the host's real screen has no route in
-     Hermes on a Mac host. It would be a backend patch (record it in the
-     ledger). Size it before building; ask the owner if it is large.
-   - A mistake of the sixth session, do not repeat: the `display.*` calls
-     (the "Screen" pane) are a live VNC view of a SEPARATE virtual desktop,
-     for a Linux host or a Docker, SSH or Singularity sandbox. That is not
-     what the owner asked for. The image
-     `nousresearch/hermes-sandbox:desktop` was pulled for it by mistake;
-     the owner removed it (2026-10-09). Do NOT install or use Docker for
-     this app. If the screen ever
-     runs in a sandbox, `display.observe` and `/api/display/ws` are the
-     live view, with noVNC (`@novnc/novnc` 1.7.0 in the desktop app).
+7b. **Watch and take over the agent's screen work**: DONE (seventh session;
+   `core/screen.ts`, `store/screen.ts`, `components/screen-view.tsx`,
+   `host/screen-remote`). See "Done on 2026-10-09, seventh session". Left:
+   - Check on a running turn that the stop message reaches the agent at
+     once (`redirectTurn`), and "Hand back and continue".
+   - The view follows the agent's window only while the agent's driver
+     session is in the backend's memory (`_agent_target`); else it shows the
+     frontmost window. The user can choose a window (the layers button).
+   - A drag from the phone (the route takes it; the view has no gesture).
+   - Pinch zoom of the picture; a full-screen (all windows) picture.
+   - The hold ends by itself after 30 minutes with no open view.
+   - `display.*` (a VNC view of a separate virtual desktop) is NOT this
+     item. Do not use Docker.
 8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
    `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
    its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
@@ -723,7 +811,7 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `/api/cron/delivery-targets`), a schedule for another bot than the main
    one (the create form sends no profile), blueprints
    (`/api/cron/blueprints`), the whole text of a past run.
-10. **Workspace tab**: Not started. File tree with edit and save (REST `files` router),
+10. **Workspace tab**: NEXT. Not started. File tree with edit and save (REST `files` router),
     terminal (interactive; a small xterm WebView is acceptable here, or a
     native text view over `agent.terminal.output` + `shell.exec`), preview
     (WebView onto the backend preview host, `preview.*` events, take over and
