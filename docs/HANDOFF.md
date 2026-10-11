@@ -253,6 +253,13 @@ event and payload shape. Grep it before writing a store.
   phone cannot both listen. `wake.feed {pcm: base64 int16 16 kHz}`, four 80 ms
   frames a call. The host has no spoken wake reply of its own (the desktop
   plays a sound); the phone says "Yes?" (`WAKE_REPLY`).
+- `profiles.get_asset` answers `data` as a whole `data:` address, not bare
+  base64. `profiles.list {include_sessions: true}` takes several seconds on a
+  host with many bots.
+- `config.set {key: "model"}` needs a live session and changes that session.
+  The default model of the profile is `POST /api/model/set
+  {scope: "main", provider, model}`.
+- `/api/env` marks a masked value as `«redacted:abc...xyz»`.
 - The bot screen (`display.*`, the computer-use view) needs Xvnc on Linux or
   Docker. On this Mac `display.status` says `supported: false`.
 - `POST /api/files/upload-stream` is a multipart upload with no base64. It
@@ -529,9 +536,16 @@ Each item is one or more commits. Check the contract file for the RPC names.
    `display.thumbnail` every 2 s, "Take over" / "Hand back" with
    `display.lease.acquire` / `.release`, then the live screen with noVNC in a
    WebView on `/api/display/ws` (ticket from `display.observe`).
-8. **Bots tab**: profiles (list, create, rename, delete; `profiles.create`
-   and REST), agents, hermes-bots (bot chat, bot cron). Profile scope: every
-   REST call takes `?profile=`, RPCs take a `profile` param.
+8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
+   `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
+   its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
+   in the Simulator on the owner's 12 bots; create, describe, rename and
+   delete ran on a throwaway bot through the same calls. Left: the model of a
+   bot (`PUT /api/profiles/{name}/model`), a picture from the phone
+   (`profiles.set_asset`), `agents.list`, the bot cron of hermes-bots, and
+   the other calls of a bot's chat: `session.resume` takes `profile`, and the
+   calls after it go by the live session id, but REST calls for that chat
+   (tool output of a stored row, file download) do not send `?profile=` yet.
 9. **Cron**: list, create, edit, pause, run, history (REST under `/api/cron`,
    event `cron.changed`).
 10. **Workspace tab**: file tree with edit and save (REST `files` router),
