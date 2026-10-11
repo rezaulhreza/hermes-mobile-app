@@ -12,6 +12,7 @@ import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import { channel, filterSessions, rowProfile, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
 import { $bots } from '@/store/bots'
+import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
@@ -100,7 +101,7 @@ export default function Chats() {
         <View style={[styles.banner, { backgroundColor: t.soft }]}>
           <Text style={[type.label, { color: t.ink }]}>{LINK_LABEL[linkState]}</Text>
           {linkError && linkState !== 'connecting' ? (
-            <Text style={[type.small, { color: t.muted }]}>{linkError}</Text>
+            <Text style={[type.small, { color: t.muted }]}>{linkProblem(linkError)}</Text>
           ) : null}
         </View>
       ) : null}

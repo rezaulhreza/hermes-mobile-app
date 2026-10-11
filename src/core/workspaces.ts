@@ -276,3 +276,35 @@ function parseWorkspace(entry: unknown): Workspace | null {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
+
+/**
+ * Why the link to Hermes is down, in a sentence for the user. The raw text is
+ * a status code with a page of the proxy, or the words of the network stack.
+ * A text the app does not know is passed on only when it is short and plain.
+ */
+export function linkProblem(error: string | null): string | null {
+  if (!error) {
+    return null
+  }
+
+  const status = /^(\d{3}):/.exec(error)?.[1]
+
+  if (status === '502' || status === '503' || status === '504' || status === '530' || /^52\d$/.test(status ?? '')) {
+    return 'Hermes does not answer on its host. It may be starting again. The app tries again by itself.'
+  }
+
+  if (status === '401' || status === '403') {
+    return 'Hermes refused the sign-in. Check the user name and the password in Settings.'
+  }
+
+  if (status === '404') {
+    return 'The address answers, but it is not a Hermes backend. Check the address in Settings.'
+  }
+
+  if (/network request failed|aborted|timed? ?out|offline|internet|could not connect|socket/i.test(error)) {
+    return 'The phone cannot reach the Hermes host. Check the network. The app tries again by itself.'
+  }
+
+  // A sentence written for the user (the proxy page text, a sign-in text) is short and has no markup.
+  return error.length <= 160 && !/[<{]/.test(error) ? error : 'The link to Hermes is down. The app tries again by itself.'
+}

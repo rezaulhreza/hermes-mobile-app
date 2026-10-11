@@ -1,6 +1,7 @@
 import {
   activeWorkspace,
   EMPTY_WORKSPACES,
+  linkProblem,
   normaliseBaseUrl,
   parseWorkspaceList,
   removeWorkspace,
@@ -122,4 +123,22 @@ describe('workspace list', () => {
 it('maps the base URL to the matching WebSocket origin', () => {
   expect(wsOriginFor('https://hermes.example.com')).toBe('wss://hermes.example.com')
   expect(wsOriginFor('http://10.0.0.2:9130')).toBe('ws://10.0.0.2:9130')
+})
+
+describe('linkProblem', () => {
+  it('says in plain words that the host does not answer', () => {
+    expect(linkProblem('502: <html><head><title>502 Bad Gateway</title></head></html>')).toContain('does not answer')
+    expect(linkProblem('530: error code: 1033')).toContain('does not answer')
+  })
+
+  it('says that the phone has no way to the host', () => {
+    expect(linkProblem('Network request failed')).toContain('cannot reach')
+    expect(linkProblem('Aborted')).toContain('cannot reach')
+  })
+
+  it('keeps a short sentence, and hides markup and long raw text', () => {
+    expect(linkProblem('Sign-in was refused for this user.')).toBe('Sign-in was refused for this user.')
+    expect(linkProblem('{"detail":"x"}')).toBe('The link to Hermes is down. The app tries again by itself.')
+    expect(linkProblem(null)).toBeNull()
+  })
 })
