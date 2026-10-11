@@ -756,8 +756,12 @@ last, then ask about the notification buttons.
    - Paste an image from the clipboard.
    - A way to see and cancel the backend queue.
 4. **Session actions**: DONE (rename, pin, archive, delete, export, branch,
-   source filter, archive view). Left: projects, full-text search
-   (`GET /api/sessions/search`), bulk delete, export as Markdown.
+   source filter, archive view; seventh session: the profile switch, paging,
+   and full-text search: three letters or more in the search field ask
+   `GET /api/sessions/search` after 350 ms and show an "In messages" group
+   with the match in strong ink). The search reads ONE profile (the chosen
+   bot, else the host's own); the host has no search across profiles. Left:
+   projects, bulk delete, export as Markdown.
 4b. **Browser preview**: DONE (`core/preview/browser.ts`, `store/browser.ts`,
    `components/preview-pane.tsx`). Left: several tabs (the phone shows the
    last opened page), the annotation actions (`pin`, `hold`, `strobe` draw

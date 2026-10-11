@@ -10,7 +10,18 @@ import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
-import { channel, filterSessions, rowProfile, sessionPreview, type SessionRow as Row, sessionSections, sessionTitle } from '@/core/sessions'
+import {
+  channel,
+  filterSessions,
+  rowProfile,
+  type SearchHit,
+  sessionPreview,
+  type SessionRow as Row,
+  sessionSections,
+  sessionTitle,
+  snippetParts,
+  withMessageHits
+} from '@/core/sessions'
 import { tap } from '@/native/haptics'
 import { $bots } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
@@ -18,6 +29,7 @@ import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
 import {
+  $sessionHits,
   $sessionProfile,
   $sessionQuery,
   $sessions,
@@ -70,7 +82,8 @@ export default function Chats() {
   const botTitles = useMemo(() => new Map((bots ?? []).map(bot => [bot.name, bot.title])), [bots])
   const shownBot = bots?.find(bot => bot.name === profile)
   const [choosingProfile, setChoosingProfile] = useState(false)
-  const sections = useMemo(() => sessionSections(filterSessions(sessions, query, activeSource)), [sessions, query, activeSource])
+  const hits = useStore($sessionHits)
+  const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource)), hits), [sessions, query, activeSource, hits])
 
   const startChat = async () => {
     setStarting(true)
@@ -195,6 +208,7 @@ export default function Chats() {
 /** `bot` names the owner of a row that is not the host's own profile, in the list of all profiles. */
 function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions: () => void }) {
   const t = useTheme()
+  const snippet = (row as SearchHit).snippet
   const preview = sessionPreview(row)
   const title = sessionTitle(row)
   const at = row.last_active ?? row.started_at
@@ -214,7 +228,20 @@ function SessionRow({ row, bot, onActions }: { row: Row; bot?: string; onActions
         <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
           {title}
         </Text>
-        {bot || (row.title && preview) ? (
+        {snippet ? (
+          // A match in a message: the words around it, with the match in strong ink.
+          <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
+            {snippetParts(snippet).map((part, index) =>
+              part.hit ? (
+                <Text key={index} style={{ color: t.ink, fontWeight: '700' }}>
+                  {part.text}
+                </Text>
+              ) : (
+                part.text
+              )
+            )}
+          </Text>
+        ) : bot || (row.title && preview) ? (
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
             {bot ? <Text style={{ color: t.accent, fontWeight: '600' }}>{bot}</Text> : null}
             {bot && row.title && preview ? '  ·  ' : ''}

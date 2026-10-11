@@ -175,6 +175,43 @@ export function sessionSections(rows: readonly SessionRow[]): SessionSection[] {
   return [{ title: 'Pinned', data: pinned }, ...(rest.length ? [{ title: 'Recent', data: rest }] : [])]
 }
 
+/** A conversation that has the searched words in a message. `snippet` marks each match as `>>>words<<<`. */
+export interface SearchHit extends SessionRow {
+  snippet?: string | null
+}
+
+/** The list's own filter reads titles. Shorter words than this are not sent to the search of the host. */
+export const SEARCH_MIN_CHARS = 3
+
+/** The search of the host reads the messages of one profile. With no profile it reads the host's own. */
+export function sessionSearchPath(query: string, { profile, source }: Pick<SessionPage, 'profile' | 'source'> = {}): string {
+  return [
+    `/api/sessions/search?limit=30&q=${encodeURIComponent(query.trim())}`,
+    profile ? `&profile=${encodeURIComponent(profile)}` : '',
+    source ? `&source=${encodeURIComponent(source)}` : ''
+  ].join('')
+}
+
+/** A snippet in parts, for a line that shows the match in bold. Line ends and Markdown marks are noise in one line. */
+export function snippetParts(snippet: string): { text: string; hit: boolean }[] {
+  return snippet
+    .replace(/\s+/g, ' ')
+    .replace(/[*_`#]+/g, '')
+    // A match in a tool result is JSON text: its escaped quotes read as noise.
+    .replace(/\\+"/g, '"')
+    .split(/>>>|<<</)
+    .map((text, index) => ({ text, hit: index % 2 === 1 }))
+    .filter(part => part.text)
+}
+
+/** The list with the message matches under the title matches. A conversation shows once. */
+export function withMessageHits(sections: readonly SessionSection[], hits: readonly SearchHit[]): SessionSection[] {
+  const shown = new Set(sections.flatMap(section => section.data.map(row => row.id)))
+  const extra = hits.filter((hit, index) => !shown.has(hit.id) && hits.findIndex(other => other.id === hit.id) === index)
+
+  return extra.length ? [...sections, { title: 'In messages', data: extra }] : [...sections]
+}
+
 export type SessionActionId = 'pin' | 'rename' | 'branch' | 'export' | 'archive' | 'delete'
 
 export interface SessionAction {

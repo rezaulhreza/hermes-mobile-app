@@ -6,9 +6,12 @@ import {
   exportFileName,
   rowProfile,
   rowsInView,
+  SEARCH_MIN_CHARS,
+  type SearchHit,
   SESSION_PAGE,
   SESSION_SOURCE,
   sessionListPath,
+  sessionSearchPath,
   type SessionRow,
   type SessionView,
   SOURCES_TO_PROBE,
@@ -39,6 +42,49 @@ function api() {
 
   return current
 }
+
+/** The conversations that have the words of the search field in a message. */
+export const $sessionHits = atom<SearchHit[]>([])
+
+const SEARCH_WAIT_MS = 350
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Ask the host for message matches, a moment after the last key. An answer for older words is not shown. */
+function searchMessages(): void {
+  const query = $sessionQuery.get().trim()
+
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+
+  if (query.length < SEARCH_MIN_CHARS || $sessionView.get() === 'archived') {
+    $sessionHits.set([])
+
+    return
+  }
+
+  searchTimer = setTimeout(() => {
+    searchTimer = null
+
+    const profile = $sessionProfile.get()
+    const source = $sessionSource.get()
+
+    currentApi()
+      ?.request<{ results?: SearchHit[] }>({ path: sessionSearchPath(query, { profile, source }) })
+      .then(result => {
+        if (query === $sessionQuery.get().trim() && profile === $sessionProfile.get() && source === $sessionSource.get()) {
+          $sessionHits.set(result.results ?? [])
+        }
+      })
+      .catch(() => $sessionHits.set([]))
+  }, SEARCH_WAIT_MS)
+}
+
+$sessionQuery.listen(searchMessages)
+$sessionProfile.listen(searchMessages)
+$sessionSource.listen(searchMessages)
+$sessionView.listen(searchMessages)
 
 interface SessionList {
   sessions?: SessionRow[]
@@ -165,6 +211,7 @@ export function clearSessions(): void {
   $sessionView.set('current')
   $sessionSource.set(null)
   $sessionProfile.set(null)
+  $sessionHits.set([])
   probed = false
 }
 

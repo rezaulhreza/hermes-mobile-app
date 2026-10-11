@@ -5,6 +5,9 @@ import {
   rowsInView,
   filterSessions,
   sessionActions,
+  sessionSearchPath,
+  snippetParts,
+  withMessageHits,
   sessionListPath,
   sessionPreview,
   sessionSections,
@@ -117,5 +120,31 @@ describe('actions', () => {
   it('makes a safe file name', () => {
     expect(exportFileName({ id: 'x', title: 'Fix: the build/now?' })).toBe('Fix-the-build-now.json')
     expect(exportFileName({ id: 'x', title: '///' })).toBe('conversation.json')
+  })
+})
+
+describe('message search', () => {
+  it('asks the host for the words, in one profile', () => {
+    expect(sessionSearchPath(' water fall ')).toContain('q=water%20fall')
+    expect(sessionSearchPath('x', { profile: 'backend', source: 'telegram' })).toMatch(/&profile=backend&source=telegram$/)
+  })
+
+  it('cuts a snippet into plain parts and matches', () => {
+    expect(snippetParts('A **tall** >>>waterfall<<<\ndrops')).toEqual([
+      { text: 'A tall ', hit: false },
+      { text: 'waterfall', hit: true },
+      { text: ' drops', hit: false }
+    ])
+  })
+
+  it('adds message matches under the title matches, each conversation once', () => {
+    const sections = [{ title: null, data: [{ id: 'a' }] }]
+    const hits = [{ id: 'a', snippet: 'x' }, { id: 'b', snippet: 'y' }, { id: 'b', snippet: 'z' }]
+
+    expect(withMessageHits(sections, hits).map(section => [section.title, section.data.map(row => row.id)])).toEqual([
+      [null, ['a']],
+      ['In messages', ['b']]
+    ])
+    expect(withMessageHits(sections, [])).toEqual(sections)
   })
 })
