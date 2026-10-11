@@ -30,7 +30,9 @@ export function FilesPanel({ bottom }: { bottom: number }) {
     return null
   }
 
-  const up = folder.path === root ? null : parentPath(folder.path)
+  // The opened folder is where the tab starts, not a wall: the user can go above it, to any folder of the host.
+  const up = parentPath(folder.path)
+  const inside = folder.path.startsWith(root)
 
   const open = (entry: FsEntry) => {
     if (entry.isDirectory) {
@@ -59,7 +61,7 @@ export function FilesPanel({ bottom }: { bottom: number }) {
           </Pressable>
         ) : null}
         <Text ellipsizeMode="head" numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
-          {pathUnderRoot(root, folder.path) || 'Top of the folder'}
+          {inside ? pathUnderRoot(root, folder.path) || 'Top of the folder' : folder.path}
         </Text>
         {folder.loading ? <ActivityIndicator color={t.muted} size="small" /> : null}
       </View>

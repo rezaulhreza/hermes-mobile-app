@@ -91,6 +91,31 @@ export async function loadStartPoints(): Promise<void> {
   $startPoints.set(points.filter((point, index) => points.findIndex(other => other.path === point.path) === index))
 }
 
+/** The folders inside a folder, for the folder choice. Files are left out: a folder is what the user picks. */
+export async function listFolders(path: string): Promise<FsEntry[]> {
+  const result = await api().request<{ entries?: FsEntry[]; error?: string }>({ path: `/api/fs/list?path=${q(path)}` })
+
+  if (result.error) {
+    throw new Error(`The host cannot read this folder (${result.error}).`)
+  }
+
+  return (result.entries ?? []).filter(entry => entry.isDirectory)
+}
+
+/** The home folder of the account that runs Hermes: where a browse of the host starts. */
+export async function hostHome(): Promise<string | null> {
+  for (const command of ['cd ~ && pwd', 'cd /d %USERPROFILE% && cd']) {
+    const result = await rpc<ShellExecResult>('shell.exec', { command }).catch(() => null)
+    const home = result?.code === 0 ? result.stdout.trim().split('\n').pop() : ''
+
+    if (home) {
+      return home
+    }
+  }
+
+  return null
+}
+
 /** Work in this folder. The Files panel shows it, the terminal starts in it. */
 export function openRoot(path: string): void {
   $root.set(path)
