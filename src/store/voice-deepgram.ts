@@ -25,11 +25,13 @@ import {
 } from '@/core/live-voice'
 import { duplexAudio } from '@/native/duplex-audio'
 
-import { type EngineEvents, SampleJoiner, type VoiceEngine } from './voice-engine'
+import { type EngineEvents, SampleJoiner, trace, type VoiceEngine } from './voice-engine'
 
 const PLUGIN = '/api/plugins/deepgram-live'
 const SOCKET_OPEN_TIMEOUT_MS = 10_000
 const LISTEN_RETRIES = 2
+// Deepgram answers a Clear with Cleared. Without that answer, sound is let through again after this long.
+const CLEAR_WAIT_MS = 1500
 
 /** The plugin's settings, or the reason the engine cannot run on this host. */
 export async function deepgramStatus(api: HermesApi): Promise<DeepgramSettings | null> {
@@ -63,6 +65,8 @@ export class DeepgramEngine implements VoiceEngine {
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private unflushed = false
   private said = 0
+  /** Sound that was on its way when the voice was stopped is dropped until Deepgram confirms the stop. */
+  private dropUntil = 0
   private turn: UserTurn = NEW_TURN
   private readonly sentences = new SentenceFeed()
   private readonly echo = new EchoMemory()
@@ -109,6 +113,8 @@ export class DeepgramEngine implements VoiceEngine {
     if (playing === this.playing) {
       return
     }
+
+    trace(`playback ${playing}`)
 
     this.playing = playing
 
@@ -175,7 +181,11 @@ export class DeepgramEngine implements VoiceEngine {
 
     this.unflushed = false
     this.sentences.clear()
-    send(this.speak, JSON.stringify({ type: 'Clear' }))
+    if (this.speak?.readyState === WebSocket.OPEN) {
+      this.speak.send(JSON.stringify({ type: 'Clear' }))
+      this.dropUntil = Date.now() + CLEAR_WAIT_MS
+    }
+
     this.samples.reset()
     duplexAudio?.clear()
     this.pendingFlushes = 0
@@ -283,7 +293,7 @@ export class DeepgramEngine implements VoiceEngine {
 
   private onSpeakMessage(data: unknown): void {
     if (typeof data !== 'string') {
-      const pcm = this.samples.push(data as ArrayBuffer)
+      const pcm = Date.now() < this.dropUntil ? null : this.samples.push(data as ArrayBuffer)
 
       if (pcm && this.active) {
         duplexAudio?.play(pcm, OUTPUT_SAMPLE_RATE)
@@ -298,6 +308,7 @@ export class DeepgramEngine implements VoiceEngine {
       this.pendingFlushes = Math.max(0, this.pendingFlushes - 1)
       this.events.changed()
     } else if (parsed?.type === 'Cleared') {
+      this.dropUntil = 0
       this.pendingFlushes = 0
       this.events.changed()
     }
@@ -343,6 +354,7 @@ export class DeepgramEngine implements VoiceEngine {
     const step = advanceTurn(this.turn, info, this.audible(), transcript => this.echo.isEcho(transcript, now))
     const turn = this.turn
 
+    trace(`${info.event} audible=${this.audible()} hush=${step.hush} barged=${step.turn.barged} "${String(info.transcript ?? '').slice(-60)}"`)
     this.turn = step.turn
 
     if (step.hush) {

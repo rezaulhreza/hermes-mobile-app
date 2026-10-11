@@ -81,3 +81,13 @@ export class SampleJoiner {
     this.carry = null
   }
 }
+
+/** Development builds only: what the engines heard and did, for `scripts/drive.mjs`. Null in a release build. */
+export const voiceTrace: string[] | null = __DEV__ ? [] : null
+
+export function trace(line: string): void {
+  if (voiceTrace) {
+    voiceTrace.push(`${Date.now() % 1_000_000} ${line}`)
+    voiceTrace.splice(0, voiceTrace.length - 300)
+  }
+}

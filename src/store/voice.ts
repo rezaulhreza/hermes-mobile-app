@@ -24,9 +24,10 @@ import {
   approvalQuestion,
   type DeepgramSettings,
   FRAME_MS,
+  frameLevel,
   INPUT_SAMPLE_RATE,
   isStopPhrase,
-  MIC_GAIN_DURING_PLAYBACK,
+  MIC_GAIN_WITH_ECHO_CANCELLING,
   pcmBytes,
   spokenVerdict,
   TOOL_LINE_QUIET_MS,
@@ -297,6 +298,24 @@ let approval: string | null = null
 const announced = new Set<string>()
 let subscriptions: { remove(): void }[] = []
 
+let injected: Uint8Array[] = []
+
+/**
+ * For a check with no sound in the room: this speech (mono int16 PCM at
+ * 16 kHz) goes to the call in the place of the microphone, at the speed of
+ * speech. Mute the call first, so the room is not heard between the frames.
+ */
+export function injectSpeech(pcm: Uint8Array): void {
+  const size = (INPUT_SAMPLE_RATE * FRAME_MS * 2) / 1000
+
+  for (let at = 0; at < pcm.length; at += size) {
+    const frame = new Uint8Array(size)
+
+    frame.set(pcm.subarray(at, at + size))
+    injected.push(frame)
+  }
+}
+
 function tap(): void {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined)
 }
@@ -564,7 +583,7 @@ export async function startCall(sessionId: string): Promise<void> {
     const next: VoiceEngine = name === 'deepgram' && host?.deepgram ? new DeepgramEngine(api, host.deepgram, events) : new RelayEngine(api, host?.liveStt ?? false, events)
 
     patch({ engine: next.name })
-    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_DURING_PLAYBACK, speaker: true })
+    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_WITH_ECHO_CANCELLING, speaker: true })
 
     if (!alive()) {
       return audio.stop()
@@ -573,10 +592,16 @@ export async function startCall(sessionId: string): Promise<void> {
     engine = next
     subscriptions = [
       audio.addListener('onFrame', frame => {
-        if (alive()) {
-          next.frame(pcmBytes(frame.data), frame.level)
-          patch({ level: frame.level })
+        if (!alive()) {
+          return
         }
+
+        // A check feeds a recording in the place of the microphone, one frame for one frame.
+        const fed = injected.shift()
+        const level = fed ? frameLevel(fed) : frame.level
+
+        next.frame(fed ?? pcmBytes(frame.data), level)
+        patch({ level })
       }),
       audio.addListener('onPlayback', state => alive() && next.playback(state.playing)),
       audio.addListener('onInterruption', state => alive() && state.reason === 'failed' && patch({ error: state.message ?? 'The audio stopped.' }))
@@ -614,6 +639,7 @@ export function endCall(): void {
 
   turn = null
   approval = null
+  injected = []
   announced.clear()
   $call.set(null)
 }

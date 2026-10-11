@@ -32,8 +32,14 @@ export const FRAME_MS = 80
 // reply is flushed at once, so speech starts with no delay.
 export const FLUSH_MIN_INTERVAL_MS = 3200
 export const SPEAK_TEXT_LIMIT = 1000
-/** The gain of the microphone while the voice plays. Echo cancellation is the main defence. */
-export const MIC_GAIN_DURING_PLAYBACK = 0.2
+/**
+ * The gain of the microphone while the voice plays. The desktop ducks to 0.2,
+ * because a browser's echo cancellation leaves some of the speaker in the
+ * microphone. The phone's voice processing leaves none, and it already makes
+ * the user quieter while the voice plays: with 0.2 on top the listening model
+ * heard no words at all over the voice, so nothing could interrupt it.
+ */
+export const MIC_GAIN_WITH_ECHO_CANCELLING = 1
 /**
  * Speech reported this soon after playback ends may still be the speaker. The
  * desktop uses 350 ms. On the phone a report is later: the microphone gives
@@ -439,4 +445,18 @@ export function bytesBase64(bytes: Uint8Array): string {
   }
 
   return text
+}
+
+/** The loudness of one PCM frame as the native side reports it: 0 to 1. */
+export function frameLevel(pcm: Uint8Array): number {
+  const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength - (pcm.byteLength % 2))
+  let energy = 0
+
+  for (let offset = 0; offset < view.byteLength; offset += 2) {
+    const sample = view.getInt16(offset, true)
+
+    energy += sample * sample
+  }
+
+  return view.byteLength ? Math.min(1, (Math.sqrt(energy / (view.byteLength / 2)) / 32768) * 6) : 0
 }
