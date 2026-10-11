@@ -116,6 +116,18 @@ What to take over at the switch, and where each value is:
   working log and is personal: before the source is opened, remove it from
   the tree (and from the history) or rewrite it. The README is generic and
   must not point a reader at personal notes.
+- The app repo carries the WHOLE host side (owner, 2026-10-09), so anyone can
+  set up a host: `host/screen-remote` (the plugin) and `host/patches` (one
+  generated patch with every backend change over stock Hermes, its base
+  commit, `apply.sh`, a README with the settings). After EVERY backend commit:
+  `HERMES_REPO=~/Developer/hermes-mobile npm run host:sync` here, and commit
+  the result with the app change that needs it. `npm run host:check` fails
+  when the folder is stale. The patch is checked: it applies cleanly to stock
+  Hermes at its base, a second run changes nothing, and the patched backend
+  imports. The numbered patches of the ledger stay in the backend checkout;
+  they cover only a part (the preview route and the phone's bridges came from
+  the mobile branch and were never numbered), so the app repo ships the whole
+  difference as one patch instead.
 - The owner wants every screen FAST. See "Speed" under "Remaining work".
 - Builds are local: `npx expo run:ios` / `eas build --local`. No EAS cloud.
 - Near 500k tokens of context, stop and update this file.

@@ -10,6 +10,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "host:sync": "scripts/sync-host-patches.sh",
+    "host:check": "scripts/sync-host-patches.sh --check",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "postinstall": "node scripts/patch-expo-jsi.mjs"
   },

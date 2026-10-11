@@ -44,15 +44,17 @@ time. Do not commit them.
 
 ## The host side
 
-The app works with a stock Hermes. Two features need a small addition on the
-host:
+Most of the app works with a stock Hermes. Some features need an addition on
+the host. Everything the host needs is in [`host/`](host), with an installer
+for each part:
 
 | Feature | What the host needs |
 |---|---|
-| Screen view (watch, stop, take over) | The plugin in [`host/screen-remote`](host/screen-remote). Run `install.sh` on the host, then restart Hermes. It is plain Python on the computer-use driver that Hermes ships, so it is the same on macOS, Linux and Windows. |
-| Push notifications | A push service on the backend that sends to the Apple Push Notification service, with your own key and bundle identifier. |
+| Screen view (watch, stop, take over) | The plugin in [`host/screen-remote`](host/screen-remote). Run its `install.sh` on the host, then restart Hermes. |
+| Push notifications, the preview of a page of the host, the agent's preview on a phone | The backend changes in [`host/patches`](host/patches). Run `host/patches/apply.sh /path/to/hermes-checkout`, then restart Hermes. [Its README](host/patches/README.md) says what each part does and which settings turn it on. |
 
-A host with no plugin still works: the screen view says what is missing.
+Both are plain Python on parts that Hermes ships for macOS, Linux and Windows.
+A host with none of them still works: a feature that misses its part says so.
 
 ## Layout
 
