@@ -327,6 +327,45 @@ Checked in the Simulator:
   the backend wrote it down word for word, the agent answered, the phone
   spoke the answer and listened again. Mute, the strip view and End work.
 
+Done on 2026-10-09, fifth session (the owner asked for fast, full-duplex
+voice first). Checked in the Simulator against the owner's real Hermes:
+
+- The call is full duplex on the Deepgram path of the desktop plugin. The
+  user's words show while they talk; the voice starts while the answer
+  streams (about 2 to 3 s after the question ends, most of it the model); the
+  words "Hold on" over a long answer stopped the voice at once and the new
+  question got its answer. A turn also ran with the app in the background.
+- The relay engine (Hermes's own routes): speech-to-text by upload and the
+  spoken answer by sentence (this host's `speak-stream` falls back, see
+  "Backend facts"). Live words on this engine need `stt.streaming` on the
+  host: NOT seen.
+- The wake word: the fed phrase "Hey Hermes" started a call in a new chat
+  twice, the voice said "Yes?", and the phone listened again after each call.
+- The gpt-live engine: the phone made a real WebRTC offer and the host
+  answered 503 "GPT-Live needs an OpenAI API key". All after that answer is
+  NOT tested: the events of the voice model, a delegation as a Hermes turn,
+  the answer as commentary, mute, the clean close.
+- The engine choice in the call and in Settings, Voice.
+- The plan and the helpers of a chat (todo list, subagents) on a real turn:
+  the strip, the sheet, a helper's report. NOT seen: steer and stop of a
+  helper that still runs (the test helper ran 9 s), a helper of a helper.
+- Settings: providers and models (the list, a provider with no key, the
+  default model set to the same model), API keys (the list, a test key added
+  and removed). NOT seen: `model.save_key` with a real key, Disconnect.
+
+NOT checked on a real phone, and only a phone can show them: echo
+cancellation (the Simulator's microphone was muted in the checks, see below),
+a call with the screen locked, the earpiece and a headset, the wake word in a
+room.
+
+How the voice checks ran: the owner had a meeting in the room, and an open
+microphone sent its speech to Deepgram and into a test chat. So the checks
+feed speech with `scripts/say-to-call.sh "words"`: the Mac's `say` writes a
+file, the driver feeds it to the call in the place of the microphone
+(`h.hear`), and the microphone stays muted through every start of the audio.
+Use that script. Do not use `say` through the speakers while people talk in
+the room.
+
 In code, NOT seen on a screen (a script cannot use a native picker):
 
 - Dictation into the message field and "read aloud" under an answer (they use
@@ -374,6 +413,16 @@ Build notes:
   new Info.plist keys are missing (the camera then crashes the app).
 - `--port` and `--no-bundler` cannot go together on `expo run:ios`.
 - `react-dom` is pinned only to stop npm resolving a mismatched optional peer.
+- After a change to native code (`modules/`, a new native package, `plugins`
+  in `app.json`): `cd ios && pod install`, then `scripts/sim-build.sh <device>`.
+  It builds with xcodebuild, installs, grants the microphone and starts the
+  app, with no Metro and no tap. About 20 s when only the local module
+  changed; about 8 minutes after a new pod.
+- `h.voiceTrace` holds what the Deepgram engine heard and did (development
+  builds). `h.audio.stats()` gives numbers of the native audio. `h.gptLive()`
+  starts the gpt-live engine with no call.
+- A system alert (`Alert.alert`) cannot be closed by the driver. Start the
+  app again to get rid of one.
 - `xcrun simctl openurl <device> "hermes://settings"` opens a screen by deep
   link, but iOS shows an "Open in Hermes?" dialog that needs a tap. Dark mode
   needs no tap: `xcrun simctl ui <device> appearance dark`.
@@ -445,37 +494,36 @@ Each item is one or more commits. Check the contract file for the RPC names.
    last opened page), the annotation actions (`pin`, `hold`, `strobe` draw
    nothing on the phone), file and artifact previews from `preview.open`
    (only web addresses load), `preview.restart`.
-5. **Subagents**: live list and transcript (`subagent.*` events,
-   `subagent.list`, `subagent.tail`), steer, interrupt. Todo list
-   (`todo.updated`).
+5. **Subagents and the todo list**: DONE (`core/work.ts`, `store/work.ts`,
+   `components/work-sheet.tsx`). Left: check steer and stop on a helper that
+   runs long, the spawn tree (`spawn_tree.*`), failed async delegations
+   (`delegations` of `subagent.list`), `delegation.pause`.
 6. **Push notifications (iOS)**: expo-notifications, register the APNs token
    with `POST /api/push/register`, open the named session on tap. Use the
    old app's push setup, not a new key: see "This app replaces the old one".
    A push test needs the old app's bundle ID, so it needs the owner's word. Backend
    code: `hermes_cli/push/` and `hermes_cli/web_routers/push.py` in the Hermes
    repo. Sandbox vs production environment must match the build type.
-7. **Voice**: the chained call is DONE and checked (`core/voice.ts`,
-   `store/voice.ts`, `components/voice-call.tsx`): full-screen call, strip in
-   the chat, dictation, read aloud. The owner uses voice most; next, in order:
-   - Live words while the user talks. Now the words show after the user
-     stops. Use `/api/audio/transcribe-stream` with PCM from expo-audio's
-     `useAudioStream`, and show the partial text in the call view.
-   - Speak while the answer streams (`/api/audio/speak-stream`), sentence by
-     sentence. Now the voice starts after the whole answer.
-   - Barge-in by voice: listen during speech (needs echo cancellation; try
-     `setAudioModeAsync` voice-chat mode) and stop the voice when the user
-     talks. Now a tap on the circle stops it.
-   - The wake word: PCM frames to `wake.feed` after `wake.start`, the event
-     `wake.detected`, then start a call and speak the wake reply. The backend
-     side exists (`wake.*`); read `apps/desktop/src/app/chat/composer/voice-*`.
-   - The `gpt-live` engine: WebRTC to `/api/audio/voice-live/session` (needs
-     `react-native-webrtc`, a native build). An engine choice in the call.
-   - Keep the call alive with the screen locked (background audio mode in
-     `app.json`, `shouldPlayInBackground`), route to the earpiece or a headset,
-     a voice picker, haptics at each change of turn (expo-haptics is installed).
-   - Seen in the check: the level reads about 0.5 to 0.66 for speech from the
-     Mac's speakers. The speech threshold is -38 dB (`SPEECH_DB`); tune it on a
-     real phone.
+7. **Voice**: DONE in the Simulator: full duplex, live words, speech while
+   the answer streams, barge-in, wake word, gpt-live (built, see what is
+   untested above), background audio. Left:
+   - A check on a real phone: echo cancellation, the lock screen, a headset.
+     The duck gain is 1 (`MIC_GAIN_WITH_ECHO_CANCELLING`); if the voice
+     interrupts itself on a phone, look at `PLAYBACK_TAIL_MS` and the echo
+     check first.
+   - gpt-live with an OpenAI key on the host.
+   - The relay engine with `stt.streaming` on the host (live words), and with
+     ffmpeg on the host (the PCM stream, with no fallback).
+   - Dictation still records a file with expo-audio and sends it. Move it to
+     the call's audio and `transcribe-stream`, so the words show while the
+     user talks.
+   - Read aloud still waits for the whole speech file. Use `speak-stream`.
+   - The earpiece (`duplexAudio.setSpeaker(false)` exists, no button), a
+     voice picker, the wake word on Android (the module is iOS only).
+   - The level in the call view is the microphone. Show the voice's level
+     while it speaks.
+   - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
+     `store/voice-relay.ts` are first guesses.
 7b. **Bot screen (computer use)**: not started; needs a Linux or Docker host
    to run. Plan: a card with `display.status`, a picture from
    `display.thumbnail` every 2 s, "Take over" / "Hand back" with
@@ -494,10 +542,12 @@ Each item is one or more commits. Check the contract file for the RPC names.
 11. **Kanban**: boards, tasks, comments (plugin REST API).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`).
-13. **Settings**: the vault is DONE (`src/app/vault.tsx`, `core/vault.ts`).
-    Left: providers, API keys (`model.save_key`), models, memory,
-    notifications, appearance. Adding credentials for the
-    agent is a main use on the phone: make it fast.
+13. **Settings**: DONE: the vault (`src/app/vault.tsx`), Voice
+    (`src/app/voice.tsx`), providers and models (`src/app/providers.tsx`), API
+    keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Left: custom
+    endpoints (`/api/providers/custom-endpoints`), the auxiliary models
+    (`POST /api/model/set` with `scope: "auxiliary"`), a key check before the
+    save (`/api/providers/validate`), memory, notifications, appearance.
 14. **Ops**: System (gateway status, logs, restart, update), Usage (tokens,
     cost), Maintenance (doctor, audit, backup, debug share, curator, memory
     reset), session import (`session.foreign.*`).
