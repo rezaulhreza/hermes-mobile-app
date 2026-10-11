@@ -108,6 +108,15 @@ What to take over at the switch, and where each value is:
   follow the prototype's shape (a button that opens a list); no host path in
   an answer (show the file); no drawn face of the host's skin; plain words for
   a fault, not the raw error.
+- The repo must be GENERIC (owner, 2026-10-09): he may open the source or
+  ship the app in the App Store. No name, address, site, path, identifier or
+  detail of his computer in code, tests, comments, the README, a plugin or a
+  commit message. A test uses `app.test`, `/Users/me`, `h.example`. Check
+  with `git grep -n -i -E "<his names>"` before a commit. THIS file is the
+  working log and is personal: before the source is opened, remove it from
+  the tree (and from the history) or rewrite it. The README is generic and
+  must not point a reader at personal notes.
+- The owner wants every screen FAST. See "Speed" under "Remaining work".
 - Builds are local: `npx expo run:ios` / `eas build --local`. No EAS cloud.
 - Near 500k tokens of context, stop and update this file.
 - Commits are atomic, imperative mood, no AI attribution lines.
@@ -573,7 +582,13 @@ Host changes, seventh session (allowed by the owner):
 - The phone's backend was restarted three times (code and checkout out of
   step, the plugin, the ledger commit).
 - Ledger: one row in `scripts/local-features/README.md`, commit `aa5e5e6896`
-  on `native-app/backend`. No new patch file: no core change.
+  on `native-app/backend`, for the plugin.
+- Backend patch 0005 (`scripts/local-features/0005-preview-local-domains.patch`,
+  commits `e2c04cf01b`, `04d873a43b`, `5c47a7ee2b`): the preview proxy takes a
+  local-development name and rewrites a page against its final address.
+- `~/.hermes/config.yaml`: a new block `preview: local_domains: [test]`.
+  Backup: `~/.hermes/backups/screen-remote-2026-10-09/config.before-preview-domains.yaml`.
+  Undo: delete the `preview` block.
 
 Memory, seventh session (development build): 452 MB after a start, 477 MB
 with the list loaded, 543 MB after many chats and views (three opens of a
@@ -720,6 +735,23 @@ its file is deleted.
 
 Each item is one or more commits. Check the contract file for the RPC names.
 
+**Speed** (owner, 2026-10-09: "I don't like slowness", do this with the
+"Left" lines, not after them). Screens he named slow: Logins and cards,
+Providers and models, the Bots list, a chat open, "all the other screens".
+Facts measured: the host's FIRST answer of a kind takes 1.5 to 6 s, a repeat
+0.1 to 0.3 s; a `session.resume` answer is up to 1 MB. What to do:
+1. Measure each screen: the time from the tap to the first content, and the
+   time of each request (`h.api().request` and `h.rpc` in the driver).
+2. Show what the app has at once and refresh behind it: keep the last answer
+   of each settings screen in its store (they are small), do not start with
+   a spinner when a store has data.
+3. Ask at link open for the small lists a first tap needs (the bot list is
+   done; providers, keys, vault, schedules are not).
+4. A chat open: `inline_images: false`, `defer_history` or a page of history
+   for a long chat; show the title and the last rows first.
+5. If the host itself is slow on a first answer, find why on the host (cold
+   SQLite, the agent build) and say it; that is not the app's to hide only.
+
 The owner's order (2026-10-09): items 7b and 10 are DONE. NEXT is every
 "Left" line of items 2, 3, 4, 4b, 5, 7, 8, 9 and 13 (close each one, or say
 why it cannot be closed), then items 11, 12, 14, then 15, then 17 (release)
@@ -839,6 +871,16 @@ last, then ask about the notification buttons.
     commit|push {path, file?, message?, push?}`; a commit with nothing staged
     stages everything first; `shell.exec {command}` is one process with a 30 s
     limit and the last 4000 characters of output, no folder parameter.
+    Added after the first check: "Browse the host" in the folder choice (from
+    the home folder, into any folder; `shell.exec` gives the home folder), the
+    Files panel goes above the opened folder, and the Preview is a browser
+    (back, forward, the address). A local-development site of the host loads
+    by its name (`app.test`): the app sends a `.test` or `.localhost` address
+    through the host's preview route, and backend patch 0005 lets that route
+    take such a name when `preview.local_domains` lists its domain and the
+    name resolves to loopback (the owner's config lists `test`). The same
+    patch fixes a page with no styles after an http to https redirect. Seen:
+    a secured Herd site, fully styled.
     Left: a pull request (`/api/git/review/create-pr`, `ship-info`), branch
     switch and worktrees, new file, new folder, rename and delete
     (`/api/files/mkdir`, `DELETE /api/files`), a search in the folder, an
