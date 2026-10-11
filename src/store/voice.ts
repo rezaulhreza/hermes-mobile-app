@@ -14,8 +14,7 @@
  * user can end it, or start another, at any point.
  */
 
-import { AudioModule, type AudioRecorder, createAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio'
-import { File, Paths } from 'expo-file-system'
+import { requestRecordingPermissionsAsync } from 'expo-audio'
 import * as Haptics from 'expo-haptics'
 import { atom, computed } from 'nanostores'
 
@@ -36,7 +35,7 @@ import {
 } from '@/core/live-voice'
 import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
 import { requestSummary } from '@/core/requests'
-import { advanceListen, audioExtension, base64Bytes, type CallPhase, dataUrlParts, levelFraction, NEW_LISTEN, recordingMime, speakable } from '@/core/voice'
+import { type CallPhase, speakable } from '@/core/voice'
 import { duplexAudio } from '@/native/duplex-audio'
 
 import { $conversations, sendDraft, stopTurn } from './chat'
@@ -73,14 +72,7 @@ export const $dictation = atom<'off' | 'listening' | 'transcribing'>('off')
 /** The key of the answer that is read aloud now, outside a call. */
 export const $reading = atom<string | null>(null)
 
-const LEVEL_STEP_MS = 100
-// Speech does not need music quality. A small file is at the backend sooner.
-const RECORDING = { ...RecordingPresets.HIGH_QUALITY, sampleRate: 16_000, numberOfChannels: 1, bitRate: 48_000, isMeteringEnabled: true }
-
-let recorder: AudioRecorder | null = null
 let stopPlayback: (() => void) | null = null
-/** Set to end the listen in progress now and send what there is. */
-let finishNow = false
 let generation = 0
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -117,129 +109,6 @@ function patch(change: Partial<Call>): void {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-async function openMicrophone(): Promise<void> {
-  const permission = await requestRecordingPermissionsAsync()
-
-  if (!permission.granted) {
-    throw new Error('Hermes has no access to the microphone. Turn it on in the Settings app.')
-  }
-
-  await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })
-}
-
-/**
- * Record until the user has spoken and gone quiet. Returns the file, or null
- * when the listen was called off. `alive` is asked after every step; `level`
- * gets each sample for the screen. While `muted` answers true nothing is recorded.
- */
-async function listen(alive: () => boolean, level: (fraction: number) => void, muted: () => boolean = () => false): Promise<string | null> {
-  // The class is a property of the native module object, which the lint rule cannot see into.
-  // eslint-disable-next-line import/namespace
-  recorder ??= new AudioModule.AudioRecorder(RECORDING)
-
-  while (alive()) {
-    // A muted call keeps its place in the loop and records nothing.
-    if (muted()) {
-      level(0)
-      await wait(200)
-      continue
-    }
-
-    await recorder.prepareToRecordAsync()
-    recorder.record()
-    finishNow = false
-
-    let state = NEW_LISTEN
-    let done = false
-
-    while (alive() && !muted() && !done) {
-      await wait(LEVEL_STEP_MS)
-
-      const db = recorder.getStatus().metering
-      const step = advanceListen(state, db, LEVEL_STEP_MS)
-
-      state = step.listen
-      done = step.done || (finishNow && state.totalMs > 300)
-      level(levelFraction(db))
-    }
-
-    await recorder.stop()
-    level(0)
-
-    if (alive() && done && (state.spoke || finishNow)) {
-      return recorder.uri
-    }
-  }
-
-  return null
-}
-
-async function transcribe(uri: string): Promise<string> {
-  const api = currentApi()
-
-  if (!api) {
-    throw new Error('Not connected to a Hermes workspace.')
-  }
-
-  const mime = recordingMime(uri)
-  const base64 = await new File(uri).base64()
-  const result = await api.request<{ transcript?: string }>({
-    path: '/api/audio/transcribe',
-    method: 'POST',
-    body: { data_url: `data:${mime};base64,${base64}`, mime_type: mime },
-    timeoutMs: 60_000
-  })
-
-  return (result.transcript ?? '').trim()
-}
-
-let spoken = 0
-
-/** Say the text. Resolves when the voice ends or `stopSpeaking` is called. */
-async function speak(text: string, alive: () => boolean): Promise<void> {
-  const api = currentApi()
-  const words = speakable(text)
-
-  if (!api || !words) {
-    return
-  }
-
-  const result = await api.request<{ data_url?: string }>({ path: '/api/audio/speak', method: 'POST', body: { text: words }, timeoutMs: 90_000 })
-  const audio = dataUrlParts(result.data_url ?? '')
-
-  if (!audio || !alive()) {
-    return
-  }
-
-  const file = new File(Paths.cache, `hermes-voice-${++spoken % 4}.${audioExtension(audio.mime)}`)
-
-  if (file.exists) {
-    file.delete()
-  }
-
-  file.create()
-  file.write(base64Bytes(audio.base64))
-
-  await new Promise<void>(resolve => {
-    const playing = createAudioPlayer(file.uri)
-    const end = () => {
-      subscription.remove()
-      playing.pause()
-      playing.remove()
-      stopPlayback = null
-      resolve()
-    }
-    const subscription = playing.addListener('playbackStatusUpdate', status => {
-      if (status.didJustFinish) {
-        end()
-      }
-    })
-
-    stopPlayback = end
-    playing.play()
-  })
 }
 
 /** A way to hold a call on this host. `reason` says why it cannot be chosen. */
@@ -809,10 +678,25 @@ export function interruptCall(): void {
   }
 }
 
-/** Listen once and give the words back, for the message field. A second call while it listens ends the listen. */
+/** The live words of a dictation, while the user talks. */
+export const $dictationWords = atom('')
+
+let endDictation: ((words: string) => void) | null = null
+
+/**
+ * Listen once and give the words back, for the message field. The words show
+ * in `$dictationWords` while the user talks, on a host with live
+ * speech-to-text. A second call while it listens ends the listen and sends
+ * what was said.
+ */
 export async function dictate(): Promise<string> {
   if ($dictation.get() === 'listening') {
-    finishNow = true
+    dictationEngine?.finishTurn()
+
+    // Nothing was said yet: the tap calls the listen off.
+    if (!$dictationWords.get() && !dictationHeard) {
+      endDictation?.('')
+    }
 
     return ''
   }
@@ -821,30 +705,105 @@ export async function dictate(): Promise<string> {
     return ''
   }
 
-  await openMicrophone()
+  const audio = duplexAudio
+  const api = currentApi()
+
+  if (!audio) {
+    throw new Error('This build of the app has no call audio. Install the newest build.')
+  }
+
+  if (!api) {
+    throw new Error('Not connected to a Hermes workspace.')
+  }
+
+  const permission = await requestRecordingPermissionsAsync()
+
+  if (!permission.granted) {
+    throw new Error('Hermes has no access to the microphone. Turn it on in the Settings app.')
+  }
+
+  stopPlayback?.()
   $dictation.set('listening')
+  $dictationWords.set('')
+  dictationHeard = false
+
+  const listeners: { remove(): void }[] = []
 
   try {
-    const uri = await listen(() => $dictation.get() === 'listening', () => undefined)
+    if (!host) {
+      await loadEngines()
+    }
 
-    if (!uri) {
+    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: 1, speaker: true })
+
+    if (fedOnly) {
+      audio.setMuted(true)
+    }
+
+    if ($dictation.get() !== 'listening') {
       return ''
     }
 
-    $dictation.set('transcribing')
+    return await new Promise<string>((resolve, reject) => {
+      endDictation = resolve
 
-    return await transcribe(uri)
+      const ears = new RelayEngine(api, host?.liveStt ?? false, {
+        partial: text => $dictationWords.set(text),
+        hearing: () => {
+          dictationHeard = true
+        },
+        barge: () => undefined,
+        transcribing: () => $dictation.set('transcribing'),
+        utterance: text => {
+          if (text) {
+            resolve(text)
+          } else {
+            // A sound that was not speech. Go on listening.
+            dictationHeard = false
+            $dictation.set('listening')
+          }
+        },
+        stopWord: () => undefined,
+        changed: () => undefined,
+        lost: text => reject(new Error(text))
+      })
+
+      dictationEngine = ears
+      void ears.start()
+      listeners.push(
+        audio.addListener('onFrame', frame => {
+          const fed = injected.shift()
+
+          ears.frame(fed ?? pcmBytes(frame.data), fed ? frameLevel(fed) : frame.level)
+        })
+      )
+    })
   } finally {
+    listeners.forEach(listener => listener.remove())
+    dictationEngine?.stop()
+    dictationEngine = null
+    endDictation = null
+    audio.stop()
+    $dictationWords.set('')
     $dictation.set('off')
-    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined)
   }
 }
 
+let dictationEngine: RelayEngine | null = null
+let dictationHeard = false
+
 export function cancelDictation(): void {
-  $dictation.set('off')
+  endDictation?.('')
 }
 
-/** Read one answer aloud, outside a call. The same button stops it. */
+const READ_STEP_MS = 200
+// The first sound of a long answer may take this long on a slow host.
+const READ_START_MS = 20_000
+
+/**
+ * Read one answer aloud, outside a call. The sound starts with the first
+ * sentence: the host streams it. The same button stops it.
+ */
 export async function readAloud(key: string, text: string): Promise<void> {
   if ($reading.get() === key) {
     stopPlayback?.()
@@ -853,12 +812,65 @@ export async function readAloud(key: string, text: string): Promise<void> {
   }
 
   stopPlayback?.()
+
+  const audio = duplexAudio
+  const api = currentApi()
+  const words = speakable(text)
+
+  if (!audio || !api || !words || $call.get() || $dictation.get() !== 'off') {
+    return
+  }
+
   $reading.set(key)
 
+  let stopped = false
+  let failure: string | null = null
+  const mouth = new RelayEngine(api, false, {
+    partial: () => undefined,
+    hearing: () => undefined,
+    barge: () => undefined,
+    transcribing: () => undefined,
+    utterance: () => undefined,
+    stopWord: () => undefined,
+    changed: () => undefined,
+    lost: message => {
+      failure = message
+    }
+  })
+  let listener: { remove(): void } | null = null
+
+  stopPlayback = () => {
+    stopped = true
+  }
+
   try {
-    await setAudioModeAsync({ playsInSilentMode: true })
-    await speak(text, () => $reading.get() === key)
+    await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: 1, speaker: true, playbackOnly: true })
+    listener = audio.addListener('onPlayback', state => mouth.playback(state.playing))
+    await mouth.start()
+    mouth.say(words)
+
+    const startedAt = Date.now()
+    let sounded = false
+
+    while (!stopped && !failure) {
+      await wait(READ_STEP_MS)
+      sounded ||= mouth.audible()
+
+      if (sounded ? mouth.quiet() : Date.now() - startedAt > READ_START_MS) {
+        break
+      }
+    }
+
+    if (failure) {
+      throw new Error(failure)
+    }
   } finally {
+    listener?.remove()
+    mouth.stop()
+    audio.clear()
+    audio.stop()
+    stopPlayback = null
+
     if ($reading.get() === key) {
       $reading.set(null)
     }
@@ -867,6 +879,6 @@ export async function readAloud(key: string, text: string): Promise<void> {
 
 export function clearVoice(): void {
   endCall()
-  $dictation.set('off')
+  cancelDictation()
   $reading.set(null)
 }

@@ -146,6 +146,11 @@ export class RelayEngine implements VoiceEngine {
     return this.playing || Date.now() - this.playbackEndedAt < PLAYBACK_TAIL_MS
   }
 
+  /** Nothing plays and nothing more comes: all that was given to the voice has been said. */
+  quiet(): boolean {
+    return !this.playing && !this.working && !this.reply && !this.waiting.length
+  }
+
   lastSayAt(): number {
     return this.said
   }

@@ -98,13 +98,6 @@ export function advanceListen(listen: Listen, levelDb: number | undefined, stepM
   return next.spoke && next.totalMs >= LISTEN_MAX_MS ? { listen: next, done: true, reason: 'long' } : { listen: next, done: false }
 }
 
-/** The level as 0 to 1, for the circle and the bars on screen. */
-export function levelFraction(levelDb: number | undefined): number {
-  const db = Math.max(-60, Math.min(0, levelDb ?? -60))
-
-  return Math.round(((db + 60) / 60) * 100) / 100
-}
-
 // The speech model reads what it is given. A long answer is cut at a sentence so the voice does not go on for minutes.
 const SPEAK_MAX_CHARS = 1400
 
@@ -137,13 +130,6 @@ export function speakable(markdown: string): string {
   return `${sentence > SPEAK_MAX_CHARS / 2 ? cut.slice(0, sentence + 1) : cut} The rest is on the screen.`
 }
 
-/** What the backend needs to know about a recording, from its file name. */
-export function recordingMime(uri: string): string {
-  const extension = /\.([a-z0-9]+)(\?.*)?$/i.exec(uri)?.[1]?.toLowerCase()
-
-  return extension === 'wav' ? 'audio/wav' : extension === 'webm' ? 'audio/webm' : extension === 'mp3' ? 'audio/mpeg' : 'audio/mp4'
-}
-
 /** The parts of a `data:` address: the type and the base64 text. Null when it is not one. */
 export function dataUrlParts(dataUrl: string): { mime: string; base64: string } | null {
   const match = /^data:([^;,]+)[^,]*;base64,(.+)$/s.exec(dataUrl)
@@ -160,32 +146,4 @@ const GOODBYE = /^(stop|goodbye|bye|end (the )?call|hang up|that'?s all( thanks)
 
 export function isGoodbye(transcript: string): boolean {
   return GOODBYE.test(transcript.trim())
-}
-
-const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-/** The bytes of base64 text. The file module writes bytes; it has no promise about text encodings. */
-export function base64Bytes(base64: string): Uint8Array {
-  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '')
-  const bytes = new Uint8Array(Math.floor((clean.length * 3) / 4))
-  let at = 0
-
-  for (let index = 0; index + 1 < clean.length; index += 4) {
-    const a = BASE64.indexOf(clean[index])
-    const b = BASE64.indexOf(clean[index + 1])
-    const c = index + 2 < clean.length ? BASE64.indexOf(clean[index + 2]) : -1
-    const d = index + 3 < clean.length ? BASE64.indexOf(clean[index + 3]) : -1
-
-    bytes[at++] = (a << 2) | (b >> 4)
-
-    if (c >= 0) {
-      bytes[at++] = ((b & 15) << 4) | (c >> 2)
-    }
-
-    if (d >= 0) {
-      bytes[at++] = ((c & 3) << 6) | d
-    }
-  }
-
-  return bytes.subarray(0, at)
 }

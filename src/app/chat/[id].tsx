@@ -57,7 +57,7 @@ import { $previews } from '@/store/browser'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { $sessions } from '@/store/sessions'
-import { $call, $callEnded, $callSession, $dictation, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
+import { $call, $callEnded, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -322,6 +322,7 @@ export default function Chat() {
 
         {sessionId ? <WorkStrip sessionId={sessionId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
+        {dictation === 'off' ? null : <DictationLine />}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
 
         {shownCompletions.length ? (
@@ -605,6 +606,21 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
   }
 }
 
+/** The words of a dictation while the user talks. They go into the message field when the user stops. */
+function DictationLine() {
+  const t = useTheme()
+  const words = useStore($dictationWords)
+
+  return (
+    <View accessibilityLiveRegion="polite" style={[styles.dictation, { backgroundColor: t.greenBg }]}>
+      <Feather color={t.green} name="mic" size={14} />
+      <Text numberOfLines={3} style={[type.small, styles.dictationWords, { color: words ? t.ink : t.muted }]}>
+        {words || 'Listening. Talk now.'}
+      </Text>
+    </View>
+  )
+}
+
 /** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
@@ -694,6 +710,8 @@ function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
 const styles = StyleSheet.create({
   thinking: { gap: space.sm },
   answer: { gap: space.sm },
+  dictation: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
+  dictationWords: { flex: 1 },
   answerActions: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 24 },
   toEnd: { position: 'absolute', right: space.lg, bottom: space.sm },
   fill: { flex: 1 },

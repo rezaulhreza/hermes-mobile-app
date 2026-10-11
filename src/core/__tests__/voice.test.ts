@@ -1,4 +1,4 @@
-import { advanceListen, audioExtension, base64Bytes, callTimer, dataUrlParts, isGoodbye, levelFraction, type Listen, NEW_LISTEN, recordingMime, speakable } from '../voice'
+import { advanceListen, audioExtension, callTimer, dataUrlParts, isGoodbye, type Listen, NEW_LISTEN, speakable } from '../voice'
 
 function feed(levels: number[], stepMs = 100, start: Listen = NEW_LISTEN) {
   let listen = start
@@ -54,13 +54,6 @@ describe('what is on the screen', () => {
     expect(callTimer(760)).toBe('12:40')
     expect(callTimer(3723)).toBe('1:02:03')
   })
-
-  it('maps the level to a fraction', () => {
-    expect(levelFraction(0)).toBe(1)
-    expect(levelFraction(-30)).toBe(0.5)
-    expect(levelFraction(-120)).toBe(0)
-    expect(levelFraction(undefined)).toBe(0)
-  })
 })
 
 describe('speakable', () => {
@@ -82,11 +75,6 @@ describe('speakable', () => {
 })
 
 describe('audio details', () => {
-  it('names the type of a recording', () => {
-    expect(recordingMime('file:///tmp/rec-1.m4a')).toBe('audio/mp4')
-    expect(recordingMime('file:///tmp/rec.wav')).toBe('audio/wav')
-  })
-
   it('splits a data address', () => {
     expect(dataUrlParts('data:audio/mpeg;base64,AAAA')).toEqual({ mime: 'audio/mpeg', base64: 'AAAA' })
     expect(dataUrlParts('https://x')).toBeNull()
@@ -99,14 +87,5 @@ describe('audio details', () => {
     expect(isGoodbye(' Goodbye. ')).toBe(true)
     expect(isGoodbye('end the call')).toBe(true)
     expect(isGoodbye('stop the build and say goodbye to the old branch')).toBe(false)
-  })
-})
-
-describe('base64Bytes', () => {
-  it('decodes with and without padding', () => {
-    expect([...base64Bytes('SGVsbG8=')]).toEqual([72, 101, 108, 108, 111])
-    expect([...base64Bytes('SGk')]).toEqual([72, 105])
-    expect([...base64Bytes('AAEC\n/w==')]).toEqual([0, 1, 2, 255])
-    expect(base64Bytes('').length).toBe(0)
   })
 })
