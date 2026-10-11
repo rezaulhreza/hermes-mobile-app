@@ -12,6 +12,7 @@ import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { clearSchedules } from '@/store/cron'
+import { loadBots } from '@/store/bots'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { refreshScreenHold } from '@/store/screen'
 import { loadPreferences } from '@/store/preferences'
@@ -71,6 +72,8 @@ export default function RootLayout() {
       void refreshSessions()
       void registerPush()
       void refreshScreenHold()
+      // The Bots tab then shows its list at once. The request is small; the host's first answer can take seconds.
+      void loadBots().catch(() => undefined)
     }
   }, [linkState])
 
