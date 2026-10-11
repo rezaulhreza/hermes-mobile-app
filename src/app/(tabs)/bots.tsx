@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
