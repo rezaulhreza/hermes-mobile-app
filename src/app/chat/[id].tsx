@@ -312,12 +312,6 @@ export default function Chat() {
             </Text>
             {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
           </View>
-          <View style={styles.statusRow}>
-            {running ? <WorkingMark /> : null}
-            <Text numberOfLines={1} style={[type.small, styles.statusText, { color: t.muted }]}>
-              {transcript?.status ? statusWords(transcript.status) : running ? 'Working…' : ' '}
-            </Text>
-          </View>
         </Pressable>
         {conversation?.info.model ? (
           <Pressable
@@ -350,6 +344,8 @@ export default function Chat() {
           <View style={styles.fill}>
             <FlatList
               ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
+              // The list is upside down: its header is under the newest message. That is where the answer will come.
+              ListHeaderComponent={running ? <Working status={transcript?.status ?? null} /> : null}
               contentContainerStyle={styles.transcript}
               data={newestFirst}
               initialNumToRender={12}
@@ -526,14 +522,14 @@ export default function Chat() {
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
       <SessionActionsSheet
-            onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId } })}
+            onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } })}
             onClose={() => setActing(false)}
             onRemoved={() => router.back()}
             onRenamed={title => setConversationTitle(sessionId, title)}
             // The list row knows the flags (pinned, archived). A chat not in the list yet still has its id and title.
             row={
               acting && conversation
-                ? { ...(sessions.find(row => row.id === conversation.storedId) ?? { id: conversation.storedId }), title: conversation.title }
+                ? { ...(sessions.find(row => row.id === conversation.storedId) ?? { id: conversation.storedId, profile: params.profile }), title: conversation.title }
                 : null
             }
           />
@@ -601,6 +597,20 @@ function Answer({ text, streaming, onOpen }: { text: string; streaming: boolean;
     <View style={styles.answerFiles}>
       <Markdown text={shown.text} />
       <SentAttachments items={shown.files} onOpen={index => onOpen({ items: shown.files, index })} />
+    </View>
+  )
+}
+
+/** The sign of a running turn, under the last message: the animated mark and what the agent does now. */
+function Working({ status }: { status: string | null }) {
+  const t = useTheme()
+
+  return (
+    <View accessibilityLabel={status ? statusWords(status) : 'Working'} accessibilityRole="progressbar" style={styles.working}>
+      <WorkingMark />
+      <Text numberOfLines={1} style={[type.small, styles.statusText, { color: t.muted }]}>
+        {status ? statusWords(status) : 'Working…'}
+      </Text>
     </View>
   )
 }
@@ -817,7 +827,7 @@ const styles = StyleSheet.create({
   pillText: { fontWeight: '600', flexShrink: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   answerFiles: { gap: space.sm },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   statusText: { flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
