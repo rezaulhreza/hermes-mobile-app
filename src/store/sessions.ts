@@ -2,6 +2,7 @@ import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
 import type { SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
+import { slimSessionRow } from '@/core/cache'
 import {
   exportFileName,
   rowProfile,
@@ -20,7 +21,9 @@ import {
   withSources
 } from '@/core/sessions'
 
+import { readCached, writeCached } from './cache'
 import { currentApi, onGatewayEvent, rpc } from './link'
+import { $activeWorkspace } from './workspaces'
 
 export const $sessions = atom<SessionRow[]>([])
 export const $sessionsLoading = atom(false)
@@ -98,8 +101,12 @@ export const $sessionSources = atom<string[]>([])
 
 let probed = false
 
-/** Ask once a connection which of the rare sources have a conversation. Each answer is a count, with no rows. */
-async function probeSources(): Promise<void> {
+/**
+ * Ask once a connection which of the rare sources have a conversation. Each answer is a count, with no rows,
+ * but the host opens the store of every profile for each one. So the list of channels asks when it opens,
+ * not the start of the app.
+ */
+export async function loadSessionSources(): Promise<void> {
   if (probed) {
     return
   }
@@ -122,12 +129,18 @@ export async function refreshSessions(): Promise<void> {
   const view = $sessionView.get()
   const source = $sessionSource.get()
   const profile = $sessionProfile.get()
+  const workspaceId = $activeWorkspace.get()?.id
 
   $sessionsLoading.set(true)
 
   try {
     const result = await api().request<SessionList>({ path: sessionListPath(view, { source, profile }) })
-    const page = result.sessions ?? []
+    const page = (result.sessions ?? []).map(slimSessionRow)
+
+    // The list a start of the app shows: every profile, every channel, not the archive.
+    if (view === 'current' && !source && !profile) {
+      writeCached('sessions', rowsInView(page, view), workspaceId)
+    }
 
     // The user can change the view, the source or the profile while the request runs. An answer for another one is not shown.
     if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get()) {
@@ -136,8 +149,6 @@ export async function refreshSessions(): Promise<void> {
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
       $sessionsError.set(null)
     }
-
-    void probeSources().catch(() => undefined)
   } catch (error) {
     $sessionsError.set(error instanceof Error ? error.message : String(error))
   } finally {
@@ -162,7 +173,7 @@ export async function loadMoreSessions(): Promise<void> {
 
   try {
     const result = await api().request<SessionList>({ path: sessionListPath(view, { source, offset, profile }) })
-    const page = result.sessions ?? []
+    const page = (result.sessions ?? []).map(slimSessionRow)
 
     // The offset counts the rows on screen. A refresh or another filter in the meantime makes this page wrong.
     if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get() && offset === $sessions.get().length) {
@@ -200,6 +211,16 @@ export function showSessionProfile(profile: string | null): void {
     $sessionProfile.set(profile)
     $sessions.set([])
     void refreshSessions()
+  }
+}
+
+/** Show the list of the last run until the host answers. */
+export function restoreSessions(): void {
+  const rows = readCached<SessionRow[]>('sessions')
+
+  if (rows?.length && !$sessions.get().length) {
+    $sessions.set(rows)
+    $sessionSources.set(withSources($sessionSources.get(), rows.map(row => row.source)))
   }
 }
 

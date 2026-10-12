@@ -10,6 +10,7 @@ import type { Workspace } from '@/core/workspaces'
 import { $linkState } from '@/store/link'
 import { $preferences, type AppearanceChoice, setPreference } from '@/store/preferences'
 import { $push, type PushState, unregisterPush } from '@/store/push'
+import { forgetCached } from '@/store/cache'
 import { $workspaces, forgetWorkspace, switchWorkspace } from '@/store/workspaces'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -53,6 +54,7 @@ export default function Settings() {
           await unregisterPush(backend, workspace.id)
           await backend.signOut()
           await forgetWorkspace(workspace.id)
+          forgetCached(workspace.id)
         }
       }
     ])

@@ -5,7 +5,9 @@ import { atom, map } from 'nanostores'
 import { type Bot, botRows, botSlug } from '@/core/bots'
 import type { ProfilesCreateResult, ProfilesGetAssetResult, ProfilesListResult } from '@/core/gateway/gateway-contract.generated'
 
+import { readCached, writeCached } from './cache'
 import { currentApi, rpc } from './link'
+import { $activeWorkspace } from './workspaces'
 
 export const $bots = atom<Bot[] | null>(null)
 /** The picture of each bot as a `data:` address. An empty text means none is there (yet). */
@@ -21,20 +23,71 @@ function api() {
   return current
 }
 
+/** The bots whose picture this link asked for already. A stored picture shows until the host's own arrives. */
+const asked = new Set<string>()
+let fetching = false
+
 export async function loadBots(): Promise<void> {
+  const workspaceId = $activeWorkspace.get()?.id
   const result = await rpc<ProfilesListResult>('profiles.list', { include_sessions: true })
   const bots = botRows(result.profiles ?? [], Date.now() / 1000)
 
   $bots.set(bots)
+  writeCached('bots', bots, workspaceId)
+  void loadAvatars(bots, workspaceId)
+}
 
-  for (const bot of bots) {
-    if (bot.hasAvatar && $botAvatars.get()[bot.name] === undefined) {
-      $botAvatars.setKey(bot.name, '')
-      // `data` is a whole `data:` address already, not bare base64.
-      void rpc<ProfilesGetAssetResult>('profiles.get_asset', { name: bot.name, asset: 'avatar' })
-        .then(asset => asset.found && asset.data && $botAvatars.setKey(bot.name, asset.data.startsWith('data:') ? asset.data : `data:${asset.mime || 'image/png'};base64,${asset.data}`))
-        .catch(() => undefined)
+/** One picture at a time: twenty requests at once made every other request of the start wait. */
+async function loadAvatars(bots: readonly Bot[], workspaceId: string | undefined): Promise<void> {
+  if (fetching) {
+    return
+  }
+
+  fetching = true
+
+  try {
+    let changed = false
+
+    for (const bot of bots) {
+      if (!bot.hasAvatar || asked.has(bot.name)) {
+        continue
+      }
+
+      asked.add(bot.name)
+
+      try {
+        const asset = await rpc<ProfilesGetAssetResult>('profiles.get_asset', { name: bot.name, asset: 'avatar' })
+        // `data` is a whole `data:` address already, not bare base64.
+        const picture = asset.found && asset.data ? (asset.data.startsWith('data:') ? asset.data : `data:${asset.mime || 'image/png'};base64,${asset.data}`) : ''
+
+        if (workspaceId !== $activeWorkspace.get()?.id) {
+          return
+        }
+
+        if (picture !== ($botAvatars.get()[bot.name] ?? '')) {
+          $botAvatars.setKey(bot.name, picture)
+          changed = true
+        }
+      } catch {
+        // The initials show. The next link asks again.
+      }
     }
+
+    if (changed) {
+      writeCached('avatars', $botAvatars.get(), workspaceId)
+    }
+  } finally {
+    fetching = false
+  }
+}
+
+/** Show the bots of the last run until the host answers. */
+export function restoreBots(): void {
+  const bots = readCached<Bot[]>('bots')
+
+  if (bots?.length && !$bots.get()) {
+    $bots.set(bots)
+    $botAvatars.set(readCached<Record<string, string>>('avatars') ?? {})
   }
 }
 
@@ -76,6 +129,7 @@ export async function deleteBot(name: string): Promise<void> {
 }
 
 export function clearBots(): void {
+  asked.clear()
   $bots.set(null)
   $botAvatars.set({})
 }

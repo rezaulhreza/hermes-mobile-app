@@ -37,6 +37,7 @@ import {
   $sessionsLoading,
   $sessionSource,
   $sessionSources,
+  loadSessionSources,
   $sessionView,
   loadMoreSessions,
   refreshSessions,
@@ -158,7 +159,10 @@ export default function Chats() {
           icon={source ? channel(source).icon : 'message-circle'}
           label={source ? channel(source).label : 'All channels'}
           on={Boolean(source)}
-          onPress={() => setPicking(true)}
+          onPress={() => {
+            setPicking(true)
+            void loadSessionSources().catch(() => undefined)
+          }}
           opens
         />
         <FilterButton icon="users" label={shownBot?.title ?? 'All profiles'} on={Boolean(profile)} onPress={() => setChoosingProfile(true)} opens />

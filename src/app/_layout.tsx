@@ -7,18 +7,19 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { clearAttachments } from '@/store/attachments'
-import { clearBots, loadBots } from '@/store/bots'
+import { clearBots, restoreBots } from '@/store/bots'
 import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
-import { clearSchedules } from '@/store/cron'
+import { clearSchedules, restoreSchedules } from '@/store/cron'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { refreshScreenHold } from '@/store/screen'
 import { loadPreferences } from '@/store/preferences'
-import { clearProviders } from '@/store/providers'
+import { preloadLists } from '@/store/preload'
+import { clearProviders, restoreProviders } from '@/store/providers'
 import { clearPush, installPush, registerPush } from '@/store/push'
 import { clearRequests } from '@/store/requests'
-import { clearSessions, refreshSessions } from '@/store/sessions'
+import { clearSessions, restoreSessions } from '@/store/sessions'
 import { clearVault } from '@/store/vault'
 import { clearVoice } from '@/store/voice'
 import { clearWake } from '@/store/wake'
@@ -62,6 +63,11 @@ export default function RootLayout() {
     clearPush()
 
     if (workspace) {
+      // What the last run showed is on screen before the host answers.
+      restoreSessions()
+      restoreBots()
+      restoreSchedules()
+      restoreProviders()
       void openLink(workspace)
     } else {
       closeLink()
@@ -70,11 +76,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (linkState === 'open') {
-      void refreshSessions()
       void registerPush()
       void refreshScreenHold()
-      // The Bots tab then shows its list at once. The request is small; the host's first answer can take seconds.
-      void loadBots().catch(() => undefined)
+      void preloadLists()
     }
   }, [linkState])
 

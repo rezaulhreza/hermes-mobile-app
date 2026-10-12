@@ -4,7 +4,9 @@ import { atom } from 'nanostores'
 
 import { type Schedule, type ScheduleRun, scheduleRows, scheduleRuns } from '@/core/cron'
 
+import { readCached, writeCached } from './cache'
 import { currentApi, onGatewayEvent } from './link'
+import { $activeWorkspace } from './workspaces'
 
 export const $schedules = atom<Schedule[] | null>(null)
 
@@ -19,7 +21,20 @@ function api() {
 }
 
 export async function loadSchedules(): Promise<void> {
-  $schedules.set(scheduleRows(await api().request({ path: '/api/cron/jobs' })))
+  const workspaceId = $activeWorkspace.get()?.id
+  const rows = scheduleRows(await api().request({ path: '/api/cron/jobs' }))
+
+  $schedules.set(rows)
+  writeCached('schedules', rows, workspaceId)
+}
+
+/** Show the schedules of the last run until the host answers. */
+export function restoreSchedules(): void {
+  const rows = readCached<Schedule[]>('schedules')
+
+  if (rows && !$schedules.get()) {
+    $schedules.set(rows)
+  }
 }
 
 /** A job belongs to a bot. The host finds it only in that bot's profile. */

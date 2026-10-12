@@ -5,7 +5,9 @@ import { atom } from 'nanostores'
 import type { ModelOptionsResult } from '@/core/gateway/gateway-contract.generated'
 import { type KeyRow, keyRows, tidySecret } from '@/core/providers'
 
+import { readCached, writeCached } from './cache'
 import { currentApi, rpc } from './link'
+import { $activeWorkspace } from './workspaces'
 
 export const $providers = atom<ModelOptionsResult | null>(null)
 export const $keys = atom<KeyRow[] | null>(null)
@@ -22,7 +24,21 @@ function api() {
 
 /** Every provider Hermes knows, also those with no key yet. `refresh` asks the providers for their model lists again. */
 export async function loadProviders(refresh = false): Promise<void> {
-  $providers.set(await rpc<ModelOptionsResult>('model.options', { include_unconfigured: true, ...(refresh ? { refresh: true } : {}) }, 60_000))
+  const workspaceId = $activeWorkspace.get()?.id
+  const options = await rpc<ModelOptionsResult>('model.options', { include_unconfigured: true, ...(refresh ? { refresh: true } : {}) }, 60_000)
+
+  $providers.set(options)
+  // Names of providers and models, and which of them has a key. No key is in it.
+  writeCached('providers', options, workspaceId)
+}
+
+/** Show the providers of the last run until the host answers. */
+export function restoreProviders(): void {
+  const options = readCached<ModelOptionsResult>('providers')
+
+  if (options && !$providers.get()) {
+    $providers.set(options)
+  }
 }
 
 export async function saveProviderKey(slug: string, key: string): Promise<void> {
