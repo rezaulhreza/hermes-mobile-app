@@ -149,15 +149,46 @@ export function attachmentKind(file: Pick<PickedFile, 'name' | 'mimeType'>): Att
   return mime === 'application/pdf' || /\.pdf$/i.test(file.name) ? 'pdf' : 'file'
 }
 
+/** A larger file goes to the host as a stream, with no base64. The host takes up to this much. */
+export const STREAM_MAX_BYTES = 100 * 1024 * 1024
+
+/** A file over the frame limit cannot ride the gateway socket. It goes up by the REST upload. */
+export function needsStream(size: number | null): boolean {
+  return size !== null && size > ATTACH_MAX_BYTES
+}
+
 /** Why this file cannot be attached, or null. */
 export function attachProblem(file: PickedFile): string | null {
   const size = pickedSize(file)
 
-  if (size !== null && size > ATTACH_MAX_BYTES) {
-    return `${file.name} is too large to send from the phone (limit 12 MB).`
+  if (size !== null && size > STREAM_MAX_BYTES) {
+    return `${file.name} is too large to send from the phone (limit 100 MB).`
   }
 
   return null
+}
+
+/** The folder of the host that large uploads of the phone go to, under the folder the host lets the app write in. */
+export const UPLOAD_FOLDER = '.hermes-phone-uploads'
+
+/**
+ * Where a streamed upload goes on the host. A host with a locked files root
+ * takes a path inside it, written from the root. Any other host needs a whole
+ * path: the folder its file routes start in (the home folder), with the
+ * separator that host uses.
+ */
+export function uploadTarget(listing: { path?: string | null; locked_root?: string | null }, name: string, stamp: number): string {
+  const safe = name.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+/, '') || 'file'
+  const file = `${stamp.toString(36)}-${safe}`
+
+  if (listing.locked_root) {
+    return `${UPLOAD_FOLDER}/${file}`
+  }
+
+  const base = (listing.path ?? '').replace(/[\\/]+$/, '')
+  const slash = base.includes('\\') && !base.includes('/') ? '\\' : '/'
+
+  return `${base}${slash}${UPLOAD_FOLDER}${slash}${file}`
 }
 
 export function dataUrl(file: Pick<PickedFile, 'mimeType'>, base64: string): string {

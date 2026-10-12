@@ -17,13 +17,16 @@ import {
   attachProblem,
   dataUrl,
   jpegName,
+  needsStream,
   type PickedFile,
   pickedSize,
-  shrinkTarget
+  shrinkTarget,
+  uploadTarget
 } from '@/core/attachments'
+import { HttpError } from '@/core/api'
 import type { AttachedImageResult, FileAttachResult, PdfAttachResult } from '@/core/gateway/gateway-contract.generated'
 
-import { $linkState, rpc } from './link'
+import { $linkState, currentApi, rpc } from './link'
 
 export const $attachments = map<Record<string, Attachment[]>>({})
 
@@ -163,11 +166,22 @@ export async function stage(sessionId: string, file: PickedFile): Promise<void> 
 type Uploaded = Pick<Attachment, 'heldPaths' | 'promptText' | 'size'>
 
 async function upload(sessionId: string, entry: Attachment, file: PickedFile): Promise<Uploaded> {
+  const known = pickedSize(file) ?? (file.uri ? new File(file.uri).size : null)
+
+  if (needsStream(known)) {
+    return uploadLarge(sessionId, entry, { ...file, size: known ?? undefined })
+  }
+
   const base64 = file.base64 || (await new File(file.uri).base64())
   const oversize = attachProblem({ ...file, base64 })
 
   if (oversize) {
     throw new Error(oversize)
+  }
+
+  // The size was not known before the bytes were read, and it is over the limit of one frame.
+  if (needsStream(pickedSize({ ...file, base64 }))) {
+    return uploadLarge(sessionId, entry, file)
   }
 
   // A picker can leave the size out. The bytes are here now, so the chip can show it.
@@ -210,6 +224,78 @@ async function upload(sessionId: string, entry: Attachment, file: PickedFile): P
 
   if (!result.attached || !result.ref_text) {
     throw new Error(`Could not attach ${file.name}.`)
+  }
+
+  return { heldPaths: [], promptText: result.ref_text, size }
+}
+
+// A file of 100 MB over a phone connection.
+const STREAM_TIMEOUT_MS = 15 * 60_000
+
+/**
+ * A file too large for one frame of the gateway socket. It goes to a folder
+ * of the host as a multipart stream, and the session then takes it by its
+ * path on the host.
+ */
+async function uploadLarge(sessionId: string, entry: Attachment, file: PickedFile): Promise<Uploaded> {
+  const api = currentApi()
+
+  if (!api || !file.uri) {
+    throw new Error(`Could not send ${file.name}.`)
+  }
+
+  const oversize = attachProblem(file)
+
+  if (oversize) {
+    throw new Error(oversize)
+  }
+
+  const listing = await api.request<{ path?: string; locked_root?: string | null }>({ path: '/api/files' })
+  let stored: { path?: string }
+
+  try {
+    stored = await api.upload<{ path?: string }>('/api/files/upload-stream', { path: uploadTarget(listing, file.name, Date.now()), overwrite: 'true' }, new File(file.uri), file.name, STREAM_TIMEOUT_MS)
+  } catch (error) {
+    throw new Error(error instanceof HttpError && error.status === 413 ? `${file.name} is too large for this Hermes host.` : `Could not send ${file.name} to the Hermes host.`)
+  }
+
+  const path = stored.path
+
+  if (!path) {
+    throw new Error(`Could not send ${file.name} to the Hermes host.`)
+  }
+
+  const size = file.size ?? undefined
+
+  if (entry.kind === 'image') {
+    const result = await rpc<AttachedImageResult>('image.attach', { session_id: sessionId, path }, UPLOAD_TIMEOUT_MS)
+
+    if (!result.attached) {
+      throw new Error(result.message || `Could not attach ${file.name}.`)
+    }
+
+    return { heldPaths: result.path ? [result.path] : [], promptText: '', size }
+  }
+
+  if (entry.kind === 'pdf') {
+    try {
+      const result = await rpc<PdfAttachResult>('pdf.attach', { session_id: sessionId, path, filename: file.name }, UPLOAD_TIMEOUT_MS)
+
+      return { heldPaths: (result.pages ?? []).map(page => page.path), promptText: result.text ?? '', size }
+    } catch {
+      // No page pictures on this host: the agent gets the file itself.
+    }
+  }
+
+  const result = await rpc<FileAttachResult>('file.attach', { session_id: sessionId, path, name: file.name }, UPLOAD_TIMEOUT_MS)
+
+  if (!result.attached || !result.ref_text) {
+    throw new Error(`Could not attach ${file.name}.`)
+  }
+
+  // The session made its own copy. The upload must not stay on the host as a second one.
+  if (result.path && result.path !== path) {
+    void api.request({ path: '/api/files', method: 'DELETE', body: { path } }).catch(() => undefined)
   }
 
   return { heldPaths: [], promptText: result.ref_text, size }

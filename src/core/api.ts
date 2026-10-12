@@ -152,6 +152,52 @@ export class HermesApi {
     }
   }
 
+  /**
+   * Send a file of the phone as a multipart stream. `file` is a file object of
+   * the system (it reads the bytes itself: they never pass through
+   * JavaScript), so this module needs no native code.
+   */
+  async upload<T>(path: string, fields: Record<string, string>, file: Blob, name: string, timeoutMs: number): Promise<T> {
+    let signedIn = false
+
+    for (;;) {
+      const form = new FormData()
+
+      for (const [name, value] of Object.entries(fields)) {
+        form.append(name, value)
+      }
+
+      form.append('file', file, name)
+
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+      try {
+        const response = await this.fetchImpl(`${this.workspace.baseUrl}${path}`, { method: 'POST', headers: this.headers(), body: form, signal: controller.signal })
+        const text = await response.text()
+
+        if (looksLikeHtml(text)) {
+          throw new ProxyPageError()
+        }
+
+        if (response.ok) {
+          return (text ? JSON.parse(text) : undefined) as T
+        }
+
+        if (response.status === 401 && !signedIn && isCookieRefusal(text)) {
+          signedIn = true
+          await this.signIn()
+
+          continue
+        }
+
+        throw new HttpError(response.status, text)
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+  }
+
   private async send(request: ApiRequest): Promise<{ status: number; text: string }> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? DEFAULT_TIMEOUT_MS)

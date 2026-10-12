@@ -443,7 +443,7 @@ export default function Chat() {
               </Pressable>
             ))}
             <Text style={[type.small, styles.limit, { color: t.muted, borderTopColor: t.line }]}>
-              A file can be up to 12 MB. A large photo is made smaller before it is sent.
+              A file can be up to 100 MB. A large photo is made smaller before it is sent.
             </Text>
           </View>
         ) : null}

@@ -1,4 +1,4 @@
-import { ATTACH_MAX_BYTES, attachmentKind, attachProblem, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, promptWithAttachments, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
+import {  attachmentKind, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, promptWithAttachments, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
 
 const ready = (kind: Attachment['kind'], name: string, promptText = ''): Attachment => ({
   id: name,
@@ -18,15 +18,6 @@ describe('attachmentKind', () => {
     expect(attachmentKind({ name: 'notes.md', mimeType: 'text/markdown' })).toBe('file')
     // A picker can call a text file by an image-like name; the type wins.
     expect(attachmentKind({ name: 'photo.png', mimeType: 'text/plain' })).toBe('file')
-  })
-})
-
-describe('attachProblem', () => {
-  it('refuses a file over the frame limit, by size or by encoded length', () => {
-    expect(attachProblem({ uri: 'f', name: 'a.zip', size: ATTACH_MAX_BYTES + 1 })).toMatch(/too large/)
-    expect(attachProblem({ uri: 'f', name: 'a.jpg', base64: 'x'.repeat(Math.ceil((ATTACH_MAX_BYTES * 4) / 3) + 8) })).toMatch(/too large/)
-    expect(attachProblem({ uri: 'f', name: 'a.jpg', size: ATTACH_MAX_BYTES })).toBeNull()
-    expect(attachProblem({ uri: 'f', name: 'a.jpg' })).toBeNull()
   })
 })
 
@@ -145,5 +136,32 @@ describe('shrinkTarget', () => {
     expect(shrinkTarget(2048, 1536)).toBeNull()
     expect(jpegName('IMG_0012.HEIC')).toBe('IMG_0012.jpg')
     expect(jpegName('photo')).toBe('photo.jpg')
+  })
+})
+
+describe('a file too large for one frame', () => {
+  const { attachProblem, needsStream, uploadTarget, ATTACH_MAX_BYTES, STREAM_MAX_BYTES } = jest.requireActual('../attachments') as typeof import('../attachments')
+
+  it('goes up as a stream', () => {
+    expect(needsStream(ATTACH_MAX_BYTES)).toBe(false)
+    expect(needsStream(ATTACH_MAX_BYTES + 1)).toBe(true)
+    expect(needsStream(null)).toBe(false)
+  })
+
+  it('is refused only over the limit of the host', () => {
+    expect(attachProblem({ uri: 'file:///a.zip', name: 'a.zip', size: ATTACH_MAX_BYTES + 1 })).toBeNull()
+    expect(attachProblem({ uri: 'file:///a.zip', name: 'a.zip', size: STREAM_MAX_BYTES + 1 })).toMatch(/too large/)
+  })
+
+  it('goes to a folder under the home folder of the host', () => {
+    expect(uploadTarget({ path: '/Users/me' }, 'My video (1).mov', 36)).toBe('/Users/me/.hermes-phone-uploads/10-My_video_1_.mov')
+  })
+
+  it('uses the separator of a Windows host', () => {
+    expect(uploadTarget({ path: 'C:\\Users\\me\\' }, 'a.zip', 36)).toBe('C:\\Users\\me\\.hermes-phone-uploads\\10-a.zip')
+  })
+
+  it('goes inside the locked root of a hosted install', () => {
+    expect(uploadTarget({ path: '/opt/data', locked_root: '/opt/data' }, '..hidden', 36)).toBe('.hermes-phone-uploads/10-hidden')
   })
 })
