@@ -2,7 +2,8 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useMemo, useRef, useState } from 'react'
-import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable'
+// The plain swipeable, not the Reanimated one: with a hundred rows that one cost 2 MB a row.
+import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -192,7 +193,9 @@ export default function Chats() {
         ListHeaderComponent={header}
         contentContainerStyle={styles.list}
         keyExtractor={row => row.id}
+        initialNumToRender={12}
         keyboardDismissMode="on-drag"
+        maxToRenderPerBatch={10}
         onEndReached={() => void loadMoreSessions()}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
@@ -210,6 +213,8 @@ export default function Chats() {
         }
         sections={sections}
         stickySectionHeadersEnabled={false}
+        // Three screens of rows are drawn, not the whole list: a row costs memory.
+        windowSize={5}
       />
       <ProfileSheet active={profile} bots={bots ?? []} onClose={() => setChoosingProfile(false)} onPick={showSessionProfile} visible={choosingProfile} />
       <ChannelSheet active={source} onClose={() => setPicking(false)} onPick={showSessionSource} sources={sources} visible={picking} />
@@ -232,7 +237,7 @@ function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; ow
   const title = sessionTitle(row)
   const at = row.last_active ?? row.started_at
 
-  const swipe = useRef<SwipeableMethods>(null)
+  const swipe = useRef<Swipeable>(null)
   // The same two actions as the sheet of a long press, one swipe away. The list shows the change at once.
   const act = (change: Pick<Row, 'pinned' | 'archived'>) => {
     tap()
