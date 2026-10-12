@@ -47,6 +47,7 @@ import {
 } from '@/store/sessions'
 import { $activeWorkspace } from '@/store/workspaces'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
+import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
@@ -69,6 +70,7 @@ export default function Chats() {
   const requests = useStore($requests)
   const query = useStore($sessionQuery)
   const [starting, setStarting] = useState(false)
+  const pull = usePull(refreshSessions)
 
   const view = useStore($sessionView)
   const source = useStore($sessionSource)
@@ -191,7 +193,7 @@ export default function Chats() {
         keyboardDismissMode="on-drag"
         onEndReached={() => void loadMoreSessions()}
         onEndReachedThreshold={0.5}
-        refreshControl={<RefreshControl onRefresh={refreshSessions} refreshing={loading} tintColor={t.muted} />}
+        refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
         renderItem={({ item }) => (
           <SessionRow
             bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)}
