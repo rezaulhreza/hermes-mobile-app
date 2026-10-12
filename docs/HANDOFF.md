@@ -810,38 +810,41 @@ last, then ask about the notification buttons.
    scroll-to-newest button, reading position; seventh session: haptics
    (`native/haptics.ts`; the pod was in the build already), a long press
    copies a user message, colour in code blocks (`core/highlight.ts`)).
-   Left: a faster open of a long chat (the resume
-   answer is up to 1 MB; try `inline_images: false`, `defer_history` or a
-   page of history), a capture picture inside the tool row and the tool
-   sheet (`result.screenshot_path`), a check that a host file exists before
-   its row shows.
-3. **Composer**: queue + steer, attachments, thumbnails, preview, photo
-   resize and paste are DONE. Left:
-   - A way to see and cancel the backend queue.
-   - A REST upload (`/api/files/upload-stream`) to remove the 12 MB limit.
-   - Swipe actions on a list row (pin, archive) with gesture-handler.
-   - Old notes, kept for context:
-   - The device check.
-   - Thumbnails (the owner asked for this): a small image preview in the
-     staged chip and in the sent user row; for a file, an icon by type with
-     the name and the size. The picker already gives a local `uri` for the
-     image, so the chip needs no download. Keep the `uri` on the `Attachment`
-     and on the user row. A resumed conversation has no local `uri`; show the
-     file name there.
-   - Large files: a file over 12 MB is refused with a red chip. Shrink large
-     images on the phone before upload (long side about 2048 px,
-     `expo-image-manipulator`, needs a native rebuild), and say the limit in
-     the attach menu. A REST upload would remove the limit; check first if
-     the backend has such a route.
-   - Paste an image from the clipboard.
-   - A way to see and cancel the backend queue.
+   Eighth session, all "Left" lines CLOSED: the open of a long chat (see
+   "Speed"), the capture of a screen tool under its row and large in the tool
+   sheet (`toolPicture` in `core/tools.ts`; a stored row keeps the path), a
+   file row only for a file that the host lists (`hostFilesThatExist`, one
+   `/api/fs/list` a folder, kept 30 s).
+3. **Composer**: DONE, every "Left" line CLOSED (eighth session):
+   - The queue is ON THE PHONE (`core/queue.ts`, `components/queue-panel.tsx`),
+     as in the desktop app (`apps/desktop/src/store/composer-queue.ts`): the
+     gateway has NO call that lists or removes a queued prompt. A text message
+     sent in a turn waits in the panel over the message field: steer (the
+     wheel), send next, edit, remove; the panel collapses; a Stop pauses the
+     queue. A message with files still goes to the host's queue.
+   - A file over 12 MB goes up by `POST /api/files/upload-stream` (multipart;
+     `HermesApi.upload` takes the `File` of expo-file-system as the part:
+     Expo's fetch refuses React Native's `{uri}` part), to
+     `<home>/.hermes-phone-uploads/`, then `file.attach {path}` /
+     `image.attach {path}` / `pdf.attach {path}`. The upload copy is deleted
+     when the session made its own. Limit 100 MB (the host's). Seen: 27 MB in
+     41 s through Cloudflare.
+   - A swipe to the left on a chat row: Pin, Archive. Use the PLAIN
+     `Swipeable` of gesture-handler: the Reanimated one cost 2 MB a row
+     (715 MB at start against 476 MB). The swipe itself was not made by a
+     script; the two buttons were pressed.
 4. **Session actions**: DONE (rename, pin, archive, delete, export, branch,
    source filter, archive view; seventh session: the profile switch, paging,
    and full-text search: three letters or more in the search field ask
    `GET /api/sessions/search` after 350 ms and show an "In messages" group
    with the match in strong ink). The search reads ONE profile (the chosen
-   bot, else the host's own); the host has no search across profiles. Left:
-   projects, bulk delete, export as Markdown.
+   bot, else the host's own); the host has no search across profiles.
+   Eighth session, every "Left" line CLOSED: projects (a Projects button;
+   `projects.tree {preview_limit: 100}` gives the projects AND their rows in
+   200 ms; `projects.project_sessions` answers null for an auto project; a new
+   chat in a project sends `cwd`), bulk delete ("Select more to delete" in the
+   row's sheet; `POST /api/sessions/bulk-delete` needs `profile` NAMED, also
+   `default`), export as Markdown (built on the phone from the REST rows).
 4b. **Browser preview**: DONE (`core/preview/browser.ts`, `store/browser.ts`,
    `components/preview-pane.tsx`). Left: several tabs (the phone shows the
    last opened page), the annotation actions (`pin`, `hold`, `strobe` draw
