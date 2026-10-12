@@ -1,11 +1,12 @@
 import * as Clipboard from 'expo-clipboard'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { duration } from '@/core/format'
-import { diffLines, type DiffLineKind, type ToolDetail } from '@/core/tools'
+import { diffLines, type DiffLineKind, type ToolDetail, toolPicture } from '@/core/tools'
 import { loadToolOutput } from '@/store/chat'
+import { localCopy } from '@/store/preview'
 import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -35,6 +36,25 @@ function Sheet({ tool, storedId, onClose }: { tool: ToolTarget; storedId: string
   const missing = tool.state === 'done' && !tool.output && Boolean(storedId)
   const [loading, setLoading] = useState(missing)
   const output = tool.output ?? fetched
+  // A stored row has the path of its capture only in its output.
+  const picture = tool.picture ?? toolPicture(null, fetched)
+  const [pictureUri, setPictureUri] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!picture) {
+      return
+    }
+
+    let cancelled = false
+
+    localCopy({ name: picture.split(/[\\/]/).pop() ?? 'capture', kind: 'image', path: picture })
+      .then(uri => !cancelled && setPictureUri(uri))
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [picture])
 
   useEffect(() => {
     if (!missing || !storedId) {
@@ -69,6 +89,7 @@ function Sheet({ tool, storedId, onClose }: { tool: ToolTarget; storedId: string
         </View>
 
         <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + space.xl }]}>
+          {pictureUri ? <Image accessibilityLabel="The capture of the screen" resizeMode="contain" source={{ uri: pictureUri }} style={[styles.picture, { backgroundColor: t.soft }]} /> : null}
           {tool.input ? <Section text={tool.input} title="Input" /> : null}
           {tool.diff ? <Section diff text={tool.diff} title="Changes" /> : null}
           {output ? (
@@ -131,6 +152,7 @@ function Section({ title, text, diff = false }: { title: string; text: string; d
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  picture: { width: '100%', aspectRatio: 16 / 10, borderRadius: radius.md },
   head: {
     flexDirection: 'row',
     alignItems: 'center',

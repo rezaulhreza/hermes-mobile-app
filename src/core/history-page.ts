@@ -13,6 +13,7 @@
 
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 import { skillInvocationText } from './gateway/skill-scaffold'
+import { toolPicture } from './tools'
 
 /** Stored rows a request. A turn with many tool calls is many rows. */
 export const HISTORY_PAGE = 60
@@ -137,13 +138,16 @@ export function pageMessages(rows: readonly StoredMessage[]): TranscriptMessage[
     if (role === 'tool') {
       const call = calls.get(row.tool_call_id ?? '')
       const args = call?.args ?? {}
+      // The output stays on the host, but the path of a capture is one line and the row shows the picture.
+      const picture = toolPicture(null, typeof row.content === 'string' ? row.content : null)
 
       messages.push({
         role,
         name: call?.name || row.tool_name || 'tool',
         context: toolPreview(args),
         ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),
-        ...(Object.keys(args).length ? { args } : {})
+        ...(Object.keys(args).length ? { args } : {}),
+        ...(picture ? { picture } : {})
       })
 
       continue

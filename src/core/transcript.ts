@@ -9,7 +9,7 @@
 
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
-import { type ToolDetail, toolDetail, toolInput, toolOutput } from './tools'
+import { type ToolDetail, toolDetail, toolInput, toolOutput, toolPicture } from './tools'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 
 /**
@@ -69,7 +69,7 @@ export function transcriptFromHistory(
         name,
         detail: message.context ?? '',
         state: 'done',
-        ...toolDetail({ input: toolInput(message.args), output: toolOutput(text) })
+        ...toolDetail({ input: toolInput(message.args), output: toolOutput(text), picture: typeof message.picture === 'string' ? message.picture : undefined })
       }))
     }
   }
@@ -211,7 +211,8 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
                 ...toolDetail({
                   input: toolInput(payload.args) ?? item.input,
                   output: toolOutput(payload.result_text, payload.result),
-                  diff: payload.inline_diff ?? undefined
+                  diff: payload.inline_diff ?? undefined,
+                  picture: toolPicture(payload.result, payload.result_text ?? payload.summary)
                 })
               }
             : item

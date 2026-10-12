@@ -7,6 +7,7 @@
 import { Directory, File, Paths } from 'expo-file-system'
 
 import type { SentAttachment } from '@/core/attachments'
+import { filesThatExist, hostFolder } from '@/core/host-files'
 
 import { currentApi } from './link'
 
@@ -47,6 +48,47 @@ export async function localCopy(item: SentAttachment): Promise<string> {
   }
 
   return target.uri
+}
+
+// One list request per folder serves every answer that names a file in it. A folder changes: the answer is kept a short time.
+const FOLDER_KEEP_MS = 30_000
+const folders = new Map<string, { at: number; names: Promise<ReadonlySet<string>> }>()
+
+function namesIn(folder: string): Promise<ReadonlySet<string>> {
+  const kept = folders.get(folder)
+
+  if (kept && Date.now() - kept.at < FOLDER_KEEP_MS) {
+    return kept.names
+  }
+
+  const api = currentApi()
+  const names: Promise<ReadonlySet<string>> = api
+    ? api
+        .request<{ entries?: { name: string; isDirectory?: boolean }[] }>({ path: `/api/fs/list?path=${encodeURIComponent(folder)}` })
+        .then(result => new Set((result.entries ?? []).filter(entry => !entry.isDirectory).map(entry => entry.name)))
+        .catch(() => new Set<string>())
+    : Promise.resolve(new Set<string>())
+
+  folders.set(folder, { at: Date.now(), names })
+
+  // The map must not grow with every folder an agent ever named.
+  if (folders.size > 40) {
+    folders.delete(folders.keys().next().value as string)
+  }
+
+  return names
+}
+
+/** The files of an answer that are on the host now. A file the phone has a copy of needs no check. */
+export async function hostFilesThatExist(files: readonly SentAttachment[]): Promise<SentAttachment[]> {
+  const wanted = [...new Set(files.map(file => (file.path ? hostFolder(file.path) : null)).filter((folder): folder is string => folder !== null))]
+  const found = new Map(await Promise.all(wanted.map(async folder => [folder, await namesIn(folder)] as const)))
+
+  return filesThatExist(files, found)
+}
+
+export function clearHostFolders(): void {
+  folders.clear()
 }
 
 export function readText(uri: string): Promise<string> {

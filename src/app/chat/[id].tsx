@@ -60,6 +60,7 @@ import {
   stopTurn
 } from '@/store/chat'
 import { $previews } from '@/store/browser'
+import { hostFilesThatExist } from '@/store/preview'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
@@ -582,15 +583,33 @@ const DELIVERY_LABEL: Record<Delivery, string> = {
  */
 function Answer({ text, streaming, onOpen }: { text: string; streaming: boolean; onOpen: (target: ViewerTarget) => void }) {
   const shown = useMemo(() => (streaming ? { text, files: [] } : answerFiles(text)), [streaming, text])
+  // A row shows only for a file that is on the host: the agent can name a path it never wrote.
+  const [files, setFiles] = useState<SentAttachment[]>([])
 
-  if (!shown.files.length) {
+  useEffect(() => {
+    if (!shown.files.length) {
+      return
+    }
+
+    let cancelled = false
+
+    hostFilesThatExist(shown.files)
+      .then(found => !cancelled && setFiles(found))
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [shown.files])
+
+  if (!shown.files.length || !files.length) {
     return <Markdown text={shown.text} />
   }
 
   return (
     <View style={styles.answerFiles}>
       <Markdown text={shown.text} />
-      <SentAttachments items={shown.files} onOpen={index => onOpen({ items: shown.files, index })} />
+      <SentAttachments items={files} onOpen={index => onOpen({ items: files, index })} />
     </View>
   )
 }
@@ -679,8 +698,11 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
 
     case 'tool': {
       const opens = hasToolDetail(item)
+      // The capture of the screen that the tool took: what the agent saw.
+      const capture: SentAttachment[] = item.picture ? [{ name: item.picture.split(/[\\/]/).pop() ?? 'capture', kind: 'image', path: item.picture }] : []
 
       return (
+        <View style={styles.toolBlock}>
         <Pressable
           accessibilityHint={opens ? 'Opens the input and the output' : undefined}
           accessibilityLabel={`${item.name} ${item.detail}`.trim()}
@@ -704,6 +726,8 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
           ) : null}
           {opens || item.state === 'done' ? <Feather color={t.muted} name="chevron-right" size={15} /> : null}
         </Pressable>
+          {capture.length ? <SentAttachments items={capture} onOpen={index => onOpen({ items: capture, index })} /> : null}
+        </View>
       )
     }
 
@@ -861,6 +885,7 @@ const styles = StyleSheet.create({
   steer: { minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill },
   dim: { opacity: 0.55 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  toolBlock: { gap: space.sm, alignItems: 'flex-start' },
   request: { paddingHorizontal: space.md, paddingBottom: space.sm, maxWidth: 760, width: '100%', alignSelf: 'center' },
   completions: {
     marginHorizontal: space.md,

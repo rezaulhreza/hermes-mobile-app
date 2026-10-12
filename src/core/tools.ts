@@ -9,6 +9,8 @@ export interface ToolDetail {
   output?: string
   /** A unified diff of the file the tool changed. */
   diff?: string
+  /** The host path of the picture the tool took (a capture of the screen). */
+  picture?: string
 }
 
 // A tool can print megabytes. The sheet is for reading; the agent has the full text.
@@ -101,13 +103,42 @@ export function storedToolOutput(content: unknown): string | undefined {
   return toolOutput(lines.filter(Boolean).join('\n'))
 }
 
+// The path can hold spaces. It ends at the quote of its JSON value, or at white space in a sentence.
+const PICTURE_IN_JSON = /"screenshot_path"\s*:\s*"((?:[^"\\]|\\.)+)"/
+const PICTURE_IN_WORDS = /screenshot saved to\s+(\S+\.(?:png|jpe?g|webp))/i
+
+/**
+ * The picture a tool took, as a path on the host. A capture of the screen
+ * names it in `screenshot_path` of its result; a stored result is JSON text
+ * with the same field, and the short summary says "saved to <path>".
+ */
+export function toolPicture(result: unknown, text?: string | null): string | undefined {
+  const direct = (result as { screenshot_path?: unknown } | null | undefined)?.screenshot_path
+
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim()
+  }
+
+  const inJson = PICTURE_IN_JSON.exec(text ?? '')
+
+  if (inJson) {
+    try {
+      return JSON.parse(`"${inJson[1]}"`) as string
+    } catch {
+      return inJson[1]
+    }
+  }
+
+  return PICTURE_IN_WORDS.exec(text ?? '')?.[1]
+}
+
 /** Only the fields that have something, so a row with no detail has no empty object to compare. */
 export function toolDetail(detail: ToolDetail): ToolDetail {
   return Object.fromEntries(Object.entries(detail).filter(([, value]) => typeof value === 'string' && value.trim())) as ToolDetail
 }
 
 export function hasToolDetail(detail: ToolDetail): boolean {
-  return Boolean(detail.input || detail.output || detail.diff)
+  return Boolean(detail.input || detail.output || detail.diff || detail.picture)
 }
 
 export type DiffLineKind = 'add' | 'remove' | 'hunk' | 'file' | 'context'

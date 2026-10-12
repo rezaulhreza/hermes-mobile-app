@@ -41,3 +41,25 @@ describe('answerFiles', () => {
     }
   })
 })
+
+describe('filesThatExist', () => {
+  const { filesThatExist, hostFolder } = jest.requireActual('../host-files') as typeof import('../host-files')
+
+  it('finds the folder of a path on any host', () => {
+    expect(hostFolder('/Users/me/out/shot.png')).toBe('/Users/me/out')
+    expect(hostFolder('C:\\Users\\me\\shot.png')).toBe('C:\\Users\\me')
+    expect(hostFolder('/shot.png')).toBe('/')
+    expect(hostFolder('C:\\shot.png')).toBe('C:\\')
+    expect(hostFolder('shot.png')).toBeNull()
+  })
+
+  it('keeps only the files that their folder lists', () => {
+    const files = [
+      { name: 'a.png', path: '/Users/me/out/a.png' },
+      { name: 'gone.png', path: '/Users/me/out/gone.png' },
+      { name: 'b.txt', path: '/Users/me/other/b.txt' }
+    ]
+
+    expect(filesThatExist(files, new Map([['/Users/me/out', new Set(['a.png'])]]))).toEqual([files[0]])
+  })
+})

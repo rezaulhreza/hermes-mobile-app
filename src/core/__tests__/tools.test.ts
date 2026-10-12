@@ -81,3 +81,23 @@ describe('finalAnswerKeys', () => {
     expect([...finalAnswerKeys([{ kind: 'assistant', key: 'a', streaming: true }], false)]).toEqual([])
   })
 })
+
+describe('toolPicture', () => {
+  const { toolPicture } = jest.requireActual('../tools') as typeof import('../tools')
+
+  it('reads the path from the result of a live tool', () => {
+    expect(toolPicture({ screenshot_path: '/Users/me/.hermes/cache/images/computer_use_1.png' })).toBe('/Users/me/.hermes/cache/images/computer_use_1.png')
+  })
+
+  it('reads the path from a stored result, also a Windows path', () => {
+    expect(toolPicture(null, '{"ok": true, "screenshot_path": "C:\\\\Users\\\\me\\\\shot 1.png"}')).toBe('C:\\Users\\me\\shot 1.png')
+  })
+
+  it('reads the path from the summary', () => {
+    expect(toolPicture(undefined, 'captured; shareable screenshot saved to /tmp/a.png')).toBe('/tmp/a.png')
+  })
+
+  it('finds no picture in a normal result', () => {
+    expect(toolPicture({ output: 'done' }, 'done')).toBeUndefined()
+  })
+})

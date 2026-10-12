@@ -27,6 +27,31 @@ function isHostFile(path: string): boolean {
   return (path.match(/[\\/]/g)?.length ?? 0) >= 2 && !path.includes('//')
 }
 
+/** The folder of a host path, with the separator the path uses. Null for a path with no folder. */
+export function hostFolder(path: string): string | null {
+  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+
+  if (cut < 0) {
+    return null
+  }
+
+  // The root ("/x.png", "C:\\x.png") keeps its separator.
+  return cut === 0 || path[cut - 1] === ':' ? path.slice(0, cut + 1) : path.slice(0, cut)
+}
+
+/**
+ * The files that are on the host, given the names in each of their folders.
+ * An answer can name a path that was never written, or a file that is gone:
+ * a row for it would open nothing.
+ */
+export function filesThatExist<T extends { name: string; path?: string }>(files: readonly T[], namesIn: ReadonlyMap<string, ReadonlySet<string>>): T[] {
+  return files.filter(file => {
+    const folder = file.path ? hostFolder(file.path) : null
+
+    return folder !== null && (namesIn.get(folder)?.has(file.name) ?? false)
+  })
+}
+
 export interface AnswerFiles {
   /** The answer with each host path cut to the name of its file. */
   text: string
