@@ -5,7 +5,7 @@
  */
 
 import type { GatewayEvent } from './gateway/gateway-events'
-import type { SubagentEventPayload, SubagentSnapshot, SubagentStatus } from './gateway/gateway-contract.generated'
+import type { FailedDelegation, SubagentEventPayload, SubagentSnapshot, SubagentStatus } from './gateway/gateway-contract.generated'
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
 
@@ -39,9 +39,18 @@ export interface Work {
   /** The todo list is a full snapshot with a revision. An older snapshot never replaces a newer one. */
   revision: number
   helpers: readonly Helper[]
+  /** Helpers the agent asked for that never started, or failed in the background. */
+  failed: readonly FailedStart[]
 }
 
-export const NO_WORK: Work = { todos: [], revision: 0, helpers: [] }
+export interface FailedStart {
+  id: string
+  goal: string
+  /** Why, in the host's words. Empty when it gave none. */
+  reason: string
+}
+
+export const NO_WORK: Work = { todos: [], revision: 0, helpers: [], failed: [] }
 
 const TODO_STATUSES: ReadonlySet<string> = new Set(['pending', 'in_progress', 'completed', 'cancelled'])
 const ENDED: ReadonlySet<string> = new Set(['completed', 'failed', 'error', 'timeout', 'interrupted'])
@@ -171,6 +180,94 @@ export function withSnapshots(work: Work, snapshots: readonly SubagentSnapshot[]
       acceptsSteer: snapshot.accepting_steer ?? known?.acceptsSteer ?? true
     })
   }, work)
+}
+
+/** The helpers that could not start, as the host lists them. The same answer twice gives the same object back. */
+export function withFailedStarts(work: Work, delegations: readonly FailedDelegation[] | null | undefined): Work {
+  const failed = (delegations ?? []).map(item => ({
+    id: `${item.delegation_id}:${item.task_index ?? 0}`,
+    goal: item.goal?.trim() || 'A helper',
+    reason: (item.error ?? '').trim()
+  }))
+
+  return failed.length === work.failed.length && failed.every((item, index) => item.id === work.failed[index].id) ? work : { ...work, failed }
+}
+
+/** The helpers in the order of their tree: each one, then the helpers it started. A helper whose parent is not known is at the top. */
+export function helpersInTree(helpers: readonly Helper[]): Helper[] {
+  const known = new Set(helpers.map(helper => helper.id))
+  const ordered: Helper[] = []
+
+  const add = (parentId: string | null) => {
+    for (const helper of helpers) {
+      const parent = helper.parentId && known.has(helper.parentId) && helper.parentId !== helper.id ? helper.parentId : null
+
+      if (parent === parentId && !ordered.includes(helper)) {
+        ordered.push(helper)
+        add(helper.id)
+      }
+    }
+  }
+
+  add(null)
+
+  return ordered
+}
+
+/**
+ * A helper as the host stores it in a saved run. The field names are those of
+ * the terminal app, so a run saved by one client opens in the other.
+ */
+export function savedHelper(helper: Helper, index: number): Record<string, unknown> {
+  return {
+    id: helper.id,
+    index,
+    parentId: helper.parentId,
+    depth: helper.depth,
+    goal: helper.goal,
+    status: helper.status,
+    model: helper.model || undefined,
+    toolCount: helper.toolCount,
+    summary: helper.summary || undefined,
+    startedAt: helper.startedAt ?? undefined,
+    durationSeconds: helper.durationS ?? undefined,
+    taskCount: 1,
+    notes: [],
+    thinking: [],
+    tools: []
+  }
+}
+
+/** A helper of a saved run. It does not run: it takes no message. */
+export function helperFromSaved(record: Record<string, unknown>, index: number): Helper {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '')
+  const number = (value: unknown) => (typeof value === 'number' ? value : null)
+  const status = text(record.status)
+
+  return {
+    id: text(record.id) || `saved-${index}`,
+    goal: text(record.goal) || 'A helper',
+    status: ENDED.has(status) ? (status as SubagentStatus) : 'completed',
+    parentId: text(record.parentId) || null,
+    depth: number(record.depth) ?? 0,
+    model: text(record.model),
+    toolCount: number(record.toolCount) ?? 0,
+    activity: '',
+    summary: text(record.summary),
+    startedAt: number(record.startedAt),
+    durationS: number(record.durationSeconds),
+    acceptsSteer: false
+  }
+}
+
+/** The name of a saved run: what its first helpers were asked. */
+export function runLabel(helpers: readonly Helper[]): string {
+  const top = helpersInTree(helpers)
+    .filter(helper => helper.depth === 0)
+    .map(helper => helper.goal)
+    .slice(0, 2)
+
+  return (top.length ? top.join(' · ') : `${helpers.length} helpers`).slice(0, 120)
 }
 
 /** The line above the message field: where the plan is and who works. Null when there is nothing to say. */

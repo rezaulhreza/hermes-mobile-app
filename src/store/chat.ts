@@ -46,7 +46,7 @@ import { takeAttachments } from './attachments'
 import { $catalog, loadCatalog } from './commands'
 import { currentApi, onGatewayEvent, rpc } from './link'
 import { $sessionQuery } from './sessions'
-import { forgetWork, seedTodos } from './work'
+import { forgetWork, saveRun, seedTodos } from './work'
 
 export interface Conversation {
   sessionId: string
@@ -753,6 +753,15 @@ onGatewayEvent(event => {
   }
 
   patch(sessionId, c => ({ ...c, transcript: reduceTranscript(c.transcript, event) }))
+
+  if (event.type === 'message.complete') {
+    const storedId = $conversations.get()[sessionId]?.storedId
+
+    // The helpers of this turn stay readable after the chat closes.
+    if (storedId) {
+      void saveRun(sessionId, storedId).catch(() => undefined)
+    }
+  }
 
   // The user stopped the turn: the queue waits for them. A Stop must not start the next message.
   if (event.type === 'message.complete' && (event.payload as { status?: unknown } | undefined)?.status === 'interrupted') {

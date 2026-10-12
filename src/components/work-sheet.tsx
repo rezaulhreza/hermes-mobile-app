@@ -1,11 +1,13 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { currentTodo, type Helper, helperEnded, helperStatusWord, NO_WORK, type Todo, workSummary } from '@/core/work'
-import { $work, helperTail, loadHelpers, steerHelper, stopHelper } from '@/store/work'
+import { relativeTime } from '@/core/format'
+import { currentTodo, type Helper, helperEnded, helpersInTree, helperStatusWord, NO_WORK, type Todo, workSummary } from '@/core/work'
+import type { SpawnTreeEntry } from '@/core/gateway/gateway-contract.generated'
+import { $delegation, $work, helperTail, loadDelegation, loadHelpers, loadRun, loadRuns, pauseDelegation, steerHelper, stopHelper } from '@/store/work'
 import { MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -22,7 +24,7 @@ function todoColour(status: Todo['status'], t: Palette): string {
  * One line above the message field while the agent has a plan or helpers:
  * how far the plan is, and the step it is on. A tap opens the whole of it.
  */
-export function WorkStrip({ sessionId }: { sessionId: string }) {
+export function WorkStrip({ sessionId, storedId }: { sessionId: string; storedId?: string }) {
   const t = useTheme()
   const work = useStore($work)[sessionId] ?? NO_WORK
   const [open, setOpen] = useState(false)
@@ -50,22 +52,72 @@ export function WorkStrip({ sessionId }: { sessionId: string }) {
         </View>
         <Feather color={t.muted} name="chevron-up" size={18} />
       </Pressable>
-      {open ? <WorkSheet onClose={() => setOpen(false)} sessionId={sessionId} /> : null}
+      {open ? <WorkSheet onClose={() => setOpen(false)} sessionId={sessionId} storedId={storedId} /> : null}
     </>
   )
 }
 
-function WorkSheet({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+/** The plan, the helpers, and the runs of earlier turns. The chat's menu opens it too, when no strip shows. */
+export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string; storedId?: string; onClose: () => void }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const work = useStore($work)[sessionId] ?? NO_WORK
+  const delegation = useStore($delegation)
   const [helperId, setHelperId] = useState<string | null>(null)
-  const helper = work.helpers.find(known => known.id === helperId)
+  const [runs, setRuns] = useState<SpawnTreeEntry[]>([])
+  // The helpers of the earlier run that is open, by the path of the run.
+  const [run, setRun] = useState<{ path: string; helpers: Helper[] } | null>(null)
+  const [pausing, setPausing] = useState(false)
+  const helper = work.helpers.find(known => known.id === helperId) ?? run?.helpers.find(known => known.id === helperId)
+  const tree = useMemo(() => helpersInTree(work.helpers), [work.helpers])
 
   // The events give most of it. The host knows which helper still takes a message.
   useEffect(() => {
     void loadHelpers(sessionId).catch(() => undefined)
-  }, [sessionId])
+    void loadDelegation().catch(() => undefined)
+
+    if (storedId) {
+      void loadRuns(storedId).then(setRuns, () => undefined)
+    }
+  }, [sessionId, storedId])
+
+  const openRun = (path: string) => {
+    if (run?.path === path) {
+      return setRun(null)
+    }
+
+    void loadRun(path).then(helpers => setRun({ path, helpers: helpersInTree(helpers) }), () => undefined)
+  }
+
+  const togglePause = () => {
+    if (delegation) {
+      setPausing(true)
+      void pauseDelegation(!delegation.paused)
+        .catch(() => undefined)
+        .finally(() => setPausing(false))
+    }
+  }
+
+  const row = (known: Helper) => (
+    <Pressable
+      accessibilityHint="Shows what this helper does"
+      accessibilityLabel={known.goal}
+      accessibilityRole="button"
+      key={known.id}
+      onPress={() => setHelperId(known.id)}
+      style={({ pressed }) => [styles.helper, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line, marginLeft: Math.min(known.depth, 3) * space.md }]}
+    >
+      <View style={styles.fill}>
+        <Text numberOfLines={2} style={[type.label, { color: t.ink }]}>
+          {known.goal}
+        </Text>
+        <Text numberOfLines={1} style={[type.small, { color: helperColour(known, t) }]}>
+          {helperLine(known)}
+        </Text>
+      </View>
+      <Feather color={t.muted} name="chevron-right" size={18} />
+    </Pressable>
+  )
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible>
@@ -104,30 +156,69 @@ function WorkSheet({ sessionId, onClose }: { sessionId: string; onClose: () => v
               </View>
             ) : null}
 
-            {work.helpers.length ? (
+            {tree.length || work.failed.length ? (
               <View style={styles.group}>
                 <Text style={[type.small, styles.groupTitle, { color: t.muted }]}>Helpers</Text>
-                {work.helpers.map(known => (
-                  <Pressable
-                    accessibilityHint="Shows what this helper does"
-                    accessibilityLabel={known.goal}
-                    accessibilityRole="button"
-                    key={known.id}
-                    onPress={() => setHelperId(known.id)}
-                    style={({ pressed }) => [styles.helper, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line, marginLeft: Math.min(known.depth, 3) * space.md }]}
-                  >
+                {tree.map(row)}
+                {work.failed.map(item => (
+                  <View key={item.id} style={[styles.helper, { backgroundColor: t.redBg, borderColor: t.line }]}>
+                    <Feather color={t.red} name="alert-triangle" size={18} />
                     <View style={styles.fill}>
                       <Text numberOfLines={2} style={[type.label, { color: t.ink }]}>
-                        {known.goal}
+                        {item.goal}
                       </Text>
-                      <Text numberOfLines={1} style={[type.small, { color: helperColour(known, t) }]}>
-                        {helperLine(known)}
+                      <Text numberOfLines={3} style={[type.small, { color: t.red }]}>
+                        {item.reason ? `Did not finish: ${item.reason}` : 'Did not finish.'}
                       </Text>
                     </View>
-                    <Feather color={t.muted} name="chevron-right" size={18} />
-                  </Pressable>
+                  </View>
                 ))}
               </View>
+            ) : null}
+
+            {delegation ? (
+              <View style={[styles.helper, { backgroundColor: t.paper, borderColor: t.line }]}>
+                <Feather color={delegation.paused ? t.accent : t.muted} name={delegation.paused ? 'pause-circle' : 'users'} size={20} />
+                <View style={styles.fill}>
+                  <Text style={[type.label, { color: t.ink }]}>{delegation.paused ? 'New helpers are paused' : 'Hermes can start helpers'}</Text>
+                  <Text style={[type.small, { color: t.muted }]}>
+                    {delegation.paused ? 'Helpers that run go on. Hermes starts no new one.' : `Up to ${delegation.maxAtOnce} at the same time.`}
+                  </Text>
+                </View>
+                <Button busy={pausing} label={delegation.paused ? 'Allow' : 'Pause'} onPress={togglePause} />
+              </View>
+            ) : null}
+
+            {runs.length ? (
+              <View style={styles.group}>
+                <Text style={[type.small, styles.groupTitle, { color: t.muted }]}>Earlier runs</Text>
+                {runs.map(entry => (
+                  <View key={entry.path} style={styles.group}>
+                    <Pressable
+                      accessibilityLabel={`Earlier run: ${entry.label || 'Helpers'}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: run?.path === entry.path }}
+                      onPress={() => openRun(entry.path)}
+                      style={({ pressed }) => [styles.helper, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+                    >
+                      <View style={styles.fill}>
+                        <Text numberOfLines={2} style={[type.label, { color: t.ink }]}>
+                          {entry.label || 'Helpers'}
+                        </Text>
+                        <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                          {[entry.count ? `${entry.count} ${entry.count === 1 ? 'helper' : 'helpers'}` : '', entry.finished_at ? relativeTime(entry.finished_at) : ''].filter(Boolean).join(' · ')}
+                        </Text>
+                      </View>
+                      <Feather color={t.muted} name={run?.path === entry.path ? 'chevron-up' : 'chevron-down'} size={18} />
+                    </Pressable>
+                    {run?.path === entry.path ? run.helpers.map(row) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {!work.todos.length && !tree.length && !work.failed.length && !runs.length ? (
+              <Text style={[type.body, { color: t.muted }]}>No plan and no helper in this chat yet. They show here when Hermes makes a plan or starts a helper.</Text>
             ) : null}
           </ScrollView>
         )}

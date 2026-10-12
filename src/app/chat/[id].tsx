@@ -33,7 +33,7 @@ import { ScreenPill, ScreenView } from '@/components/screen-view'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
-import { WorkStrip } from '@/components/work-sheet'
+import { WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
@@ -194,6 +194,7 @@ export default function Chat() {
   const screen = useMemo(() => screenWork(transcript?.items ?? []), [transcript?.items])
   const holdsScreen = useStore($screenHold) !== null
   const [watching, setWatching] = useState(false)
+  const [workOpen, setWorkOpen] = useState(false)
   // The strip is for what happens now: the agent works on the screen, or the user holds it. The user can put
   // it away; the chat's menu opens the view at any time. New screen work shows the strip again.
   const [hiddenAt, setHiddenAt] = useState<number | null>(null)
@@ -391,7 +392,7 @@ export default function Chat() {
         ))}
 
         {sessionId ? <QueuePanel onEdit={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n${text}` : text))} sessionId={sessionId} /> : null}
-        {sessionId ? <WorkStrip sessionId={sessionId} /> : null}
+        {sessionId ? <WorkStrip sessionId={sessionId} storedId={conversation?.storedId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {dictation === 'off' ? null : <DictationLine />}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
@@ -539,8 +540,12 @@ export default function Chat() {
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
+      {sessionId && workOpen ? <WorkSheet onClose={() => setWorkOpen(false)} sessionId={sessionId} storedId={conversation?.storedId} /> : null}
       <SessionActionsSheet
-            extra={[{ icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }]}
+            extra={[
+              { icon: 'list', label: 'Plan and helpers', onPress: () => setWorkOpen(true) },
+              { icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }
+            ]}
             onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } })}
             onClose={() => setActing(false)}
             onRemoved={() => router.back()}

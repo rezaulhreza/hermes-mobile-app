@@ -82,3 +82,61 @@ describe('workSummary', () => {
     expect(workSummary(reduceWork(work, event('subagent.complete', { subagent_id: 'h1', goal: 'x' }), 0))).toBe('1 of 2 done · 1 helper finished')
   })
 })
+
+describe('the tree, the failed starts and the saved runs of helpers', () => {
+  const { helperFromSaved, helpersInTree, NO_WORK, runLabel, savedHelper, withFailedStarts } = jest.requireActual('../work') as typeof import('../work')
+  type Helper = import('../work').Helper
+
+  const helper = (id: string, parentId: string | null, depth: number, goal = id): Helper => ({
+    id,
+    goal,
+    status: 'completed',
+    parentId,
+    depth,
+    model: '',
+    toolCount: 2,
+    activity: '',
+    summary: 'done',
+    startedAt: 1000,
+    durationS: 4,
+    acceptsSteer: false
+  })
+
+  it('puts each helper before the helpers it started', () => {
+    const list = [helper('a', null, 0), helper('b', null, 0), helper('a1', 'a', 1), helper('b1', 'b', 1), helper('a1x', 'a1', 2)]
+
+    expect(helpersInTree(list).map(item => item.id)).toEqual(['a', 'a1', 'a1x', 'b', 'b1'])
+  })
+
+  it('keeps a helper whose parent is not in the list', () => {
+    expect(helpersInTree([helper('c', 'gone', 1)]).map(item => item.id)).toEqual(['c'])
+  })
+
+  it('lists the helpers that could not start', () => {
+    const work = withFailedStarts(NO_WORK, [{ delegation_id: 'd1', task_index: 2, status: 'failed', goal: ' Check the date ', error: 'no model' }])
+
+    expect(work.failed).toEqual([{ id: 'd1:2', goal: 'Check the date', reason: 'no model' }])
+    expect(withFailedStarts(work, [{ delegation_id: 'd1', task_index: 2, status: 'failed' }])).toBe(work)
+  })
+
+  it('reads back a helper it saved', () => {
+    const before = helper('a', null, 0, 'Count the files')
+
+    expect(helperFromSaved(savedHelper(before, 0), 0)).toEqual(before)
+  })
+
+  it('reads a run saved by another client', () => {
+    expect(helperFromSaved({ goal: 'Look it up', status: 'running', depth: 1, parentId: 'p' }, 3)).toMatchObject({
+      id: 'saved-3',
+      goal: 'Look it up',
+      status: 'completed',
+      parentId: 'p',
+      depth: 1,
+      acceptsSteer: false
+    })
+  })
+
+  it('names a run by its first helpers', () => {
+    expect(runLabel([helper('a', null, 0, 'First'), helper('a1', 'a', 1, 'Inner'), helper('b', null, 0, 'Second'), helper('c', null, 0, 'Third')])).toBe('First · Second')
+  })
+})
