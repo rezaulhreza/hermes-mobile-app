@@ -148,3 +148,32 @@ describe('message search', () => {
     expect(withMessageHits(sections, [])).toEqual(sections)
   })
 })
+
+describe('a conversation as Markdown', () => {
+  const { sessionMarkdown, deleteGroups } = jest.requireActual('../sessions') as typeof import('../sessions')
+
+  it('writes the title, each message under its writer, and a tool call as one line', () => {
+    const text = sessionMarkdown({ id: 's1', title: 'Fix the build' }, [
+      { role: 'user', text: 'why does it fail?' },
+      { role: 'tool', name: 'terminal', context: 'npm test' },
+      { role: 'assistant', text: 'A test is red.' },
+      { role: 'assistant', text: '  ' }
+    ])
+
+    expect(text).toBe('# Fix the build\n\n## You\n\nwhy does it fail?\n\n> Tool: terminal — npm test\n\n## Hermes\n\nA test is red.\n')
+  })
+
+  it('groups the rows to delete by the profile that owns them', () => {
+    const groups = deleteGroups([
+      { id: 'a', profile: 'default', is_default_profile: true },
+      { id: 'b', profile: 'writer', is_default_profile: false },
+      { id: 'c', profile: 'writer', is_default_profile: false },
+      { id: 'd' }
+    ])
+
+    expect([...groups]).toEqual([
+      ['default', ['a', 'd']],
+      ['writer', ['b', 'c']]
+    ])
+  })
+})

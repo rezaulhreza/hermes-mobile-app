@@ -212,12 +212,15 @@ export function withMessageHits(sections: readonly SessionSection[], hits: reado
   return extra.length ? [...sections, { title: 'In messages', data: extra }] : [...sections]
 }
 
-export type SessionActionId = 'pin' | 'rename' | 'branch' | 'export' | 'archive' | 'delete'
+/** The name of the host's own profile. */
+export const DEFAULT_PROFILE = 'default'
+
+export type SessionActionId = 'pin' | 'rename' | 'branch' | 'export' | 'export-text' | 'archive' | 'select' | 'delete'
 
 export interface SessionAction {
   id: SessionActionId
   label: string
-  icon: 'bookmark' | 'edit-2' | 'git-branch' | 'share' | 'archive' | 'inbox' | 'trash-2'
+  icon: 'bookmark' | 'edit-2' | 'git-branch' | 'share' | 'file-text' | 'archive' | 'inbox' | 'check-circle' | 'trash-2'
   danger?: boolean
 }
 
@@ -227,8 +230,10 @@ export function sessionActions(row: SessionRow): SessionAction[] {
     { id: 'pin', label: row.pinned ? 'Unpin' : 'Pin to the top', icon: 'bookmark' },
     { id: 'rename', label: 'Rename', icon: 'edit-2' },
     { id: 'branch', label: 'Branch into a new conversation', icon: 'git-branch' },
-    { id: 'export', label: 'Export', icon: 'share' },
+    { id: 'export-text', label: 'Export to read (Markdown)', icon: 'file-text' },
+    { id: 'export', label: 'Export all data (JSON)', icon: 'share' },
     row.archived ? { id: 'archive', label: 'Move back to the list', icon: 'inbox' } : { id: 'archive', label: 'Archive', icon: 'archive' },
+    { id: 'select', label: 'Select more to delete', icon: 'check-circle' },
     { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true }
   ]
 }
@@ -253,4 +258,41 @@ export function exportFileName(row: SessionRow): string {
     .slice(0, 60)
 
   return `${base || 'conversation'}.json`
+}
+
+/**
+ * A conversation as a Markdown text a person can read: the title, then each
+ * message under the name of who wrote it. A tool call is one line; its output
+ * stays on the host.
+ */
+export function sessionMarkdown(row: SessionRow, messages: readonly { role: string; text?: string | null; name?: string | null; context?: string | null }[]): string {
+  const parts = [`# ${sessionTitle(row)}`]
+
+  for (const message of messages) {
+    const text = (message.text ?? '').trim()
+
+    if (message.role === 'tool') {
+      parts.push(`> Tool: ${message.name ?? 'tool'}${message.context ? ` — ${message.context}` : ''}`)
+    } else if (text) {
+      parts.push(`## ${message.role === 'user' ? 'You' : 'Hermes'}\n\n${text}`)
+    }
+  }
+
+  return `${parts.join('\n\n')}\n`
+}
+
+/**
+ * The ids to delete in one request for each profile. The host deletes in one profile a request and wants
+ * the profile named, also its own: a host with several profiles refuses a delete with no name.
+ */
+export function deleteGroups(rows: readonly SessionRow[]): Map<string, string[]> {
+  const groups = new Map<string, string[]>()
+
+  for (const row of rows) {
+    const profile = row.profile || DEFAULT_PROFILE
+
+    groups.set(profile, [...(groups.get(profile) ?? []), row.id])
+  }
+
+  return groups
 }

@@ -4,7 +4,9 @@ import { atom } from 'nanostores'
 import type { ProjectsTreeResult, SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
 import { PROJECT_ROWS, type ProjectChoice, projectChoices, projectRows } from '@/core/projects'
 import { slimSessionRow } from '@/core/cache'
+import { type HistoryPage, pageMessages, type StoredMessage } from '@/core/history-page'
 import {
+  deleteGroups,
   exportFileName,
   rowProfile,
   rowsInView,
@@ -13,6 +15,7 @@ import {
   SESSION_PAGE,
   SESSION_SOURCE,
   sessionListPath,
+  sessionMarkdown,
   sessionSearchPath,
   type SessionRow,
   type SessionView,
@@ -273,6 +276,7 @@ export function clearSessions(): void {
   $sessionProject.set(null)
   $projects.set(null)
   $sessionHits.set([])
+  $selectedSessions.set(null)
   probed = false
 }
 
@@ -327,6 +331,72 @@ export async function exportSession(row: SessionRow): Promise<string> {
   await File.downloadFileAsync(`${workspace.baseUrl}/api/sessions/${encodeURIComponent(row.id)}/export${query}`, target, { headers: workspace.headers })
 
   return target.uri
+}
+
+const EXPORT_PAGE = 500
+// A conversation of 20 000 stored rows. More than that is not a text to read on a phone.
+const EXPORT_PAGES = 40
+
+/** Save the conversation as a Markdown file on the phone. Returns its address, for the share sheet. */
+export async function exportSessionText(row: SessionRow): Promise<string> {
+  const rows: StoredMessage[] = []
+
+  for (let page = 0; page < EXPORT_PAGES; page += 1) {
+    const result = await api().request<HistoryPage>({
+      path: `/api/sessions/${encodeURIComponent(row.id)}/messages?order=oldest&limit=${EXPORT_PAGE}&offset=${page * EXPORT_PAGE}&inline_images=false`,
+      profile: rowProfile(row),
+      timeoutMs: 60_000
+    })
+    const messages = result.messages ?? []
+
+    rows.push(...messages)
+
+    if (messages.length < EXPORT_PAGE) {
+      break
+    }
+  }
+
+  const target = new File(Paths.cache, exportFileName(row).replace(/\.json$/, '.md'))
+
+  if (target.exists) {
+    target.delete()
+  }
+
+  target.write(sessionMarkdown(row, pageMessages(rows)))
+
+  return target.uri
+}
+
+/** The rows the user marked for one delete. Null: the list is not in its select mode. */
+export const $selectedSessions = atom<string[] | null>(null)
+
+export function toggleSelected(id: string): void {
+  const selected = $selectedSessions.get() ?? []
+
+  $selectedSessions.set(selected.includes(id) ? selected.filter(other => other !== id) : [...selected, id])
+}
+
+/** Delete the marked conversations. Returns how many the host kept because a turn still writes to them. */
+export async function deleteSelected(): Promise<number> {
+  const ids = new Set($selectedSessions.get() ?? [])
+  const rows = $sessions.get().filter(row => ids.has(row.id))
+  const kept: string[] = []
+
+  for (const [profile, group] of deleteGroups(rows)) {
+    const result = await api().request<{ skipped_active?: string[] }>({
+      path: '/api/sessions/bulk-delete',
+      method: 'POST',
+      body: { ids: group, profile },
+      timeoutMs: 60_000
+    })
+
+    kept.push(...(result.skipped_active ?? []))
+  }
+
+  $sessions.set($sessions.get().filter(row => !ids.has(row.id) || kept.includes(row.id)))
+  $selectedSessions.set(null)
+
+  return kept.length
 }
 
 // The backend says when the list changed, so the list never polls.

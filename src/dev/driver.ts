@@ -18,7 +18,7 @@ import { $linkState, currentApi, observeRequests, onGatewayEvent, rpc } from '@/
 import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
 import { $screen, $screenHold, $screenPicture, screenWatching, sendScreenInput } from '@/store/screen'
-import { $sessions, $sessionSource, $sessionView, loadMoreSessions } from '@/store/sessions'
+import { $sessions, $sessionSource, $sessionView, branchSession, exportSessionText, loadMoreSessions } from '@/store/sessions'
 import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
 import { GptLiveEngine } from '@/store/voice-gpt-live'
@@ -192,6 +192,10 @@ const helpers = {
   sendScreenInput,
   /** The end of the chat list, which a script cannot scroll to. */
   loadMoreSessions,
+  /** The export, past the share sheet that a script cannot close. */
+  exportSessionText,
+  /** A copy of a chat, for a check that deletes chats. */
+  branchSession,
   /** The top of a chat, which a script cannot scroll to. */
   loadOlderHistory,
   setPreference,

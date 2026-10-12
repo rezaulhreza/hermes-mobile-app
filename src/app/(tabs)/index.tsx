@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
-import { IconButton, Notice } from '@/components/ui'
+import { Button, IconButton, Notice } from '@/components/ui'
 import { botInitials } from '@/core/bots'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
@@ -33,6 +33,9 @@ import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $requests } from '@/store/requests'
 import {
   $sessionHits,
+  $selectedSessions,
+  deleteSelected,
+  toggleSelected,
   $sessionProfile,
   $sessionProject,
   $projects,
@@ -78,6 +81,25 @@ export default function Chats() {
   const query = useStore($sessionQuery)
   const [starting, setStarting] = useState(false)
   const pull = usePull(refreshSessions)
+  // The select mode: a tap marks a row, and one bar deletes the marked rows.
+  const selected = useStore($selectedSessions)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [kept, setKept] = useState(0)
+  const [problem, setProblem] = useState(false)
+
+  const removeSelected = async () => {
+    setDeleting(true)
+
+    try {
+      setKept(await deleteSelected())
+    } catch {
+      setProblem(true)
+    } finally {
+      setDeleting(false)
+      setConfirming(false)
+    }
+  }
 
   const view = useStore($sessionView)
   const source = useStore($sessionSource)
@@ -227,6 +249,7 @@ export default function Chats() {
             // In the list of every profile, each row shows whose conversation it is.
             owner={profile ? undefined : (item.profile ?? undefined)}
             row={item}
+            selected={selected ? selected.includes(item.id) : undefined}
           />
         )}
         renderSectionHeader={({ section }) =>
@@ -240,7 +263,33 @@ export default function Chats() {
       <ProfileSheet active={profile} bots={bots ?? []} onClose={() => setChoosingProfile(false)} onPick={showSessionProfile} visible={choosingProfile} />
       <ProjectSheet active={project?.id ?? null} onClose={() => setChoosingProject(false)} onPick={showSessionProject} projects={projects} visible={choosingProject} />
       <ChannelSheet active={source} onClose={() => setPicking(false)} onPick={showSessionSource} sources={sources} visible={picking} />
+      {selected ? (
+        <View style={[styles.selectBar, { backgroundColor: t.paper, borderColor: t.line }]}>
+          <Text style={[type.label, styles.fill, { color: t.ink }]}>
+            {problem ? 'Hermes did not delete them. Try again.' : confirming ? `Delete ${selected.length} ${selected.length === 1 ? 'chat' : 'chats'} and all their messages?` : `${selected.length} selected`}
+          </Text>
+          <Button
+            label={confirming ? 'Keep' : 'Cancel'}
+            onPress={() => {
+              if (confirming) {
+                setConfirming(false)
+              } else {
+                $selectedSessions.set(null)
+              }
+            }}
+          />
+          <Button busy={deleting} disabled={!selected.length} label="Delete" onPress={() => (setProblem(false), confirming ? void removeSelected() : setConfirming(true))} tone="danger" />
+        </View>
+      ) : kept ? (
+        <Pressable accessibilityRole="button" onPress={() => setKept(0)} style={[styles.selectBar, { backgroundColor: t.paper, borderColor: t.line }]}>
+          <Text style={[type.small, styles.fill, { color: t.ink }]}>
+            {kept === 1 ? '1 chat was kept: Hermes still works in it.' : `${kept} chats were kept: Hermes still works in them.`}
+          </Text>
+          <Feather color={t.muted} name="x" size={18} />
+        </Pressable>
+      ) : null}
       <SessionActionsSheet
+        canSelect
         onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId, ...(acting && rowProfile(acting) ? { profile: rowProfile(acting) } : {}) } })}
         onClose={() => setActing(null)}
         row={acting}
@@ -250,7 +299,7 @@ export default function Chats() {
 }
 
 /** `bot` names the owner of a row that is not the host's own profile, in the list of all profiles. */
-function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; owner?: string; onActions: () => void }) {
+function SessionRow({ row, bot, owner, onActions, selected }: { row: Row; bot?: string; owner?: string; onActions: () => void; selected?: boolean }) {
   const t = useTheme()
   // The picture of the bot that owns the conversation: the same one the Bots tab shows.
   const picture = useStore($botAvatars)[owner ?? '']
@@ -301,11 +350,12 @@ function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; ow
       accessibilityLabel={title}
       accessibilityRole="button"
       delayLongPress={350}
-      onLongPress={() => (tap(), onActions())}
-      onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
+      onLongPress={() => (tap(), selected === undefined ? onActions() : toggleSelected(row.id))}
+      onPress={() => selected !== undefined ? toggleSelected(row.id) : router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
       // The row hides the actions under it until it slides, so it needs a colour of its own.
       style={({ pressed }) => [styles.row, { borderBottomColor: t.line, backgroundColor: pressed ? t.soft : t.bg }]}
     >
+      {selected === undefined ? null : <Feather accessibilityLabel={selected ? 'Selected' : 'Not selected'} color={selected ? t.accent : t.muted} name={selected ? 'check-circle' : 'circle'} size={22} />}
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
       {owner ? (
         picture ? (
@@ -352,6 +402,18 @@ function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; ow
 }
 
 const styles = StyleSheet.create({
+  selectBar: {
+    position: 'absolute',
+    left: space.lg,
+    right: space.lg,
+    bottom: TAB_BAR_CLEARANCE + space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth
+  },
   swipe: { flexDirection: 'row' },
   swipeAction: { width: 84, alignItems: 'center', justifyContent: 'center', gap: 4 },
   fill: { flex: 1 },

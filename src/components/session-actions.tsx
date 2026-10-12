@@ -4,7 +4,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, Sh
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { type SessionAction, sessionActions, type SessionRow, sessionTitle } from '@/core/sessions'
-import { branchSession, deleteSession, exportSession, updateSession } from '@/store/sessions'
+import { $selectedSessions, branchSession, deleteSession, exportSession, exportSessionText, updateSession } from '@/store/sessions'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -21,6 +21,8 @@ interface Props {
   /** The conversation is gone, deleted or archived. A screen that shows it must leave. */
   onRemoved?: () => void
   /** Actions of the screen that opened the sheet, above the actions of the conversation. The sheet closes first. */
+  /** The sheet opened from the list: the user can mark more rows from there. */
+  canSelect?: boolean
   extra?: readonly { icon: ComponentProps<typeof Feather>['name']; label: string; onPress: () => void }[]
 }
 
@@ -29,16 +31,16 @@ interface Props {
  * row of the list and from the title of an open conversation, so the actions
  * are the same in both places.
  */
-export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved, extra }: Props) {
+export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved, extra, canSelect }: Props) {
   if (!row) {
     return null
   }
 
   // A new conversation is a new sheet: no text or question from the last one stays.
-  return <Sheet extra={extra} key={row.id} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
+  return <Sheet canSelect={canSelect} extra={extra} key={row.id} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
 }
 
-function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [] }: Props & { row: SessionRow }) {
+function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [], canSelect }: Props & { row: SessionRow }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [step, setStep] = useState<'list' | 'rename' | 'delete'>('list')
@@ -86,9 +88,15 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [] }: P
           onBranched(storedId)
         })
 
+      case 'select':
+        $selectedSessions.set([row.id])
+
+        return onClose()
+
       case 'export':
+      case 'export-text':
         return run(async () => {
-          const uri = await exportSession(row)
+          const uri = await (action.id === 'export' ? exportSession(row) : exportSessionText(row))
 
           // The share sheet takes a file address on iOS only. Android gets the address as text.
           await Share.share(Platform.OS === 'ios' ? { url: uri } : { message: uri })
@@ -166,7 +174,7 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [] }: P
                 <Text style={[type.body, styles.fill, { color: t.ink }]}>{action.label}</Text>
               </Pressable>
             ))}
-            {sessionActions(row).map(action => (
+            {sessionActions(row).filter(action => action.id !== 'select' || canSelect).map(action => (
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
