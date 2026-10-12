@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable'
 import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -43,7 +44,8 @@ import {
   refreshSessions,
   showSessionProfile,
   showSessionSource,
-  showSessionView
+  showSessionView,
+  updateSession
 } from '@/store/sessions'
 import { $activeWorkspace } from '@/store/workspaces'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
@@ -230,15 +232,52 @@ function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; ow
   const title = sessionTitle(row)
   const at = row.last_active ?? row.started_at
 
+  const swipe = useRef<SwipeableMethods>(null)
+  // The same two actions as the sheet of a long press, one swipe away. The list shows the change at once.
+  const act = (change: Pick<Row, 'pinned' | 'archived'>) => {
+    tap()
+    swipe.current?.close()
+    void updateSession(row, change).catch(() => undefined)
+  }
+
   return (
+    <Swipeable
+      friction={2}
+      overshootRight={false}
+      ref={swipe}
+      renderRightActions={() => (
+        <View style={styles.swipe}>
+          <Pressable
+            accessibilityLabel={row.pinned ? `Unpin ${title}` : `Pin ${title}`}
+            accessibilityRole="button"
+            onPress={() => act({ pinned: !row.pinned })}
+            style={[styles.swipeAction, { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.ink} name="bookmark" size={20} />
+            <Text style={[type.small, { color: t.ink }]}>{row.pinned ? 'Unpin' : 'Pin'}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel={row.archived ? `Move ${title} back` : `Archive ${title}`}
+            accessibilityRole="button"
+            onPress={() => act({ archived: !row.archived })}
+            style={[styles.swipeAction, { backgroundColor: t.accentBg }]}
+          >
+            <Feather color={t.accent} name="archive" size={20} />
+            <Text style={[type.small, { color: t.accent }]}>{row.archived ? 'Move back' : 'Archive'}</Text>
+          </Pressable>
+        </View>
+      )}
+      rightThreshold={40}
+    >
     <Pressable
-      accessibilityHint="Hold for more actions"
+      accessibilityHint="Hold or swipe left for more actions"
       accessibilityLabel={title}
       accessibilityRole="button"
       delayLongPress={350}
       onLongPress={() => (tap(), onActions())}
       onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
-      style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
+      // The row hides the actions under it until it slides, so it needs a colour of its own.
+      style={({ pressed }) => [styles.row, { borderBottomColor: t.line, backgroundColor: pressed ? t.soft : t.bg }]}
     >
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
       {owner ? (
@@ -281,10 +320,13 @@ function SessionRow({ row, bot, owner, onActions }: { row: Row; bot?: string; ow
       ) : null}
       <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>
     </Pressable>
+    </Swipeable>
   )
 }
 
 const styles = StyleSheet.create({
+  swipe: { flexDirection: 'row' },
+  swipeAction: { width: 84, alignItems: 'center', justifyContent: 'center', gap: 4 },
   fill: { flex: 1 },
   list: { paddingBottom: TAB_BAR_CLEARANCE, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   header: { padding: space.lg, gap: space.md },
