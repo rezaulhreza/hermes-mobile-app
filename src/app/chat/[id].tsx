@@ -52,6 +52,7 @@ import {
   type Completions,
   type DraftEffect,
   liveSessionId,
+  loadOlderHistory,
   resumeConversation,
   sendDraft,
   setConversationTitle,
@@ -356,7 +357,12 @@ export default function Chat() {
               keyboardDismissMode="interactive"
               // A user who reads older rows stays there while the answer grows under them.
               maintainVisibleContentPosition={awayFromEnd ? { minIndexForVisible: 0 } : undefined}
+              // The list is upside down: its footer is above the oldest row on screen.
+              ListFooterComponent={conversation?.history?.loading ? <ActivityIndicator color={t.muted} style={styles.older} /> : null}
               maxToRenderPerBatch={8}
+              // The end of an upside-down list is its oldest row: read the page before it.
+              onEndReached={() => sessionId && void loadOlderHistory(sessionId)}
+              onEndReachedThreshold={1.5}
               onMomentumScrollEnd={onUserScroll}
               onScrollEndDrag={onUserScroll}
               ref={list}
@@ -822,6 +828,7 @@ const styles = StyleSheet.create({
   answerActions: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 24 },
   toEnd: { position: 'absolute', right: space.lg, bottom: space.sm },
   fill: { flex: 1 },
+  older: { paddingVertical: space.lg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',

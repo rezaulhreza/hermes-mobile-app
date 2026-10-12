@@ -22,6 +22,7 @@ import type {
 } from '@/core/gateway/gateway-contract.generated'
 import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
+import { HISTORY_PAGE, type HistoryPage, historyPagePath, oldestRowId, pageMessages, rowsBefore } from '@/core/history-page'
 import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
@@ -34,6 +35,7 @@ import {
   type Transcript,
   transcriptFromHistory,
   withCommandOutput,
+  withOlderHistory,
   withDelivery,
   withNotice,
   withUserMessage
@@ -52,6 +54,20 @@ export interface Conversation {
   title: string
   info: SessionLiveInfo
   transcript: Transcript
+  /** The bot the conversation belongs to. The REST routes find its rows only with it. */
+  profile?: string
+  /** How far back the rows on screen go. Absent when the whole history is there. */
+  history?: HistoryState
+}
+
+export interface HistoryState {
+  /** Stored rows read so far, from the newest. The next page starts there. */
+  offset: number
+  /** The lowest row id on screen. */
+  oldestId: number | null
+  /** The host has older rows. */
+  more: boolean
+  loading: boolean
 }
 
 export const $conversations = map<Record<string, Conversation>>({})
@@ -88,20 +104,77 @@ export async function createConversation(profile?: string): Promise<Conversation
   return conversation
 }
 
-/** Open a stored conversation. Returns its live session id. A conversation of a bot needs the bot's `profile`: its history is in that profile. */
+function historyPage(storedId: string, offset: number, profile?: string): Promise<HistoryPage> {
+  const api = currentApi()
+
+  return api ? api.request<HistoryPage>({ path: historyPagePath(storedId, offset), profile }) : Promise.reject(new Error('Not connected to a Hermes workspace.'))
+}
+
+/**
+ * Open a stored conversation. Returns its live session id. A conversation of
+ * a bot needs the bot's `profile`: its history is in that profile.
+ *
+ * The resume carries no history (`defer_history`), and the newest rows come
+ * from the REST route at the same time. A whole resume of a long chat is more
+ * than a megabyte and seconds; this is one page. A host with no page route
+ * gets the whole resume.
+ */
 export async function resumeConversation(storedId: string, title = '', profile?: string): Promise<string> {
-  const result = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE, ...(profile ? { profile } : {}) })
+  const scope = profile ? { profile } : {}
+  const [result, page] = await Promise.all([
+    rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE, defer_history: true, inline_images: false, ...scope }),
+    historyPage(storedId, 0, profile).catch(() => null)
+  ])
+  const rows = page?.messages
+  let whole: SessionResumeResult | null = null
+
+  if (result.messages?.length) {
+    // This host does not defer: its answer is the whole history.
+    whole = result
+  } else if (!rows) {
+    whole = await rpc<SessionResumeResult>('session.resume', { session_id: storedId, source: SESSION_SOURCE, inline_images: false, ...scope })
+  }
+
+  const messages = whole ? (whole.messages ?? []) : pageMessages(rows ?? [])
 
   $conversations.setKey(result.session_id, {
     sessionId: result.session_id,
     storedId: result.stored_session_id || storedId,
     title: result.info?.title ?? title,
     info: result.info ?? {},
-    transcript: transcriptFromHistory(result.messages ?? [], Boolean(result.running), result.queued?.user)
+    transcript: transcriptFromHistory(messages, Boolean(result.running), result.queued?.user),
+    ...scope,
+    ...(whole || !rows ? {} : { history: { offset: rows.length, oldestId: oldestRowId(rows), more: rows.length >= HISTORY_PAGE, loading: false } })
   })
   seedTodos(result.session_id, result.todo_state)
 
   return result.session_id
+}
+
+/** Read the page before the oldest row on screen. The chat asks when the user reaches the top. */
+export async function loadOlderHistory(sessionId: string): Promise<void> {
+  const conversation = $conversations.get()[sessionId]
+  const history = conversation?.history
+
+  if (!conversation || !history?.more || history.loading) {
+    return
+  }
+
+  patch(sessionId, c => ({ ...c, history: { ...history, loading: true } }))
+
+  try {
+    const rows = (await historyPage(conversation.storedId, history.offset, conversation.profile)).messages ?? []
+    const fresh = rowsBefore(rows, history.oldestId)
+
+    patch(sessionId, c => ({
+      ...c,
+      transcript: withOlderHistory(c.transcript, pageMessages(fresh), history.offset),
+      history: { offset: history.offset + rows.length, oldestId: oldestRowId(fresh) ?? history.oldestId, more: rows.length >= HISTORY_PAGE, loading: false }
+    }))
+  } catch {
+    // The rows on screen stay. The next reach of the top asks again.
+    patch(sessionId, c => ({ ...c, history: { ...history, loading: false } }))
+  }
 }
 
 /** What the screen must do after a draft was sent. Most drafts need nothing. */
@@ -554,7 +627,8 @@ export async function loadToolOutput(storedId: string, toolId: string): Promise<
   if (!pending) {
     pending = api
       .request<{ messages?: { role?: string; tool_call_id?: string | null; content?: unknown }[] }>({
-        path: `/api/sessions/${encodeURIComponent(storedId)}/messages`
+        path: `/api/sessions/${encodeURIComponent(storedId)}/messages`,
+        profile: Object.values($conversations.get()).find(conversation => conversation?.storedId === storedId)?.profile
       })
       .then(result => result.messages ?? [])
     storedMessages.set(storedId, pending)

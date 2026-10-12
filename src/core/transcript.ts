@@ -78,6 +78,20 @@ export function transcriptFromHistory(
 }
 
 /**
+ * Put an older page of history before the rows on screen. `offset` is the
+ * place of the page in the stored history; it makes the keys of its rows.
+ */
+export function withOlderHistory(transcript: Transcript, messages: readonly TranscriptMessage[], offset: number): Transcript {
+  const older = transcriptFromHistory(messages).items.map(item => {
+    const key = `o${offset}.${item.key}`
+
+    return item.kind === 'tool' && item.toolId === item.key ? { ...item, key, toolId: key } : { ...item, key }
+  })
+
+  return older.length ? { ...transcript, items: [...older, ...transcript.items] } : transcript
+}
+
+/**
  * A prompt still waiting in the backend queue when the conversation opens. The
  * backend stores a queued prompt the moment it accepts it, so the history
  * normally holds it already and only the label is missing.

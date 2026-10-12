@@ -192,6 +192,8 @@ const helpers = {
   sendScreenInput,
   /** The end of the chat list, which a script cannot scroll to. */
   loadMoreSessions,
+  /** The top of a chat, which a script cannot scroll to. */
+  loadOlderHistory,
   setPreference,
   setWake,
   /** Start the gpt-live engine with no call, to see how far a host with no OpenAI key lets it go. Resolves with what happened. */
