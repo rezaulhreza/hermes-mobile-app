@@ -27,6 +27,7 @@ import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { PreviewPane, PreviewPill } from '@/components/preview-pane'
+import { QueuePanel } from '@/components/queue-panel'
 import { RequestCard } from '@/components/request-card'
 import { ScreenPill, ScreenView } from '@/components/screen-view'
 import { SessionActionsSheet } from '@/components/session-actions'
@@ -389,6 +390,7 @@ export default function Chat() {
           </View>
         ))}
 
+        {sessionId ? <QueuePanel onEdit={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n${text}` : text))} sessionId={sessionId} /> : null}
         {sessionId ? <WorkStrip sessionId={sessionId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {dictation === 'off' ? null : <DictationLine />}

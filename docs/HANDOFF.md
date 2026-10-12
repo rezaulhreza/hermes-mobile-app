@@ -880,6 +880,11 @@ last, then ask about the notification buttons.
    the other calls of a bot's chat: `session.resume` takes `profile`, and the
    calls after it go by the live session id, but REST calls for that chat
    (tool output of a stored row, file download) do not send `?profile=` yet.
+8a. **A bot's own chat** (owner, 2026-10-09, eighth session): the header of
+   a bot's chat must show the bot (picture, readable name) and open the bot's
+   profile and configuration from there (role, instructions, model, picture,
+   and the per-profile capabilities of item 12). The chat must open as fast
+   as any other chat (the page path of "Speed" takes the bot's `profile`).
 8b. **Group chat of bots** (owner, 2026-10-09, eighth session): NOT built
    yet. The owner wants the bots' group chat as the desktop app has it: the
    sections of the Bots view (the assigned section and the others), and every

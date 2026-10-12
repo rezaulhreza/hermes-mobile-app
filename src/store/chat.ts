@@ -23,6 +23,7 @@ import type {
 import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
 import { HISTORY_PAGE, type HistoryPage, historyPagePath, oldestRowId, pageMessages, rowsBefore } from '@/core/history-page'
+import { EMPTY_QUEUE, enqueue, pauseQueue, promoteQueued, type Queue, removeQueued, resumeQueue, takeNext } from '@/core/queue'
 import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
@@ -58,6 +59,8 @@ export interface Conversation {
   profile?: string
   /** How far back the rows on screen go. Absent when the whole history is there. */
   history?: HistoryState
+  /** The messages sent during a turn. They wait on the phone until the turn ends. */
+  queue?: Queue
 }
 
 export interface HistoryState {
@@ -271,6 +274,13 @@ function label(sessionId: string, key: string, delivery: Delivery): void {
  */
 async function submitPrompt(sessionId: string, text: string, attachments: readonly Attachment[] = [], voiceContext?: string): Promise<void> {
   const busy = $conversations.get()[sessionId]?.transcript.running ?? false
+
+  // A text message in a turn waits on the phone. A message with files goes to the host's queue: its files are on the session already.
+  if (busy && !attachments.length) {
+    patch(sessionId, c => ({ ...c, queue: enqueue(c.queue ?? EMPTY_QUEUE, text, voiceContext) }))
+
+    return
+  }
   // The row shows the user's words and the files. The model also gets the references.
   const key = showUserMessage(sessionId, text, attachments.map(sentAttachment))
 
@@ -561,6 +571,57 @@ export async function completeDraft(sessionId: string, trigger: Trigger): Promis
   }
 }
 
+function changeQueue(sessionId: string, change: (queue: Queue) => Queue): void {
+  patch(sessionId, c => ({ ...c, queue: change(c.queue ?? EMPTY_QUEUE) }))
+}
+
+/** Take a queued message out. */
+export function cancelQueued(sessionId: string, id: string): void {
+  changeQueue(sessionId, queue => removeQueued(queue, id))
+}
+
+/** Take a queued message out to change it. Returns its text, for the message field. */
+export function editQueued(sessionId: string, id: string): string {
+  const text = $conversations.get()[sessionId]?.queue?.items.find(item => item.id === id)?.text ?? ''
+
+  cancelQueued(sessionId, id)
+
+  return text
+}
+
+/** Give a queued message to the running turn now: the model reads it after its current action. */
+export async function steerQueued(sessionId: string, id: string): Promise<void> {
+  const message = $conversations.get()[sessionId]?.queue?.items.find(item => item.id === id)
+
+  if (message) {
+    cancelQueued(sessionId, id)
+    await steerTurn(sessionId, message.text)
+  }
+}
+
+/** Send a queued message next: now when no turn runs, else as the first one after the turn. */
+export function sendQueuedNext(sessionId: string, id: string): void {
+  changeQueue(sessionId, queue => resumeQueue(promoteQueued(queue, id)))
+  drainQueue(sessionId)
+}
+
+/** Send the oldest queued message when no turn runs. Called after every event of a conversation. */
+function drainQueue(sessionId: string): void {
+  const conversation = $conversations.get()[sessionId]
+
+  if (!conversation?.queue?.items.length) {
+    return
+  }
+
+  const { send, queue } = takeNext(conversation.queue, conversation.transcript.running)
+
+  if (send) {
+    patch(sessionId, c => ({ ...c, queue }))
+    // The message is a normal one now: its row shows, and the turn counts as running at once.
+    void submitPrompt(sessionId, send.text, [], send.voiceContext)
+  }
+}
+
 export function stopTurn(sessionId: string): Promise<unknown> {
   return rpc('session.interrupt', { session_id: sessionId })
 }
@@ -688,4 +749,11 @@ onGatewayEvent(event => {
   }
 
   patch(sessionId, c => ({ ...c, transcript: reduceTranscript(c.transcript, event) }))
+
+  // The user stopped the turn: the queue waits for them. A Stop must not start the next message.
+  if (event.type === 'message.complete' && (event.payload as { status?: unknown } | undefined)?.status === 'interrupted') {
+    changeQueue(sessionId, pauseQueue)
+  }
+
+  drainQueue(sessionId)
 })
