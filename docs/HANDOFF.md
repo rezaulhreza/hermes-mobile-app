@@ -747,22 +747,43 @@ its file is deleted.
 
 Each item is one or more commits. Check the contract file for the RPC names.
 
-**Speed** (owner, 2026-10-09: "I don't like slowness", do this with the
-"Left" lines, not after them). Screens he named slow: Logins and cards,
-Providers and models, the Bots list, a chat open, "all the other screens".
-Facts measured: the host's FIRST answer of a kind takes 1.5 to 6 s, a repeat
-0.1 to 0.3 s; a `session.resume` answer is up to 1 MB. What to do:
-1. Measure each screen: the time from the tap to the first content, and the
-   time of each request (`h.api().request` and `h.rpc` in the driver).
-2. Show what the app has at once and refresh behind it: keep the last answer
-   of each settings screen in its store (they are small), do not start with
-   a spinner when a store has data.
-3. Ask at link open for the small lists a first tap needs (the bot list is
-   done; providers, keys, vault, schedules are not).
-4. A chat open: `inline_images: false`, `defer_history` or a page of history
-   for a long chat; show the title and the last rows first.
-5. If the host itself is slow on a first answer, find why on the host (cold
-   SQLite, the agent build) and say it; that is not the app's to hide only.
+**Speed**: DONE (eighth session). Keep it: measure a new screen the same way.
+Measured in the Simulator, development build, host warm unless said:
+
+| What | Before | After |
+|---|---|---|
+| App start to the first chat row | 1.8 s (5.8 s on a cold host) | at once (the list of the last run) |
+| Requests of a start | 35 at the same time, each 1.2 to 3 s | 30 one after the other, 40 to 250 ms; the chat list 1.6 s |
+| Providers and models, first open | 383 ms | 67 ms |
+| API keys, first open | 412 ms | 161 ms |
+| Logins and cards, first open | 158 ms | 32 ms |
+| Schedules, first open | 296 ms | 44 ms |
+| Voice, first open | 188 ms | 45 ms |
+| Bots tab | the list after `profiles.list` (3 to 6 s cold) | 102 ms |
+| A chat of 711 messages | 2.6 s, 1540 KB, 462 rows in memory | 0.5 s, 286 KB, 49 rows |
+| A short chat | 0.2 s (1.5 s the first time) | 0.18 s |
+
+How:
+- `h.times()` and `h.timeTo(action, text)` in the driver (`observeRequests`
+  in `store/link.ts`). Use them for every new screen.
+- `store/cache.ts` + `core/cache.ts`: the chat list, bots, pictures, schedules
+  and providers are kept in `Caches/lists/<workspace>/` and restored in
+  `_layout.tsx` before the link opens. No secret goes there (no key value, no
+  login). Sign-out removes the folder.
+- `store/preload.ts`: one request at a time at link open (chat list, bots,
+  providers, schedules, vault, keys, voice engines).
+- The ten source counts run when the Channels list opens.
+- `core/history-page.ts`: a chat opens with `session.resume {defer_history}`
+  and `GET /api/sessions/{id}/messages?order=latest&limit=60&offset=N&inline_images=false`
+  at the same time; `loadOlderHistory` reads the page before at the top of
+  the list. `offset` counts back from the newest row. A tool row whose call
+  is on an older page shows its name with no argument line.
+- Why the host is slow on a first answer: `/api/profiles/sessions?profile=all`
+  opens the store of EVERY profile for each request (12 here: 0.9 to 1.6 s
+  warm), and the first request of a kind pays the imports. Requests at the
+  same time wait for each other (the GIL). The desktop uses
+  `/api/profiles/sessions/sidebar`, which has a cache; the phone hides the
+  wait with its stored list. No backend patch was made for it.
 
 The owner's order (2026-10-09): items 7b and 10 are DONE. NEXT is every
 "Left" line of items 2, 3, 4, 4b, 5, 7, 8, 9 and 13 (close each one, or say
