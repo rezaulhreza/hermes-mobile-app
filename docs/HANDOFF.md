@@ -56,6 +56,21 @@ What to take over at the switch, and where each value is:
 - Keep personal identifiers out of the tree, as the old app does: read the
   bundle ID from the environment in `app.config`, do not commit it.
 
+## Owner's decisions, eighth session (2026-10-09)
+
+- Release: APPROVED to switch to the old app's bundle ID and to upload to
+  TestFlight with the old app's keys and method. The bundle ID and every
+  personal value come from the environment and are never committed. Stop only
+  if Apple asks for an interactive sign-in.
+- Approve and Deny buttons inside the notification: APPROVED, build them
+  AFTER the TestFlight upload, with the choices Hermes itself offers (once,
+  this session, always, deny).
+- When all is done: write a report of the work and a reusable handoff
+  template to `~/Documents/Hermes Redesign Mobile App/` (on the Mac, not in
+  the repo).
+- `docs/HANDOFF.md` before the source opens: still ASK the owner.
+- Keep working in one session. Say when a new session is better.
+
 ## Working rules (from the owner)
 
 - Do the work inline. Subagents only when clearly worth the cost: Sonnet at
