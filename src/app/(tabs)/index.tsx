@@ -7,7 +7,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { ChannelSheet, FilterButton, ProfileSheet } from '@/components/channel-filter'
+import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { IconButton, Notice } from '@/components/ui'
 import { botInitials } from '@/core/bots'
@@ -34,6 +34,10 @@ import { $requests } from '@/store/requests'
 import {
   $sessionHits,
   $sessionProfile,
+  $sessionProject,
+  $projects,
+  loadProjects,
+  showSessionProject,
   $sessionQuery,
   $sessions,
   $sessionsLoading,
@@ -89,6 +93,11 @@ export default function Chats() {
   const botTitles = useMemo(() => new Map((bots ?? []).map(bot => [bot.name, bot.title])), [bots])
   const shownBot = bots?.find(bot => bot.name === profile)
   const [choosingProfile, setChoosingProfile] = useState(false)
+  // A project is a folder of the host. Its chats show alone, and a new chat works in that folder.
+  const project = useStore($sessionProject)
+  const projects = useStore($projects)
+  const [choosingProject, setChoosingProject] = useState(false)
+  const crowded = Boolean(project)
   const hits = useStore($sessionHits)
   const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource)), hits), [sessions, query, activeSource, hits])
 
@@ -98,7 +107,7 @@ export default function Chats() {
     try {
       // With one bot shown, a new chat is a chat with that bot.
       const owner = shownBot && !shownBot.isDefault ? shownBot.name : undefined
-      const { storedId } = await createConversation(owner)
+      const { storedId } = await createConversation(owner, project?.path ?? undefined)
 
       router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1', ...(owner ? { profile: owner } : {}) } })
     } finally {
@@ -160,9 +169,11 @@ export default function Chats() {
       </View>
 
       <View style={styles.filters}>
+        {/* A filter that is set shows its name. With three names the row is too short, so an unset filter is then only its icon. */}
         <FilterButton
+          compact={!source && crowded}
           icon={source ? channel(source).icon : 'message-circle'}
-          label={source ? channel(source).label : 'All channels'}
+          label={source ? channel(source).label : 'Channels'}
           on={Boolean(source)}
           onPress={() => {
             setPicking(true)
@@ -170,7 +181,17 @@ export default function Chats() {
           }}
           opens
         />
-        <FilterButton icon="users" label={shownBot?.title ?? 'All profiles'} on={Boolean(profile)} onPress={() => setChoosingProfile(true)} opens />
+        <FilterButton compact={!profile && crowded} icon="users" label={shownBot?.title ?? 'Profiles'} on={Boolean(profile)} onPress={() => setChoosingProfile(true)} opens />
+        <FilterButton
+          compact={!project}
+          icon="folder"
+          label={project?.label ?? 'Projects'}
+          on={Boolean(project)}
+          onPress={() => {
+            setChoosingProject(true)
+            void loadProjects().catch(() => undefined)
+          }}
+        />
         <FilterButton compact icon="archive" label="Archived" on={view === 'archived'} onPress={() => showSessionView(view === 'archived' ? 'current' : 'archived')} />
       </View>
     </View>
@@ -217,6 +238,7 @@ export default function Chats() {
         windowSize={5}
       />
       <ProfileSheet active={profile} bots={bots ?? []} onClose={() => setChoosingProfile(false)} onPick={showSessionProfile} visible={choosingProfile} />
+      <ProjectSheet active={project?.id ?? null} onClose={() => setChoosingProject(false)} onPick={showSessionProject} projects={projects} visible={choosingProject} />
       <ChannelSheet active={source} onClose={() => setPicking(false)} onPick={showSessionSource} sources={sources} visible={picking} />
       <SessionActionsSheet
         onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId, ...(acting && rowProfile(acting) ? { profile: rowProfile(acting) } : {}) } })}

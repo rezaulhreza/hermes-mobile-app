@@ -91,9 +91,13 @@ export function liveSessionId(storedId: string): string | null {
   return Object.values($conversations.get()).find(conversation => conversation.storedId === storedId)?.sessionId ?? null
 }
 
-/** Start a new conversation. With a `profile` it is a conversation with that bot. */
-export async function createConversation(profile?: string): Promise<Conversation> {
-  const result = await rpc<SessionCreateResult>('session.create', { source: SESSION_SOURCE, ...(profile ? { profile } : {}) })
+/** Start a new conversation. With a `profile` it is a conversation with that bot. With a `cwd` the agent works in that folder of the host. */
+export async function createConversation(profile?: string, cwd?: string): Promise<Conversation> {
+  const result = await rpc<SessionCreateResult>('session.create', {
+    source: SESSION_SOURCE,
+    ...(profile ? { profile } : {}),
+    ...(cwd ? { cwd, cwd_explicit: true } : {})
+  })
   const conversation: Conversation = {
     sessionId: result.session_id,
     storedId: result.stored_session_id || result.session_id,

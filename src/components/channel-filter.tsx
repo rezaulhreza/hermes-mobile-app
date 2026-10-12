@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { type Bot, botInitials } from '@/core/bots'
+import { folderLine, type ProjectChoice } from '@/core/projects'
 import { channel } from '@/core/sessions'
 import { $botAvatars } from '@/store/bots'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
@@ -103,6 +104,67 @@ export function ChannelSheet({ visible, sources, active, onPick, onClose }: Shee
   )
 }
 
+interface ProjectSheetProps {
+  visible: boolean
+  /** Null while the host is asked. */
+  projects: readonly ProjectChoice[] | null
+  active: string | null
+  onPick: (project: ProjectChoice | null) => void
+  onClose: () => void
+}
+
+/** The folders of the host that conversations ran in. One project shows its conversations; a new chat then works in its folder. */
+export function ProjectSheet({ visible, projects, active, onPick, onClose }: ProjectSheetProps) {
+  const t = useTheme()
+  const insets = useSafeAreaInsets()
+  const rows: (ProjectChoice | null)[] = [null, ...(projects ?? [])]
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
+      <View style={[styles.fill, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
+        <View style={styles.head}>
+          <Text style={[type.heading, styles.fill, { color: t.ink }]}>Projects</Text>
+          <IconButton icon="x" label="Close" onPress={onClose} />
+        </View>
+        <FlatList
+          ListFooterComponent={projects ? null : <ActivityIndicator color={t.muted} style={styles.wait} />}
+          data={rows}
+          keyExtractor={project => project?.id ?? 'all'}
+          renderItem={({ item }) => {
+            const on = (item?.id ?? null) === active
+            const line = item ? [folderLine(item.path), `${item.count} ${item.count === 1 ? 'chat' : 'chats'}`].filter(Boolean).join('  ·  ') : ''
+
+            return (
+              <Pressable
+                accessibilityLabel={`Project: ${item?.label ?? 'All projects'}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                onPress={() => (onPick(item), onClose())}
+                style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
+              >
+                <View style={[styles.badge, { backgroundColor: on ? t.accentBg : t.soft }]}>
+                  <Feather color={on ? t.accent : t.muted} name={!item ? 'grid' : item.home ? 'home' : 'folder'} size={18} />
+                </View>
+                <View style={styles.fill}>
+                  <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+                    {item?.label ?? 'All projects'}
+                  </Text>
+                  {line ? (
+                    <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                      {line}
+                    </Text>
+                  ) : null}
+                </View>
+                {on ? <Feather color={t.accent} name="check" size={18} /> : null}
+              </Pressable>
+            )
+          }}
+        />
+      </View>
+    </Modal>
+  )
+}
+
 interface ProfileSheetProps {
   visible: boolean
   bots: readonly Bot[]
@@ -174,6 +236,7 @@ export function ProfileSheet({ visible, bots, active, onPick, onClose }: Profile
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  wait: { padding: space.xl },
   shrink: { flexShrink: 1 },
   dim: { opacity: 0.6 },
   button: {

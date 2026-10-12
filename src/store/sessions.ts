@@ -1,7 +1,8 @@
 import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
-import type { SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
+import type { ProjectsTreeResult, SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
+import { PROJECT_ROWS, type ProjectChoice, projectChoices, projectRows } from '@/core/projects'
 import { slimSessionRow } from '@/core/cache'
 import {
   exportFileName,
@@ -35,6 +36,28 @@ export const $sessionView = atom<SessionView>('current')
 export const $sessionSource = atom<string | null>(null)
 /** Show only the conversations of this profile (a bot). Null shows every profile. */
 export const $sessionProfile = atom<string | null>(null)
+/** Show only the conversations of this project (a folder of the host). Null shows all. */
+export const $sessionProject = atom<ProjectChoice | null>(null)
+/** The projects of the host that have a conversation. Null until the list of projects was opened. */
+export const $projects = atom<ProjectChoice[] | null>(null)
+
+function projectTree(): Promise<ProjectsTreeResult> {
+  return rpc<ProjectsTreeResult>('projects.tree', { preview_limit: PROJECT_ROWS, session_limit: 0 }, 30_000)
+}
+
+/** Read the projects. The list of projects asks when it opens. */
+export async function loadProjects(): Promise<void> {
+  $projects.set(projectChoices(await projectTree()))
+}
+
+/** Show the conversations of one project, or all with null. */
+export function showSessionProject(project: ProjectChoice | null): void {
+  if (project?.id !== $sessionProject.get()?.id) {
+    $sessionProject.set(project)
+    $sessions.set([])
+    void refreshSessions()
+  }
+}
 
 function api() {
   const current = currentApi()
@@ -130,10 +153,25 @@ export async function refreshSessions(): Promise<void> {
   const source = $sessionSource.get()
   const profile = $sessionProfile.get()
   const workspaceId = $activeWorkspace.get()?.id
+  const project = $sessionProject.get()
 
   $sessionsLoading.set(true)
 
   try {
+    // The rows of a project come with the tree of projects, in one answer.
+    if (project) {
+      const tree = await projectTree()
+
+      if (project.id === $sessionProject.get()?.id) {
+        $projects.set(projectChoices(tree))
+        $sessions.set(rowsInView(projectRows(tree.projects.find(node => node.id === project.id)), view))
+        $sessionsMore.set(false)
+        $sessionsError.set(null)
+      }
+
+      return
+    }
+
     const result = await api().request<SessionList>({ path: sessionListPath(view, { source, profile }) })
     const page = (result.sessions ?? []).map(slimSessionRow)
 
@@ -143,7 +181,7 @@ export async function refreshSessions(): Promise<void> {
     }
 
     // The user can change the view, the source or the profile while the request runs. An answer for another one is not shown.
-    if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get()) {
+    if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get() && !$sessionProject.get()) {
       $sessions.set(rowsInView(page, view))
       $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > page.length)
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
@@ -232,6 +270,8 @@ export function clearSessions(): void {
   $sessionView.set('current')
   $sessionSource.set(null)
   $sessionProfile.set(null)
+  $sessionProject.set(null)
+  $projects.set(null)
   $sessionHits.set([])
   probed = false
 }
