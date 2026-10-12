@@ -9,7 +9,7 @@
  * (`act-engine.generated.ts`), so both apps act on a page the same way.
  */
 
-import { ACT_ENGINE_SOURCE } from './act-engine.generated'
+import { ACT_ENGINE_SOURCE, WATCH_ENGINE_SOURCE } from './act-engine.generated'
 
 export interface BrowserPreview {
   url: string
@@ -36,15 +36,76 @@ export function isLoopbackUrl(url: string): boolean {
  * proxy. Any other address loads as it is.
  */
 export function previewAddress(baseUrl: string, url: string): string {
+  const path = hostFilePath(url)
+
+  if (path) {
+    // A file of the host (a page the agent wrote, a picture, a PDF): the host serves it, with the app's sign-in.
+    return `${baseUrl}/api/fs/download?path=${encodeURIComponent(path)}`
+  }
+
   return isLoopbackUrl(url) ? `${baseUrl}/api/preview/host?url=${encodeURIComponent(url.trim())}` : url.trim()
 }
 
-/** "localhost:5173/app" for a title bar. */
+/**
+ * The path, when a preview is a file of the host and not a web address:
+ * `file:///Users/me/out/report.html`, `/Users/me/out/report.html`,
+ * `C:\\Users\\me\\report.html`. Null for a web address.
+ */
+export function hostFilePath(url: string): string | null {
+  const text = url.trim()
+
+  if (/^file:\/\//i.test(text)) {
+    try {
+      // `file:///C:/x` is the path `C:/x`, `file:///Users/me` is `/Users/me`.
+      return decodeURIComponent(text.replace(/^file:\/\/(localhost)?/i, '')).replace(/^\/([A-Za-z]:[\\/])/, '$1')
+    } catch {
+      return null
+    }
+  }
+
+  return /^(\/|~\/|[A-Za-z]:[\\/])/.test(text) ? text : null
+}
+
+/** "localhost:5173/app" for a title bar. A file shows its name. */
 export function shortAddress(url: string): string {
+  const path = hostFilePath(url)
+
+  if (path) {
+    return path.split(/[\\/]/).pop() || path
+  }
+
   return url
     .trim()
     .replace(/^https?:\/\//i, '')
     .replace(/\/$/, '')
+}
+
+/** The pages of a conversation after the agent opened one. A page that is open already only comes to the front. */
+export function withTab(tabs: readonly BrowserPreview[], preview: BrowserPreview): { tabs: BrowserPreview[]; active: number } {
+  const at = tabs.findIndex(tab => tab.url === preview.url)
+
+  return at >= 0 ? { tabs: tabs.map((tab, index) => (index === at ? preview : tab)), active: at } : { tabs: [...tabs, preview], active: tabs.length }
+}
+
+/**
+ * The pages after one was closed. An empty `url` closes every page. The page
+ * on screen stays on screen; when it is the one that closed, the page before
+ * it shows.
+ */
+export function withoutTab(tabs: readonly BrowserPreview[], active: number, url: string): { tabs: BrowserPreview[]; active: number } {
+  const at = url ? tabs.findIndex(tab => tab.url === url) : -1
+
+  if (!url) {
+    return { tabs: [], active: 0 }
+  }
+
+  if (at < 0) {
+    return { tabs: [...tabs], active }
+  }
+
+  const rest = tabs.filter((_, index) => index !== at)
+
+  return { tabs: rest, active: Math.max(0, Math.min(rest.length - 1, at < active || at === active ? active - 1 : active)) }
 }
 
 /** The verbs the pane does itself: a page cannot drive its own history. */
@@ -107,24 +168,90 @@ const TAG = '__hermesPane'
 
 const post = (id: string, value: string) => `window.ReactNativeWebView.postMessage(JSON.stringify({ ${TAG}: ${JSON.stringify(id)}, result: ${value} }))`
 
+/** The actions that only draw on the page: the agent's `annotate_preview` tool and the scan of the field. */
+export const ANNOTATION_KINDS = ['pin', 'unpin', 'hold', 'strobe'] as const
+
+function isAnnotation(kind: string): boolean {
+  return (ANNOTATION_KINDS as readonly string[]).includes(kind)
+}
+
+/** What every script starts with: the engine, the overlay that shows the user what the agent does, and their two helpers. */
+const preamble = `    w.__hermesActHolder = w.__hermesActHolder || {};
+    w.__hermesAct = ${ACT_ENGINE_SOURCE};
+    w.__hermesWatch_fn = (${WATCH_ENGINE_SOURCE});
+    var holder = w.__hermesActHolder;
+    var act = function (a) { return w.__hermesAct(document, holder, a); };
+    var watch = function (stage, label) { try { w.__hermesWatch_fn(document, holder, stage, label); } catch (err) {} };`
+
+/** The words of the answer for the element the engine found: "pinned the Sign in button". */
+const NAMED = `String(found.acted || 'it').replace(/^looking at /, '')`
+
 /**
- * The script for one action. It runs the engine, waits for the page to settle
- * and reads the page again, so the agent gets the new state in the same answer.
- * It ends with `true`: the WebView wants a script to end with a value.
+ * The script for a mark of the agent on the page. `pin` outlines one element
+ * until it is taken down, `unpin` takes one or all down, `hold` keeps the
+ * outline of every element, `strobe` runs through them. The page is not
+ * touched: the marks are drawn over it.
+ */
+function annotationScript(action: ActAction): string {
+  const locate = JSON.stringify({ kind: 'locate', ref: action.ref, selector: action.selector })
+
+  switch (action.kind) {
+    case 'pin':
+      return `var found = act(${locate});
+    if (!found.success) { send(found); return; }
+    watch('pin', ${JSON.stringify(action.text ?? '')});
+    send({ success: true, acted: 'pinned ' + ${NAMED} });`
+
+    case 'unpin':
+      return action.ref || action.selector
+        ? `var found = act(${locate});
+    if (!found.success) { send(found); return; }
+    watch('unpin');
+    send({ success: true, acted: 'unpinned ' + ${NAMED} });`
+        : `holder.aimed = null;
+    watch('unpin');
+    send({ success: true, acted: 'cleared every pin' });`
+
+    default:
+      return `var found = act({ kind: 'elements' });
+    if (!found.success) { send(found); return; }
+    watch(${JSON.stringify(action.kind)});
+    found.acted = ${JSON.stringify(action.kind === 'hold' ? 'held the field' : 'strobed the field')};
+    send(found);`
+  }
+}
+
+/**
+ * The script for one action. It runs the engine, marks the element the agent
+ * acted on, waits for the page to settle and reads the page again, so the
+ * agent gets the new state in the same answer. It ends with `true`: the
+ * WebView wants a script to end with a value.
  */
 export function actScript(id: string, action: ActAction): string {
   const settle = action.kind === 'elements' ? 0 : SETTLE_MS
+
+  if (isAnnotation(action.kind)) {
+    return `(function () {
+  var w = window;
+  var send = function (result) { ${post(id, 'result')}; };
+  try {
+${preamble}
+    ${annotationScript(action)}
+  } catch (err) {
+    send({ success: false, error: String(err) });
+  }
+})();
+true;`
+  }
 
   return `(function () {
   var w = window;
   var send = function (result) { ${post(id, 'result')}; };
   try {
-    w.__hermesActHolder = w.__hermesActHolder || {};
-    w.__hermesAct = ${ACT_ENGINE_SOURCE};
-    var holder = w.__hermesActHolder;
-    var act = function (a) { return w.__hermesAct(document, holder, a); };
+${preamble}
     var result = act(${JSON.stringify(action)});
     if (!result.success || ${settle} <= 0) { send(result); return; }
+    watch('strike');
     setTimeout(function () {
       try {
         var after = act({ kind: 'elements' });

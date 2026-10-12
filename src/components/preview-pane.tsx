@@ -1,14 +1,26 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Linking, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
-import { isLoopbackUrl, paneMessage, previewAddress, shortAddress } from '@/core/preview/browser'
-import { $agentDriving, $humanControl, $previews, type Pane, registerPane, setHumanControl } from '@/store/browser'
+import { hostFilePath, isLoopbackUrl, paneMessage, previewAddress, shortAddress } from '@/core/preview/browser'
+import {
+  $agentDriving,
+  $humanControl,
+  $previewRestart,
+  $previews,
+  $previewTabs,
+  closePreviewTab,
+  type Pane,
+  registerPane,
+  restartPreview,
+  setHumanControl,
+  showPreviewTab
+} from '@/store/browser'
 import { currentApi } from '@/store/link'
-import { radius, space, type } from '@/theme/tokens'
+import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Button, IconButton } from './ui'
@@ -46,6 +58,9 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
   const [address, setAddress] = useState('')
   const [progress, setProgress] = useState(0)
   const [failure, setFailure] = useState<string | null>(null)
+  const tabs = useStore($previewTabs)[sessionId] ?? []
+  const restart = useStore($previewRestart)[sessionId]
+  const [menu, setMenu] = useState(false)
 
   useEffect(() => {
     const pane: Pane = {
@@ -85,6 +100,9 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
     return null
   }
 
+  // A page of the host (its own server, or a file on it) has no address a browser of the phone can open.
+  const onHost = isLoopbackUrl(preview.url) || hostFilePath(preview.url) !== null
+
   return (
     <View
       accessibilityElementsHidden={!open}
@@ -99,13 +117,11 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
             {title || preview.label || 'Preview'}
           </Text>
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {shortAddress(isLoopbackUrl(preview.url) || !address ? preview.url : address)}
+            {shortAddress(onHost || !address ? preview.url : address)}
           </Text>
         </View>
         <IconButton icon="rotate-cw" label="Load the page again" onPress={() => web.current?.reload()} />
-        {isLoopbackUrl(preview.url) ? null : (
-          <IconButton icon="external-link" label="Open in the browser" onPress={() => void Linking.openURL(address || preview.url)} />
-        )}
+        <IconButton icon="more-horizontal" label={tabs.length > 1 ? `Pages and more: ${tabs.length} pages` : 'More'} onPress={() => setMenu(true)} />
       </View>
 
       {progress > 0 && progress < 1 ? <View style={[styles.progress, { backgroundColor: t.accent, width: `${progress * 100}%` }]} /> : null}
@@ -147,7 +163,7 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
       <View style={[styles.foot, { borderTopColor: t.line, paddingBottom: Math.max(insets.bottom, space.md) }]}>
         <View style={[styles.dot, { backgroundColor: human ? t.accent : driving ? t.green : t.line }]} />
         <Text numberOfLines={2} style={[type.small, styles.fill, { color: t.muted }]}>
-          {human ? 'You have the page. Hermes waits.' : driving ? 'Hermes is working in this page.' : 'Hermes can read and use this page.'}
+          {restart ?? (human ? 'You have the page. Hermes waits.' : driving ? 'Hermes is working in this page.' : 'Hermes can read and use this page.')}
         </Text>
         <Button
           label={human ? 'Hand back' : 'Take control'}
@@ -156,7 +172,76 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
           tone={human ? 'primary' : 'plain'}
         />
       </View>
+
+      <Modal animationType="slide" onRequestClose={() => setMenu(false)} transparent visible={menu}>
+        <Pressable accessibilityLabel="Close the list" onPress={() => setMenu(false)} style={styles.backdrop} />
+        <View style={[styles.sheet, { backgroundColor: t.bg, paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+          <ScrollView style={styles.sheetRows}>
+            {tabs.length > 1 ? <Text style={[type.small, styles.sheetHead, { color: t.muted }]}>Pages</Text> : null}
+            {tabs.length > 1
+              ? tabs.map(tab => {
+                  const on = tab.url === preview.url
+
+                  return (
+                    <View key={tab.url} style={styles.sheetRow}>
+                      <Pressable
+                        accessibilityLabel={`Page: ${tab.label || shortAddress(tab.url)}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => (showPreviewTab(sessionId, tab.url), setMenu(false))}
+                        style={styles.sheetPress}
+                      >
+                        <Feather color={on ? t.accent : t.muted} name={hostFilePath(tab.url) ? 'file' : 'globe'} size={18} />
+                        <View style={styles.fill}>
+                          <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+                            {tab.label || shortAddress(tab.url)}
+                          </Text>
+                          {tab.label ? (
+                            <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                              {shortAddress(tab.url)}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {on ? <Feather color={t.accent} name="check" size={18} /> : null}
+                      </Pressable>
+                      <Pressable accessibilityLabel={`Close the page ${tab.label || shortAddress(tab.url)}`} accessibilityRole="button" hitSlop={8} onPress={() => closePreviewTab(sessionId, tab.url)}>
+                        <Feather color={t.muted} name="x" size={18} />
+                      </Pressable>
+                    </View>
+                  )
+                })
+              : null}
+            {onHost ? null : (
+              <MenuRow icon="external-link" label="Open in the browser of the phone" onPress={() => (setMenu(false), void Linking.openURL(address || preview.url))} />
+            )}
+            {isLoopbackUrl(preview.url) ? (
+              <MenuRow
+                detail="For a development server that stopped or hangs"
+                disabled={restart !== undefined}
+                icon="power"
+                label="Ask Hermes to start the server again"
+                onPress={() => (setMenu(false), void restartPreview(sessionId).catch(() => setFailure('Hermes could not start the server again.')))}
+              />
+            ) : null}
+            <MenuRow icon="x-circle" label={tabs.length > 1 ? 'Close this page' : 'Close the preview'} onPress={() => (setMenu(false), closePreviewTab(sessionId, preview.url))} />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
+  )
+}
+
+function MenuRow({ icon, label, detail, disabled, onPress }: { icon: 'external-link' | 'power' | 'x-circle'; label: string; detail?: string; disabled?: boolean; onPress: () => void }) {
+  const t = useTheme()
+
+  return (
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.sheetRow, styles.sheetPress, (pressed || disabled) && styles.dim]}>
+      <Feather color={t.muted} name={icon} size={18} />
+      <View style={styles.fill}>
+        <Text style={[type.label, { color: t.ink }]}>{label}</Text>
+        {detail ? <Text style={[type.small, { color: t.muted }]}>{detail}</Text> : null}
+      </View>
+    </Pressable>
   )
 }
 
@@ -185,6 +270,13 @@ export function PreviewPill({ sessionId, onOpen }: { sessionId: string; onOpen: 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   strong: { fontWeight: '700' },
+  dim: { opacity: 0.5 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: space.md },
+  sheetRows: { maxHeight: 420 },
+  sheetHead: { paddingHorizontal: space.lg, paddingBottom: space.xs, fontWeight: '700' },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH + 6, paddingHorizontal: space.lg },
+  sheetPress: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',

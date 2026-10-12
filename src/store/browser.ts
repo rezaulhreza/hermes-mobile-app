@@ -19,13 +19,74 @@ import {
   PAGE_LOADING,
   type PageText,
   readAnswer,
-  readScript
+  readScript,
+  withoutTab,
+  withTab
 } from '@/core/preview/browser'
 import type { GatewayEvent } from '@/core/gateway/gateway-events'
 
-import { onGatewayEvent, onGatewayRequest } from './link'
+import { onGatewayEvent, onGatewayRequest, rpc } from './link'
 
+/** The page on screen of each conversation: the one the agent reads and drives. */
 export const $previews = map<Record<string, BrowserPreview>>({})
+/** Every page the agent opened in each conversation. One WebView shows one of them. */
+export const $previewTabs = map<Record<string, BrowserPreview[]>>({})
+/** What the agent says while it starts the server of a page again. Absent when no restart runs. */
+export const $previewRestart = map<Record<string, string>>({})
+
+function setTabs(sessionId: string, tabs: BrowserPreview[], active: number): void {
+  if (!tabs.length) {
+    return closePreview(sessionId)
+  }
+
+  $previewTabs.setKey(sessionId, tabs)
+  $previews.setKey(sessionId, tabs[active])
+}
+
+/** Bring another page of the conversation to the screen. */
+export function showPreviewTab(sessionId: string, url: string): void {
+  const tab = ($previewTabs.get()[sessionId] ?? []).find(other => other.url === url)
+
+  if (tab) {
+    $previews.setKey(sessionId, tab)
+  }
+}
+
+/** Close one page. The agent can open it again. */
+export function closePreviewTab(sessionId: string, url: string): void {
+  const tabs = $previewTabs.get()[sessionId] ?? []
+  const next = withoutTab(tabs, tabs.findIndex(tab => tab.url === $previews.get()[sessionId]?.url), url)
+
+  setTabs(sessionId, next.tabs, next.active)
+}
+
+/**
+ * Ask Hermes to start the server of this page again (a development server
+ * that stopped or hangs). A helper agent does it on the host and says what it
+ * does; the pane loads the page again when it is done.
+ */
+export async function restartPreview(sessionId: string): Promise<void> {
+  const url = $previews.get()[sessionId]?.url
+
+  if (!url || $previewRestart.get()[sessionId] !== undefined) {
+    return
+  }
+
+  $previewRestart.setKey(sessionId, 'Asking Hermes to start the server again…')
+
+  try {
+    await rpc('preview.restart', { session_id: sessionId, url })
+  } catch (error) {
+    endRestart(sessionId)
+    throw error
+  }
+}
+
+function endRestart(sessionId: string): void {
+  const { [sessionId]: _done, ...rest } = $previewRestart.get()
+
+  $previewRestart.set(rest)
+}
 /** The conversations where the user took the page over. The agent is told to wait. */
 export const $humanControl = map<Record<string, boolean>>({})
 /** The conversations where the agent acted a moment ago, so the pane can say that it drives. */
@@ -55,13 +116,17 @@ export function setHumanControl(sessionId: string, human: boolean): void {
 
 export function closePreview(sessionId: string): void {
   const { [sessionId]: _closed, ...rest } = $previews.get()
+  const { [sessionId]: _tabs, ...restTabs } = $previewTabs.get()
 
   $previews.set(rest)
+  $previewTabs.set(restTabs)
   $humanControl.setKey(sessionId, false)
 }
 
 export function clearPreviews(): void {
   $previews.set({})
+  $previewTabs.set({})
+  $previewRestart.set({})
   $humanControl.set({})
   $agentDriving.set({})
 }
@@ -77,14 +142,24 @@ onGatewayEvent(event => {
     const payload = (event as GatewayEvent<'preview.open'>).payload
 
     if (payload?.url) {
-      $previews.setKey(sessionId, { url: payload.url, label: payload.label ?? '' })
+      // The page the agent just opened is the one it will read: it comes to the screen.
+      const next = withTab($previewTabs.get()[sessionId] ?? [], { url: payload.url, label: payload.label ?? '' })
+
+      setTabs(sessionId, next.tabs, next.active)
     }
   } else if (event.type === 'preview.close') {
-    const url = (event as GatewayEvent<'preview.close'>).payload?.url
+    // An empty address closes every page.
+    closePreviewTab(sessionId, (event as GatewayEvent<'preview.close'>).payload?.url ?? '')
+  } else if (event.type === 'preview.restart.progress') {
+    const text = (event as GatewayEvent<'preview.restart.progress'>).payload?.text
 
-    // An empty address closes every tab. The phone has one tab, so a named address closes it only when it is that one.
-    if (!url || url === $previews.get()[sessionId]?.url) {
-      closePreview(sessionId)
+    if (text && $previewRestart.get()[sessionId] !== undefined) {
+      $previewRestart.setKey(sessionId, text)
+    }
+  } else if (event.type === 'preview.restart.complete') {
+    if ($previewRestart.get()[sessionId] !== undefined) {
+      endRestart(sessionId)
+      panes.get(sessionId)?.navigate('reload')
     }
   }
 })
