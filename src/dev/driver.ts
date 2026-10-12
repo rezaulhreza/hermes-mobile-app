@@ -13,8 +13,8 @@ import { router } from 'expo-router'
 
 import { $attachments, stage } from '@/store/attachments'
 import { $previews } from '@/store/browser'
-import { $conversations, $shownSession } from '@/store/chat'
-import { $linkState, currentApi, onGatewayEvent, rpc } from '@/store/link'
+import { $conversations, $shownSession, loadOlderHistory } from '@/store/chat'
+import { $linkState, currentApi, observeRequests, onGatewayEvent, rpc } from '@/store/link'
 import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
 import { $screen, $screenHold, $screenPicture, screenWatching, sendScreenInput } from '@/store/screen'
@@ -130,8 +130,31 @@ const TRACE_ROWS = 60
 const TRACE_CHARS = 1200
 let stopTrace: (() => void) | null = null
 
+/** Every request since the last `h.times()`: its name, its time and the size of its answer. */
+const requestTimes: string[] = []
+
+observeRequests((name, ms, bytes) => void requestTimes.push(`${Math.round(ms)} ms  ${Math.round(bytes / 1024)} KB  ${name.slice(0, 90)}`))
+
 const helpers = {
   router,
+  /** The requests since the last call, then an empty list. */
+  times: () => requestTimes.splice(0),
+  /** Run `action`, then count the milliseconds until a text with `sees` is on screen. */
+  timeTo: async (action: () => unknown, sees: string, limitMs = 30_000) => {
+    const start = performance.now()
+
+    await action()
+
+    while (performance.now() - start < limitMs) {
+      if (helpers.texts().some(text => text.includes(sees))) {
+        return `${Math.round(performance.now() - start)} ms to "${sees}"`
+      }
+
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    }
+
+    return `not seen in ${limitMs} ms: "${sees}"`
+  },
   /** Record gateway events by the start of their type (`h.trace("tool.")`); `h.traced()` reads them. `h.trace()` stops. */
   trace: (prefix?: string) => {
     stopTrace?.()

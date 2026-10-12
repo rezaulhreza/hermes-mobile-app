@@ -39,6 +39,35 @@ let link: Link | null = null
 /** React Native's WebSocket takes request headers as a third argument; the DOM type does not know it. */
 type HeaderSocket = new (url: string, protocols: undefined, options: { headers: Record<string, string> }) => WebSocket
 
+/** How long a request took. Null in normal use: only the development driver listens. */
+type RequestObserver = (name: string, ms: number, bytes: number) => void
+
+let observer: RequestObserver | null = null
+
+export function observeRequests(next: RequestObserver | null): void {
+  observer = next
+}
+
+/** `fetch` that reports the time and the size of each REST answer to the observer. */
+const observedFetch: typeof fetch = async (input, init) => {
+  if (!observer) {
+    return fetch(input, init)
+  }
+
+  const start = performance.now()
+  const response = await fetch(input, init)
+  const name = `${init?.method ?? 'GET'} ${String(input).replace(/^https?:\/\/[^/]+/, '')}`
+
+  // The body is read by the caller. The copy gives the size and the time of the whole answer.
+  void response
+    .clone()
+    .text()
+    .then(text => observer?.(name, performance.now() - start, text.length))
+    .catch(() => undefined)
+
+  return response
+}
+
 export function currentApi(): HermesApi | null {
   return link?.api ?? null
 }
@@ -49,7 +78,17 @@ export function rpc<T>(method: string, params: Record<string, unknown> = {}, tim
     return Promise.reject(new Error('Not connected to a Hermes workspace.'))
   }
 
-  return link.client.request<T>(method, params, timeoutMs)
+  if (!observer) {
+    return link.client.request<T>(method, params, timeoutMs)
+  }
+
+  const start = performance.now()
+
+  return link.client.request<T>(method, params, timeoutMs).then(result => {
+    observer?.(method, performance.now() - start, JSON.stringify(result ?? null).length)
+
+    return result
+  })
 }
 
 /**
@@ -108,7 +147,7 @@ export async function openLink(workspace: Workspace): Promise<void> {
     socketFactory: url => new (WebSocket as unknown as HeaderSocket)(url, undefined, { headers })
   })
 
-  const next: Link = { workspace, api: new HermesApi(workspace), client, attempt: 0, timer: null, closed: false }
+  const next: Link = { workspace, api: new HermesApi(workspace, observedFetch), client, attempt: 0, timer: null, closed: false }
 
   link = next
   client.onAny(event => eventHandlers.forEach(handler => handler(event)))
