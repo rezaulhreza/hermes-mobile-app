@@ -880,6 +880,13 @@ last, then ask about the notification buttons.
    the other calls of a bot's chat: `session.resume` takes `profile`, and the
    calls after it go by the live session id, but REST calls for that chat
    (tool output of a stored row, file download) do not send `?profile=` yet.
+8b. **Group chat of bots** (owner, 2026-10-09, eighth session): NOT built
+   yet. The owner wants the bots' group chat as the desktop app has it: the
+   sections of the Bots view (the assigned section and the others), and every
+   control the desktop has there, curated for a phone, not copied. Read the
+   desktop first (`apps/desktop/AGENTS.md` and `apps/desktop/src/AGENTS.md`,
+   "Bot Mode"; the hermes-bots plugin and its routes), list its sections and
+   controls here, then build. Do it with the "Left" lines of item 8.
 9. **Cron**: DONE (`core/cron.ts`, `store/cron.ts`, `src/app/cron.tsx`;
    opened from the clock button of the Bots tab and from Settings). Checked
    in the Simulator on the owner's 5 jobs; create, resume, pause and delete
