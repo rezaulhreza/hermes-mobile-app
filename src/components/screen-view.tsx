@@ -263,7 +263,8 @@ function WindowRow({ label, title, onPress }: { label: string; title: string; on
 }
 
 /** The row above the composer that says the agent used the screen, or that the user holds it, and opens the view. */
-export function ScreenPill({ working, onOpen }: { working: boolean; onOpen: () => void }) {
+/** The strip over the message field. It shows while something happens on the screen; `onHide` puts it away, and the chat's menu still opens the view. */
+export function ScreenPill({ working, onOpen, onHide }: { working: boolean; onOpen: () => void; onHide: () => void }) {
   const t = useTheme()
   const hold = useStore($screenHold)
 
@@ -275,6 +276,9 @@ export function ScreenPill({ working, onOpen }: { working: boolean; onOpen: () =
         {hold ? '  You have it. Hermes waits.' : working ? '  Hermes works on the screen now.' : '  Hermes worked on the screen.'}
       </Text>
       <Button label={hold ? 'Open' : 'Watch'} onPress={onOpen} style={styles.open} />
+      <Pressable accessibilityLabel="Hide the screen strip" accessibilityRole="button" hitSlop={10} onPress={onHide} style={styles.hide}>
+        <Feather color={t.muted} name="x" size={16} />
+      </Pressable>
     </View>
   )
 }
@@ -295,5 +299,6 @@ const styles = StyleSheet.create({
   key: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth },
   window: { minHeight: TOUCH + space.md, justifyContent: 'center', paddingHorizontal: space.lg, borderBottomWidth: StyleSheet.hairlineWidth },
   pill: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginHorizontal: space.md, paddingLeft: space.md, paddingRight: space.xs, paddingVertical: space.xs, borderRadius: radius.md },
-  open: { minHeight: 36, paddingHorizontal: space.md }
+  open: { minHeight: 36, paddingHorizontal: space.md },
+  hide: { width: 32, height: 36, alignItems: 'center', justifyContent: 'center' }
 })

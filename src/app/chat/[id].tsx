@@ -193,6 +193,11 @@ export default function Chat() {
   const screen = useMemo(() => screenWork(transcript?.items ?? []), [transcript?.items])
   const holdsScreen = useStore($screenHold) !== null
   const [watching, setWatching] = useState(false)
+  // The strip is for what happens now: the agent works on the screen, or the user holds it. The user can put
+  // it away; the chat's menu opens the view at any time. New screen work shows the strip again.
+  const [hiddenAt, setHiddenAt] = useState<number | null>(null)
+  const rowCount = transcript?.items.length ?? 0
+  const stripHidden = hiddenAt !== null && !(screen.running && rowCount > hiddenAt)
   const finals = useMemo(() => finalAnswerKeys(transcript?.items ?? [], running), [transcript?.items, running])
   // The list is inverted: the newest row is its first row. It opens at the newest message with
   // only the rows on screen drawn. A list in reading order drew every row of a long chat to get there.
@@ -388,7 +393,9 @@ export default function Chat() {
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
         {dictation === 'off' ? null : <DictationLine />}
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
-        {sessionId && (screen.used || holdsScreen) ? <ScreenPill onOpen={() => setWatching(true)} working={screen.running} /> : null}
+        {sessionId && (screen.running || holdsScreen) && !stripHidden ? (
+          <ScreenPill onHide={() => setHiddenAt(rowCount)} onOpen={() => setWatching(true)} working={screen.running} />
+        ) : null}
 
         {shownCompletions.length ? (
           <View style={[styles.completions, { backgroundColor: t.paper, borderColor: t.line }]}>
@@ -531,6 +538,7 @@ export default function Chat() {
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
       <SessionActionsSheet
+            extra={[{ icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }]}
             onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } })}
             onClose={() => setActing(false)}
             onRemoved={() => router.back()}

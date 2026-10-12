@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { useState } from 'react'
+import { type ComponentProps, useState } from 'react'
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -20,6 +20,8 @@ interface Props {
   onRenamed?: (title: string) => void
   /** The conversation is gone, deleted or archived. A screen that shows it must leave. */
   onRemoved?: () => void
+  /** Actions of the screen that opened the sheet, above the actions of the conversation. The sheet closes first. */
+  extra?: readonly { icon: ComponentProps<typeof Feather>['name']; label: string; onPress: () => void }[]
 }
 
 /**
@@ -27,16 +29,16 @@ interface Props {
  * row of the list and from the title of an open conversation, so the actions
  * are the same in both places.
  */
-export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props) {
+export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved, extra }: Props) {
   if (!row) {
     return null
   }
 
   // A new conversation is a new sheet: no text or question from the last one stays.
-  return <Sheet key={row.id} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
+  return <Sheet extra={extra} key={row.id} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
 }
 
-function Sheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props & { row: SessionRow }) {
+function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [] }: Props & { row: SessionRow }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [step, setStep] = useState<'list' | 'rename' | 'delete'>('list')
@@ -148,7 +150,23 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props & { row
               </View>
             </View>
           ) : (
-            sessionActions(row).map(action => (
+            <>
+            {extra.map(action => (
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy}
+                key={action.label}
+                onPress={() => {
+                  onClose()
+                  action.onPress()
+                }}
+                style={({ pressed }) => [styles.action, pressed && { backgroundColor: t.soft }, busy && styles.dim]}
+              >
+                <Feather color={t.muted} name={action.icon} size={20} />
+                <Text style={[type.body, styles.fill, { color: t.ink }]}>{action.label}</Text>
+              </Pressable>
+            ))}
+            {sessionActions(row).map(action => (
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
@@ -159,7 +177,8 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved }: Props & { row
                 <Feather color={action.danger ? t.red : t.muted} name={action.icon} size={20} />
                 <Text style={[type.body, styles.fill, { color: action.danger ? t.red : t.ink }]}>{action.label}</Text>
               </Pressable>
-            ))
+            ))}
+            </>
           )}
 
           {busy && step === 'list' ? <ActivityIndicator color={t.muted} style={styles.spinner} /> : null}
