@@ -130,17 +130,32 @@ export async function describeBot(name: string, description: string): Promise<vo
   await loadBots()
 }
 
-/** File a bot under a section of the Bots list, or under none with null. The desktop app shows the same filing. */
-export async function setBotSection(name: string, section: BotSection | null): Promise<void> {
+/** What the Bots list keeps about a bot. The desktop app shows the same filing. */
+export interface BotFiling {
+  sectionId?: string | null
+  sectionName?: string | null
+  /** At the top of the list. */
+  pinned?: boolean
+  /** Put away, at the end of the list. */
+  hidden?: boolean
+}
+
+/** Change how the Bots list files a bot. The other fields of the desktop's record stay as they are. */
+export async function fileBot(name: string, change: BotFiling): Promise<void> {
   const known = metas.get(name)
 
   await rpc('profiles.configure', {
     name,
-    ui_meta: { [BOT_META_KEY]: { ...(known?.meta ?? {}), sectionId: section?.id ?? null, sectionName: section?.name ?? null } },
+    ui_meta: { [BOT_META_KEY]: { ...(known?.meta ?? {}), ...change } },
     // The host refuses the write when another client changed the record in the meantime.
     ...(known?.revision !== undefined ? { ui_meta_expected_revisions: { [BOT_META_KEY]: known.revision } } : {})
   })
   await loadBots()
+}
+
+/** File a bot under a section of the Bots list, or under none with null. */
+export function setBotSection(name: string, section: BotSection | null): Promise<void> {
+  return fileBot(name, { sectionId: section?.id ?? null, sectionName: section?.name ?? null })
 }
 
 /** The model this bot thinks with. The other bots and the host keep theirs. */

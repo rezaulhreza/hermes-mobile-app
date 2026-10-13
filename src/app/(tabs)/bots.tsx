@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, SectionList, Style
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar as Avatar, BotSheet, SheetFrame } from '@/components/bot-sheet'
+import { ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { type Bot, botGroups, botNameProblem, filterBots } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
@@ -182,6 +183,7 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [like, setLike] = useState<string | null>(null)
+  const [choosing, setChoosing] = useState(false)
   const [busy, setBusy] = useState(false)
   const problem = name ? botNameProblem(name, bots.map(bot => bot.name)) : null
 
@@ -198,24 +200,16 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
       <Field autoCapitalize="words" error={problem} label="Name" onChangeText={setName} placeholder="Researcher" value={name} />
       <Field label="Role" multiline onChangeText={setDescription} placeholder="What this bot is for, in a sentence" style={styles.role} value={description} />
 
-      <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>Start as a copy of</Text>
-      <View style={styles.chips}>
-        {[null, ...bots.map(bot => bot.name)].map(choice => {
-          const checked = choice === like
-
-          return (
-            <Pressable
-              accessibilityRole="radio"
-              accessibilityState={{ checked }}
-              key={choice ?? '-'}
-              onPress={() => setLike(choice)}
-              style={[styles.chip, { backgroundColor: checked ? t.ink : t.paper, borderColor: checked ? t.ink : t.line }]}
-            >
-              <Text style={[type.small, { color: checked ? t.bg : t.ink }]}>{choice ?? 'Nothing: a new bot'}</Text>
-            </Pressable>
-          )
-        })}
-      </View>
+      <ChoiceRow icon="copy" label="Start as a copy of" onPress={() => setChoosing(true)} value={bots.find(bot => bot.name === like)?.title ?? 'Nothing: a new bot'} />
+      {choosing ? (
+        <ChoiceSheet
+          choices={[{ id: '', label: 'Nothing: a new bot' }, ...bots.map(bot => ({ id: bot.name, label: bot.title, detail: bot.description, lead: <Avatar bot={bot} size={32} t={t} /> }))]}
+          current={like ?? ''}
+          onClose={() => setChoosing(false)}
+          onPick={picked => (setLike(picked || null), setChoosing(false))}
+          title="Start as a copy of"
+        />
+      ) : null}
 
       <Button busy={busy} disabled={!name.trim() || Boolean(problem)} icon="plus" label="Add the bot" onPress={add} tone="primary" />
     </SheetFrame>
@@ -242,6 +236,4 @@ const styles = StyleSheet.create({
   talk: { marginTop: space.sm },
   role: { minHeight: 72, textAlignVertical: 'top', paddingTop: space.md },
   soul: { minHeight: 180, maxHeight: 320, textAlignVertical: 'top', paddingTop: space.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: { paddingHorizontal: space.md, minHeight: 36, justifyContent: 'center', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth }
 })

@@ -8,7 +8,7 @@ import { type Bot, botInitials, type BotSection, botSlug, knownSections } from '
 import { faultWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, chooseBotPicture, setBotSection, deleteBot, describeBot, loadBotSoul, renameBot, saveBotSoul, setBotModel } from '@/store/bots'
+import { $botAvatars, $bots, chooseBotPicture, setBotSection, deleteBot, fileBot, describeBot, loadBotSoul, renameBot, saveBotSoul, setBotModel } from '@/store/bots'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -177,6 +177,22 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
           sections={sections}
         />
       ) : null}
+      <View style={styles.filing}>
+        <Button
+          busy={busy === 'pin'}
+          icon="bookmark"
+          label={bot.pinned ? 'Unpin' : 'Pin to the top'}
+          onPress={() => run('pin', () => fileBot(bot.name, bot.pinned ? { pinned: false } : { pinned: true, hidden: false }))}
+          style={styles.fill}
+        />
+        <Button
+          busy={busy === 'hide'}
+          icon={bot.hidden ? 'corner-up-left' : 'archive'}
+          label={bot.hidden ? 'Bring back' : 'Put away'}
+          onPress={() => run('hide', () => fileBot(bot.name, bot.hidden ? { hidden: false } : { hidden: true, pinned: false }))}
+          style={styles.fill}
+        />
+      </View>
 
       <Field label="Role" multiline onChangeText={setDescription} placeholder="What this bot is for, in a sentence" style={styles.role} value={description} />
       <Button
@@ -420,6 +436,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md
   },
   empty: { padding: space.xl, textAlign: 'center' },
+  filing: { flexDirection: 'row', gap: space.md },
   newSection: { padding: space.lg, gap: space.md },
   modelRow: {
     flexDirection: 'row',
