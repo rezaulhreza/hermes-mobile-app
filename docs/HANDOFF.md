@@ -1009,14 +1009,27 @@ last, then ask about the notification buttons.
     name resolves to loopback (the owner's config lists `test`). The same
     patch fixes a page with no styles after an http to https redirect. Seen:
     a secured Herd site, fully styled.
-    Left: a pull request (`/api/git/review/create-pr`, `ship-info`), branch
-    switch and worktrees, new file, new folder, rename and delete
-    (`/api/files/mkdir`, `DELETE /api/files`), a search in the folder, an
-    interactive terminal (a program that waits for keys does not work),
-    the `profile` of a folder (a bot with a remote file backend), syntax
-    colour, "Throw the changes away" was not pressed (a system alert).
-    The driver finds a row of the folder list by its name ("ws-repo"), not by
-    "Folder: ws-repo": a component with a `label` prop hides its inner label.
+    Eighth session CLOSED and SEEN on a scratch repository (made, used,
+    deleted): a new file and a new folder (`/api/fs/write-text` with empty
+    content, `/api/files/mkdir`), rename (the host has NO rename route:
+    `shell.exec` runs `mv -n`, or `move` on a Windows host), delete
+    (`DELETE /api/files {path, recursive}`), a search in the opened folder
+    (`git grep` in a repository, `grep -rnI` or `findstr` elsewhere, through
+    `shell.exec`), the branch list and a switch (`/api/git/branches`,
+    `POST /api/git/branch/switch {path, branch}`), the other folders of the
+    repository (`/api/git/worktrees`; a pick opens that folder), "Throw the
+    changes away" (the question is in the panel now, and the file went back).
+    Syntax colour was done in the seventh session.
+    Built, NOT seen: "Open a pull request" (`ship-info` answers `{ghReady,
+    pr}`; `create-pr` needs a GitHub remote, the scratch repository had none).
+    CANNOT be closed here, and why:
+    - An interactive terminal: `shell.exec` runs one command and ends. A
+      program that waits for keys needs a PTY and a terminal emulator on the
+      phone (escape codes, a cursor). That is a feature of its own size.
+    - The `profile` of a folder (a bot with a remote file backend): the file
+      routes of this host take a path only, and no bot here has such a
+      backend to check against.
+    The check cleared the list of recent folders of the Simulator.
 11. **Kanban**: boards, tasks, comments (plugin REST API).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`). The owner (2026-10-09): Hermes configures all of
