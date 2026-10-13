@@ -11,7 +11,14 @@ import {
   cdTarget,
   commandOutput,
   type FsEntry,
+  type GitBranch,
   type GitFile,
+  type GitWorktree,
+  joinPath,
+  renameCommand,
+  searchCommand,
+  type SearchHit,
+  searchHits,
   type GitStatus,
   resolveCdCommand,
   shellCommand,
@@ -206,6 +213,93 @@ export const stageAll = () => gitAction('stage', {})
 export const unstageAll = () => gitAction('unstage', {})
 /** Throw the changes of one file away. This cannot be undone. */
 export const revertFile = (file: GitFile) => gitAction('revert', { file: file.path })
+/** The branches of the repository. */
+export async function loadBranches(): Promise<GitBranch[]> {
+  return (await api().request<{ branches?: GitBranch[] }>({ path: `/api/git/branches?path=${q($root.get() ?? '')}` })).branches ?? []
+}
+
+/** Check another branch out in the opened folder. The host refuses when changes would be lost. */
+export async function switchBranch(branch: string): Promise<void> {
+  await api().request({ path: '/api/git/branch/switch', method: 'POST', body: { path: $root.get(), branch }, timeoutMs: 120_000 })
+  await Promise.all([loadChanges(), $folder.get() ? showFolder($folder.get()!.path) : Promise.resolve()])
+}
+
+/** The other folders of this repository, each on a branch of its own. */
+export async function loadWorktrees(): Promise<GitWorktree[]> {
+  return (await api().request<{ worktrees?: GitWorktree[] }>({ path: `/api/git/worktrees?path=${q($root.get() ?? '')}` })).worktrees ?? []
+}
+
+export interface ShipInfo {
+  /** The GitHub tool of the host is signed in. */
+  ghReady: boolean
+  pr: { number?: number; url?: string; title?: string; state?: string } | null
+}
+
+/** Whether the branch has a pull request, and whether the host can open one. */
+export function loadShipInfo(): Promise<ShipInfo> {
+  return api().request<ShipInfo>({ path: `/api/git/review/ship-info?path=${q($root.get() ?? '')}` })
+}
+
+/** Open a pull request for the branch with the GitHub tool of the host. Returns its address when the host gives one. */
+export async function createPullRequest(): Promise<string | null> {
+  const result = await api().request<{ url?: string; pr?: { url?: string } }>({ path: '/api/git/review/create-pr', method: 'POST', body: { path: $root.get() }, timeoutMs: 180_000 })
+
+  return result?.url ?? result?.pr?.url ?? null
+}
+
+async function shell(command: string): Promise<ShellExecResult> {
+  return rpc<ShellExecResult>('shell.exec', { command })
+}
+
+/** Make an empty file in the folder on screen. */
+export async function newFile(name: string): Promise<string> {
+  const folder = $folder.get()?.path ?? ''
+  const path = joinPath(folder, name.trim())
+
+  await api().request({ path: '/api/fs/write-text', method: 'POST', body: { path, content: '' } })
+  await showFolder(folder)
+
+  return path
+}
+
+export async function newFolder(name: string): Promise<void> {
+  const folder = $folder.get()?.path ?? ''
+
+  await api().request({ path: '/api/files/mkdir', method: 'POST', body: { path: joinPath(folder, name.trim()) } })
+  await showFolder(folder)
+}
+
+/** Give a file or a folder a new name. The host has no route for it: its shell does it. */
+export async function renameEntry(entry: FsEntry, name: string): Promise<void> {
+  const folder = $folder.get()?.path ?? ''
+  const result = await shell(renameCommand(entry.path, joinPath(folder, name.trim())))
+
+  if (result.code !== 0) {
+    throw new Error((result.stderr || result.stdout || 'The host did not rename it.').trim())
+  }
+
+  await showFolder(folder)
+}
+
+/** Delete a file, or a folder with all that is in it. This cannot be undone. */
+export async function deleteEntry(entry: FsEntry): Promise<void> {
+  await api().request({ path: '/api/files', method: 'DELETE', body: { path: entry.path, recursive: entry.isDirectory } })
+  await showFolder($folder.get()?.path ?? '')
+}
+
+/** Find text in the files of the opened folder. */
+export async function searchFolder(words: string): Promise<SearchHit[]> {
+  const root = $root.get() ?? ''
+  const result = await shell(searchCommand(root, words.trim(), Boolean($changes.get().status?.branch)))
+
+  // A search that finds nothing ends with code 1 and no text. That is an answer, not a fault.
+  if (result.code !== 0 && result.code !== 1) {
+    throw new Error((result.stderr || 'The host could not search this folder.').trim())
+  }
+
+  return searchHits(result.stdout)
+}
+
 export const commitChanges = (message: string, push: boolean) => gitAction('commit', { message: message.trim(), push })
 export const pushBranch = () => gitAction('push', {})
 

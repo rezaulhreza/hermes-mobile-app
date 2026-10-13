@@ -1,16 +1,35 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Linking, Modal, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { diffLines, type DiffLineKind } from '@/core/tools'
-import { baseName, changeGroups, commitLabel, commitProblem, type GitFile, statusWord } from '@/core/workspace'
-import { $changes, commitChanges, loadChanges, loadDiff, pushBranch, revertFile, stageAll, stageFile, unstageAll } from '@/store/workspace'
+import { baseName, type GitBranch, type GitWorktree, changeGroups, commitLabel, commitProblem, type GitFile, statusWord } from '@/core/workspace'
+import {
+  $changes,
+  $root,
+  commitChanges,
+  createPullRequest,
+  loadBranches,
+  loadChanges,
+  loadDiff,
+  loadShipInfo,
+  loadWorktrees,
+  openRoot,
+  pushBranch,
+  revertFile,
+  type ShipInfo,
+  stageAll,
+  stageFile,
+  switchBranch,
+  unstageAll
+} from '@/store/workspace'
 import { MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Button, IconButton, Notice } from '../ui'
+import { ChoiceSheet } from '../choice'
 
 function words(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/^\d{3}: /, '').replace(/^\{"detail":"(.*)"\}$/, '$1')
@@ -24,6 +43,29 @@ export function ChangesPanel({ bottom }: { bottom: number }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [fault, setFault] = useState<string | null>(null)
   const [open, setOpen] = useState<GitFile | null>(null)
+  const root = useStore($root)
+  const [reverting, setReverting] = useState<GitFile | null>(null)
+  const [branches, setBranches] = useState<{ list: GitBranch[]; folders: GitWorktree[] } | null>(null)
+  // Whether the branch has a pull request. One request for a branch; the answer is kept with the name of its branch.
+  const [shipOf, setShipOf] = useState<{ branch: string; info: ShipInfo | null } | null>(null)
+  const ship = shipOf && shipOf.branch === status?.branch ? shipOf.info : null
+  const setShip = (info: ShipInfo | null) => setShipOf(status?.branch ? { branch: status.branch, info } : null)
+
+  useEffect(() => {
+    const branch = status?.branch
+
+    if (branch) {
+      loadShipInfo().then(info => setShipOf({ branch, info }), () => undefined)
+    }
+  }, [status?.branch])
+
+  const openBranches = () => {
+    setFault(null)
+    Promise.all([loadBranches(), loadWorktrees().catch(() => [])]).then(
+      ([list, folders]) => setBranches({ list, folders }),
+      error => setFault(words(error))
+    )
+  }
 
   useEffect(() => {
     void loadChanges()
@@ -65,10 +107,21 @@ export function ChangesPanel({ bottom }: { bottom: number }) {
         ListHeaderComponent={
           <View style={styles.top}>
             <View style={styles.line}>
-              <Feather color={t.muted} name="git-branch" size={16} />
-              <Text numberOfLines={1} style={[type.label, styles.fill, { color: t.ink }]}>
-                {status?.branch ?? 'No branch'}
-              </Text>
+              <Pressable
+                accessibilityHint="Opens the branches and the other folders of this repository"
+                accessibilityLabel={`Branch: ${status?.branch ?? 'No branch'}`}
+                accessibilityRole="button"
+                disabled={!status?.branch}
+                hitSlop={8}
+                onPress={openBranches}
+                style={[styles.line, styles.fill]}
+              >
+                <Feather color={t.muted} name="git-branch" size={16} />
+                <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                  {status?.branch ?? 'No branch'}
+                </Text>
+                {status?.branch ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
+              </Pressable>
               {status?.ahead ? <Text style={[type.small, { color: t.muted }]}>{`${status.ahead} to push`}</Text> : null}
               {status?.behind ? <Text style={[type.small, { color: t.muted }]}>{`${status.behind} behind`}</Text> : null}
               {loading ? <ActivityIndicator color={t.muted} size="small" /> : null}
@@ -92,10 +145,39 @@ export function ChangesPanel({ bottom }: { bottom: number }) {
             ) : status?.ahead ? (
               <Button busy={busy === 'push'} icon="upload" label={`Push ${status.ahead} ${status.ahead === 1 ? 'commit' : 'commits'}`} onPress={() => run('push', pushBranch)} tone="primary" />
             ) : null}
+            {ship?.pr ? (
+              <Button icon="git-pull-request" label={`Pull request${ship.pr.number ? ` #${ship.pr.number}` : ''}: open it`} onPress={() => ship.pr?.url && void Linking.openURL(ship.pr.url)} />
+            ) : ship?.ghReady && status?.branch && !files.length && !status.ahead ? (
+              <Button
+                busy={busy === 'pr'}
+                icon="git-pull-request"
+                label="Open a pull request for this branch"
+                onPress={() =>
+                  run('pr', async () => {
+                    const url = await createPullRequest()
+
+                    setShip(await loadShipInfo().catch(() => null))
+
+                    if (url) {
+                      void Linking.openURL(url)
+                    }
+                  })
+                }
+              />
+            ) : null}
             {fault ? (
               <Text accessibilityRole="alert" style={[type.small, { color: t.red }]}>
                 {fault}
               </Text>
+            ) : null}
+            {reverting ? (
+              <View style={[styles.confirm, { backgroundColor: t.redBg }]}>
+                <Text style={[type.small, { color: t.ink }]}>{`Throw the changes of ${reverting.path} away? The file goes back to the last commit. This cannot be undone.`}</Text>
+                <View style={styles.line}>
+                  <Button label="Keep them" onPress={() => setReverting(null)} style={styles.fill} />
+                  <Button label="Throw away" onPress={() => (setReverting(null), run(reverting.path, () => revertFile(reverting)))} style={styles.fill} tone="danger" />
+                </View>
+              </View>
             ) : null}
           </View>
         }
@@ -143,13 +225,29 @@ export function ChangesPanel({ bottom }: { bottom: number }) {
       <DiffSheet
         file={open}
         onClose={() => setOpen(null)}
-        onRevert={file =>
-          Alert.alert('Throw the changes away?', `${file.path} goes back to the last commit. This cannot be undone.`, [
-            { text: 'Keep', style: 'cancel' },
-            { text: 'Throw away', style: 'destructive', onPress: () => (setOpen(null), run(file.path, () => revertFile(file))) }
-          ])
-        }
+        // The question shows in the panel, not as a system alert: the diff closes first.
+        onRevert={file => (setOpen(null), setReverting(file))}
       />
+      {branches ? (
+        <ChoiceSheet
+          choices={[
+            ...branches.list.filter(branch => !branch.isRemote).map(branch => ({ id: `b:${branch.name}`, label: branch.name, detail: branch.checkedOut ? 'This folder is on it' : branch.worktreePath ? 'Open in another folder' : undefined })),
+            ...branches.folders.filter(tree => tree.path !== root).map(tree => ({ id: `w:${tree.path}`, label: `Folder: ${baseName(tree.path)}`, detail: tree.branch ? `On ${tree.branch}` : undefined }))
+          ]}
+          current={`b:${status?.branch ?? ''}`}
+          onClose={() => setBranches(null)}
+          onPick={id => {
+            setBranches(null)
+
+            if (id.startsWith('w:')) {
+              openRoot(id.slice(2))
+            } else if (id.slice(2) !== status?.branch) {
+              run('branch', () => switchBranch(id.slice(2)))
+            }
+          }}
+          title="Branch"
+        />
+      ) : null}
     </View>
   )
 }
@@ -231,6 +329,8 @@ function diffColour(kind: DiffLineKind, t: Palette): string {
 }
 
 const styles = StyleSheet.create({
+  shrink: { flexShrink: 1 },
+  confirm: { gap: space.sm, padding: space.md, borderRadius: radius.md },
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { padding: space.lg, gap: space.md },

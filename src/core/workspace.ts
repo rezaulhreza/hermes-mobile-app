@@ -198,3 +198,94 @@ export function previewTarget(typed: string): string | null {
 export function withRecentRoot(recent: readonly string[], root: string, keep = 6): string[] {
   return [root, ...recent.filter(path => path !== root)].filter(Boolean).slice(0, keep)
 }
+
+/** A branch of the repository, as `GET /api/git/branches` gives it. */
+export interface GitBranch {
+  name: string
+  checkedOut: boolean
+  isDefault: boolean
+  isRemote: boolean
+  /** Another folder (a worktree) has this branch checked out. */
+  worktreePath: string | null
+}
+
+/** A worktree: one more folder of the same repository, on a branch of its own. */
+export interface GitWorktree {
+  path: string
+  branch: string | null
+  isMain: boolean
+}
+
+/** A path as one word of a shell command of the host. */
+export function shellQuote(path: string): string {
+  return isWindowsPath(path) ? `"${path.replace(/"/g, '')}"` : `'${path.replace(/'/g, `'\\''`)}'`
+}
+
+/** A path made of a folder and a name, with the separator the folder uses. */
+export function joinPath(folder: string, name: string): string {
+  const slash = isWindowsPath(folder) ? '\\' : '/'
+
+  return `${folder.replace(/[\\/]+$/, '')}${slash}${name}`
+}
+
+/** Why this cannot be the name of a file or a folder, or null. */
+export function nameProblem(name: string, taken: readonly string[]): string | null {
+  const typed = name.trim()
+
+  if (!typed) {
+    return 'Give it a name.'
+  }
+
+  if (/[\\/:*?"<>|]/.test(typed) || typed === '.' || typed === '..') {
+    return 'A name cannot have / \\ : * ? " < > | in it.'
+  }
+
+  return taken.includes(typed) ? `“${typed}” exists already in this folder.` : null
+}
+
+/** The command that gives a file or a folder a new name on the host. */
+export function renameCommand(from: string, to: string): string {
+  return isWindowsPath(from) ? `move /Y ${shellQuote(from)} ${shellQuote(to)}` : `mv -n -- ${shellQuote(from)} ${shellQuote(to)}`
+}
+
+/**
+ * The command that finds text in the files of a folder. Inside a git
+ * repository `git grep` reads only the files of the project; elsewhere the
+ * search of the system reads every file.
+ */
+export function searchCommand(folder: string, words: string, inGit: boolean): string {
+  const text = isWindowsPath(folder) ? `"${words.replace(/"/g, '')}"` : `'${words.replace(/'/g, `'\\''`)}'`
+  const enter = isWindowsPath(folder) ? `cd /d ${shellQuote(folder)}` : `cd ${shellQuote(folder)}`
+
+  if (inGit) {
+    return `${enter} && git grep -n -I -i --untracked -F -e ${text}`
+  }
+
+  return isWindowsPath(folder) ? `${enter} && findstr /s /n /i /l /c:${text} *` : `${enter} && grep -rnIi -F --exclude-dir=.git --exclude-dir=node_modules -e ${text} .`
+}
+
+export interface SearchHit {
+  /** The path of the file, from the folder that was searched. */
+  file: string
+  line: number
+  text: string
+}
+
+/** The answer of a search command as rows: `file:line:text`. Lines of another shape are left out. */
+export function searchHits(output: string, limit = 200): SearchHit[] {
+  const hits: SearchHit[] = []
+
+  for (const row of output.split('\n')) {
+    const match = /^(?:\.[\\/])?(.+?):(\d+):(.*)$/.exec(row)
+
+    if (match) {
+      hits.push({ file: match[1], line: Number(match[2]), text: match[3].trim().slice(0, 200) })
+
+      if (hits.length >= limit) {
+        break
+      }
+    }
+  }
+
+  return hits
+}

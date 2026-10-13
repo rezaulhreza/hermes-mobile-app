@@ -114,3 +114,39 @@ describe('start points', () => {
     expect(withRecentRoot(['/a', '/b', '/c'], '/d', 3)).toEqual(['/d', '/a', '/b'])
   })
 })
+
+describe('names, rename and search in a folder of the host', () => {
+  const { isWindowsPath, joinPath, nameProblem, renameCommand, searchCommand, searchHits } = jest.requireActual('../workspace') as typeof import('../workspace')
+
+  it('joins a name to a folder with the separator of the host', () => {
+    expect(joinPath('/Users/me/app/', 'notes.md')).toBe('/Users/me/app/notes.md')
+    expect(joinPath('C:\\Users\\me\\app', 'notes.md')).toBe('C:\\Users\\me\\app\\notes.md')
+    expect(isWindowsPath('/Users/me')).toBe(false)
+  })
+
+  it('refuses a name that cannot be a file', () => {
+    expect(nameProblem('  ', [])).toMatch(/name/)
+    expect(nameProblem('a/b', [])).toMatch(/cannot have/)
+    expect(nameProblem('notes.md', ['notes.md'])).toMatch(/exists/)
+    expect(nameProblem('notes.md', ['other.md'])).toBeNull()
+  })
+
+  it('renames with the command of the host, safe for a quote in a name', () => {
+    expect(renameCommand("/Users/me/it's.txt", '/Users/me/b.txt')).toBe("mv -n -- '/Users/me/it'\\''s.txt' '/Users/me/b.txt'")
+    expect(renameCommand('C:\\a\\b.txt', 'C:\\a\\c.txt')).toBe('move /Y "C:\\a\\b.txt" "C:\\a\\c.txt"')
+  })
+
+  it('searches a repository with git and any other folder with the search of the system', () => {
+    expect(searchCommand('/Users/me/app', 'needle', true)).toBe("cd '/Users/me/app' && git grep -n -I -i --untracked -F -e 'needle'")
+    expect(searchCommand('/Users/me/app', 'needle', false)).toContain('grep -rnIi -F')
+    expect(searchCommand('C:\\app', 'needle', false)).toBe('cd /d "C:\\app" && findstr /s /n /i /l /c:"needle" *')
+  })
+
+  it('reads the rows of a search', () => {
+    expect(searchHits('a.txt:1:hello needle one\n./src/b.ts:12:  const needle = 2\nBinary file x matches\n')).toEqual([
+      { file: 'a.txt', line: 1, text: 'hello needle one' },
+      { file: 'src/b.ts', line: 12, text: 'const needle = 2' }
+    ])
+    expect(searchHits('a:1:x\nb:2:y\nc:3:z', 2)).toHaveLength(2)
+  })
+})
