@@ -70,6 +70,7 @@ export default function Bots() {
     <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={styles.top}>
         <Text style={[type.title, styles.fill, { color: t.ink }]}>Bots</Text>
+        <IconButton icon="columns" label="Board" onPress={() => router.push('/kanban')} />
         <IconButton icon="clock" label="Schedules" onPress={() => router.push('/cron')} />
         <IconButton disabled={!bots} filled icon="plus" label="Add a bot" onPress={() => setAdding(true)} />
       </View>
