@@ -800,10 +800,41 @@ How:
   `/api/profiles/sessions/sidebar`, which has a cache; the phone hides the
   wait with its stored list. No backend patch was made for it.
 
-The owner's order (2026-10-09): items 7b and 10 are DONE. NEXT is every
-"Left" line of items 2, 3, 4, 4b, 5, 7, 8, 9 and 13 (close each one, or say
-why it cannot be closed), then items 11, 12, 14, then 15, then 17 (release)
-last, then ask about the notification buttons.
+WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
+
+- Step 1 of the owner's prompt (speed): DONE, see "Speed".
+- Step 2 (every "Left" line of items 2, 3, 4, 4b, 5, 7, 7b, 8, 9, 10, 13):
+  DONE. Each item below says what was closed, what was seen, and what cannot
+  be closed here with the reason (a real phone, an OpenAI key on the host, an
+  interactive terminal, a pull request with no GitHub remote).
+- Step 3: Kanban (item 11) is built and only partly checked: START THERE.
+  Then capabilities (item 12, PER PROFILE), then ops (item 14, with
+  `agents.list`).
+- Step 4: the tablet layout (item 15). Not started.
+- Step 5: the release (item 17). Not started. The owner APPROVED the bundle
+  ID switch and the TestFlight upload (see "Owner's decisions, eighth
+  session"). After the upload: the Approve and Deny buttons in the
+  notification (approved), then the report and the handoff template in
+  `~/Documents/Hermes Redesign Mobile App/`.
+- Open questions for the owner: how a message from the phone goes into a
+  group chat (item 8b, two ways); what happens to this file before the source
+  opens.
+- Owed to the backend checkout: one ledger line for the "whole screen"
+  picture of the screen-remote plugin (see item 7b). No backend commit was
+  made in the eighth session, so `host/patches` is in step (`host:check`
+  passes).
+- Host state changed in the eighth session: the screen-remote plugin was
+  installed again twice (the `whole=1` picture) and the phone's backend was
+  restarted three times. Nothing else on the host changed.
+- Memory, eighth session (development build): 480 MB after a start, 498 MB
+  after a tour of screens and a long chat; no timer, socket or microphone
+  open after it. The release build is still not measured.
+- Test data left on the owner's Hermes: turns added to the test chats
+  "Count from one to sixty", "Plan and delegate checking date", "Open, read,
+  and click example.com link", "Screenshot screen and navigate to
+  example.com"; saved helper runs of the second of them. Removed again: the
+  throwaway bot (twice), the test schedules (three), the scratch
+  repository, the uploaded test files, the preview test file.
 
 1. **Finish the device check**: the "Not checked yet" list above.
 2. **Chat quality**: DONE (tables, tool detail sheet, copy and share,
@@ -1030,7 +1061,20 @@ last, then ask about the notification buttons.
       routes of this host take a path only, and no bot here has such a
       backend to check against.
     The check cleared the list of recent folders of the Simulator.
-11. **Kanban**: boards, tasks, comments (plugin REST API).
+11. **Kanban**: BUILT, PARTLY checked (eighth session; `core/kanban.ts`,
+    `store/kanban.ts`, `src/app/kanban.tsx`; the "Board" button of the Bots
+    tab). Routes under `/api/plugins/kanban`, each with `?board=<slug>`:
+    `GET /boards`, `GET /board` (`columns: [{name, tasks}]`; a task carries its
+    whole body, so the store keeps a short row), `GET /tasks/{id}` (`task`,
+    `comments`), `PATCH /tasks/{id} {status, assignee, title, body}`,
+    `POST /tasks/{id}/comments {body, author}`, `POST /tasks {title, body,
+    assignee, triage}`, `DELETE /tasks/{id}`. Seen: the screen in 0.3 s, the
+    list of the five boards. NEXT, first thing: check a card on a real board
+    (open, comments), and every write on a THROWAWAY card (make, comment,
+    move, assign, delete), in light and dark. Not built: links between cards,
+    attachments, runs of a card (`/runs/{id}`, terminate, reclaim), a new
+    board, the live update (`latest_event_id`; the screen has pull to
+    refresh).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`). The owner (2026-10-09): Hermes configures all of
     these PER PROFILE (each bot has its own). The screen must start from a
