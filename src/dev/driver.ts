@@ -247,10 +247,10 @@ const helpers = {
    * part of a name never matches here: "Send" must not press a list row named
    * "Send message to ...". Use `pressLike` to press by a part of a name.
    */
-  press: (what: string, nth = 0) => pressOne(pressables().filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what)[nth], what),
+  press: (what: string, nth = 0) => pressOne(pressables().filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what).at(nth), what),
 
   /** Press the first control whose name contains this. For a long title; never for a button. */
-  pressLike: (what: string, nth = 0) => pressOne(pressables().filter(fiber => nameOf(fiber).includes(what))[nth], what),
+  pressLike: (what: string, nth = 0) => pressOne(pressables().filter(fiber => nameOf(fiber).includes(what)).at(nth), what),
 
   /** Hold the first control that has a long press and this name. */
   longPress: (what: string) => {
