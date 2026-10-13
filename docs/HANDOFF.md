@@ -965,10 +965,23 @@ last, then ask about the notification buttons.
 9. **Cron**: DONE (`core/cron.ts`, `store/cron.ts`, `src/app/cron.tsx`;
    opened from the clock button of the Bots tab and from Settings). Checked
    in the Simulator on the owner's 5 jobs; create, resume, pause and delete
-   ran on a paused test job. Left: where the result goes (`deliver`, from
-   `/api/cron/delivery-targets`), a schedule for another bot than the main
-   one (the create form sends no profile), blueprints
-   (`/api/cron/blueprints`), the whole text of a past run.
+   ran on a paused test job. Eighth session, every "Left" line CLOSED and
+   SEEN on test jobs (made, checked on the host, deleted): a schedule for
+   another bot (the form sends `?profile=`), where the result goes
+   (`GET /api/cron/delivery-targets`; `deliver` in the create body and in
+   `updates`; `bot-chat:<profile>` shows as "The chat of <bot>"), templates
+   (`GET /api/cron/blueprints`, `POST /api/cron/blueprints/instantiate
+   {blueprint, values}` with `?profile=`; field types `time`, `enum`, `text`,
+   `weekdays`), the whole text of a run (a run id `cron_output:<job>:<stamp>`
+   is the file `<hermes_home>/cron/output/<job>/<stamp>.md`, read with
+   `/api/fs/read-text`; any other run id is a session and opens as a chat).
+   `components/choice.tsx` (`ChoiceRow`, `ChoiceSheet`) is the "button that
+   opens a list": use it for every new choice. The driver presses a
+   `ChoiceRow` by its label ("The result goes to") and an option by
+   "<title>: <option>".
+   DRIVER TRAP: `h.pressLike` now also matches the swipe actions of the chat
+   rows ("Pin <title>"), which are mounted under every screen. Use `h.press`
+   with the exact name.
 10. **Workspace tab**: DONE (seventh session; `core/workspace.ts`,
     `store/workspace.ts`, `src/app/(tabs)/workspace.tsx`, `src/app/file.tsx`,
     `src/components/workspace/`). The user opens a folder of the host (the
