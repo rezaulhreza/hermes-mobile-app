@@ -6,7 +6,7 @@ const workspace: Workspace = {
   kind: 'cloudflare',
   label: 'a',
   baseUrl: 'https://hermes.example.com',
-  username: 'reza',
+  username: 'me',
   password: 'pw',
   headers: { 'CF-Access-Client-Id': 'id' }
 }
@@ -52,7 +52,7 @@ describe('HermesApi.request', () => {
 
     await expect(new HermesApi(workspace, fetch).request({ path: '/api/x' })).resolves.toEqual({ n: 1 })
     expect(calls.map(c => c.url.replace(workspace.baseUrl, ''))).toEqual(['/api/x', '/auth/password-login', '/api/x'])
-    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ provider: 'basic', username: 'reza', password: 'pw', next: '/' })
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ provider: 'basic', username: 'me', password: 'pw', next: '/' })
   })
 
   it('does not loop when the refusal repeats after a sign-in', async () => {

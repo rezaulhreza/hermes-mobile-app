@@ -29,7 +29,7 @@ describe('a login', () => {
       label: 'Work',
       secret: { identifier_type: 'phone', otp_secret: 'ABCD' }
     })
-    expect(vaultAddRequest({ ...form, identifier: 'reza' }).secret.identifier_type).toBe('username')
+    expect(vaultAddRequest({ ...form, identifier: 'me' }).secret.identifier_type).toBe('username')
   })
 })
 

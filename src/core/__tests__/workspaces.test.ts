@@ -10,7 +10,7 @@ import {
   wsOriginFor
 } from '../workspaces'
 
-const draft = { kind: 'cloudflare' as const, baseUrl: 'hermes.example.com/', username: ' reza ', password: 'pw' }
+const draft = { kind: 'cloudflare' as const, baseUrl: 'hermes.example.com/', username: ' me ', password: 'pw' }
 
 describe('normaliseBaseUrl', () => {
   it('adds https to a bare host and drops the trailing slash', () => {
@@ -33,7 +33,7 @@ describe('workspaceFromDraft', () => {
 
     expect(result).toEqual({
       ok: true,
-      workspace: { id: 'a', kind: 'cloudflare', label: 'hermes.example.com', baseUrl: 'https://hermes.example.com', username: 'reza', password: 'pw', headers: {} }
+      workspace: { id: 'a', kind: 'cloudflare', label: 'hermes.example.com', baseUrl: 'https://hermes.example.com', username: 'me', password: 'pw', headers: {} }
     })
   })
 
