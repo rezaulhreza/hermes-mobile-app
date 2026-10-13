@@ -1,17 +1,19 @@
+import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar as Avatar, BotSheet, SheetFrame } from '@/components/bot-sheet'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Bot, botNameProblem, filterBots } from '@/core/bots'
-import { relativeTime } from '@/core/format'
-import { $bots, createBot, loadBots } from '@/store/bots'
+import { type Bot, botGroups, botNameProblem, filterBots } from '@/core/bots'
+import { previewLine, relativeTime } from '@/core/format'
+import { $bots, $rooms, createBot, loadBots } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
+import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
@@ -28,13 +30,15 @@ export default function Bots() {
   const linkState = useStore($linkState)
   const [query, setQuery] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [opening, setOpening] = useState<string | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const shown = useMemo(() => filterBots(bots ?? [], query), [bots, query])
+  const rooms = useStore($rooms)
+  // The headings of the desktop app's Bots list: pinned, the user's sections, no section, put away.
+  const groups = useMemo(() => botGroups(filterBots(bots ?? [], query)).map(group => ({ ...group, data: group.bots })), [bots, query])
   const open = bots?.find(bot => bot.name === detail)
 
+  const pull = usePull(loadBots)
   const load = () => loadBots().then(() => setFailure(null), error => setFailure(error instanceof Error ? error.message : String(error)))
 
   useEffect(() => {
@@ -79,36 +83,63 @@ export default function Bots() {
           </View>
         )
       ) : (
-        <FlatList
+        <SectionList
           contentContainerStyle={styles.content}
-          data={shown}
+          initialNumToRender={14}
           keyboardShouldPersistTaps="handled"
           keyExtractor={bot => bot.name}
           ListHeaderComponent={
-            bots.length > 6 ? (
-              <TextInput
-                accessibilityLabel="Find a bot"
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="while-editing"
-                onChangeText={setQuery}
-                placeholder="Find a bot: a name or a role"
-                placeholderTextColor={t.muted}
-                style={[type.body, styles.search, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
-                value={query}
-              />
-            ) : null
+            <>
+              {bots.length > 6 ? (
+                <TextInput
+                  accessibilityLabel="Find a bot"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode="while-editing"
+                  onChangeText={setQuery}
+                  placeholder="Find a bot: a name or a role"
+                  placeholderTextColor={t.muted}
+                  style={[type.body, styles.search, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
+                  value={query}
+                />
+              ) : null}
+              {rooms.length && !query.trim() ? (
+                <View style={styles.rooms}>
+                  <Text style={[type.small, styles.heading, { color: t.muted }]}>Group chats</Text>
+                  {rooms.map(room => (
+                    <Pressable
+                      accessibilityHint="Opens the group chat"
+                      accessibilityLabel={`Group chat: ${room.name}`}
+                      accessibilityRole="button"
+                      key={room.id}
+                      onPress={() => router.push({ pathname: '/room', params: { id: room.id } })}
+                      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+                    >
+                      <View style={[styles.roomIcon, { backgroundColor: t.accentBg }]}>
+                        <Feather color={t.accent} name="users" size={20} />
+                      </View>
+                      <View style={styles.fill}>
+                        <View style={styles.nameRow}>
+                          <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                            {room.name}
+                          </Text>
+                          <View style={styles.fill} />
+                          {room.messages.length ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(room.messages[room.messages.length - 1].at / 1000)}</Text> : null}
+                        </View>
+                        <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
+                          {room.messages.length ? previewLine(room.messages[room.messages.length - 1].text) : `${room.members.length} bots`}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </>
           }
-          refreshControl={
-            <RefreshControl
-              onRefresh={() => {
-                setRefreshing(true)
-                void load().finally(() => setRefreshing(false))
-              }}
-              refreshing={refreshing}
-              tintColor={t.muted}
-            />
-          }
+          refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
+          renderSectionHeader={({ section }) => (section.title ? <Text style={[type.small, styles.heading, { color: t.muted }]}>{section.title}</Text> : null)}
+          sections={groups}
+          stickySectionHeadersEnabled={false}
           renderItem={({ item }) => (
             <Pressable
               accessibilityHint="Opens the conversation with this bot. Hold for its details."
@@ -135,6 +166,7 @@ export default function Bots() {
               {opening === item.name ? <ActivityIndicator color={t.muted} /> : null}
             </Pressable>
           )}
+          windowSize={7}
         />
       )}
 
@@ -191,6 +223,9 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  rooms: { gap: space.sm, marginBottom: space.sm },
+  roomIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  heading: { fontWeight: '700', marginTop: space.sm },
   shrink: { flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },

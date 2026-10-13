@@ -107,6 +107,7 @@ export default function RootLayout() {
           <Stack.Screen name="keys" />
           <Stack.Screen name="cron" />
           <Stack.Screen name="file" />
+          <Stack.Screen name="room" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
