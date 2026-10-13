@@ -1,0 +1,8 @@
+{
+  "name": "group-rooms",
+  "label": "Group Rooms",
+  "description": "Backend routes for the group chats of bots in the phone app: make, rename and close a room, change its members, and post a message that the host answers.",
+  "version": "0.1.0",
+  "tab": { "path": "/group-rooms", "hidden": true },
+  "api": "plugin_api.py"
+}

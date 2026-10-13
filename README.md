@@ -51,9 +51,10 @@ for each part:
 | Feature | What the host needs |
 |---|---|
 | Screen view (watch, stop, take over) | The plugin in [`host/screen-remote`](host/screen-remote). Run its `install.sh` on the host, then restart Hermes. |
+| A message into a group chat of bots, and a new, renamed or closed group chat | The plugin in [`host/group-rooms`](host/group-rooms). Run its `install.sh` on the host, then restart Hermes. The host then runs each round with its own room engine; without the plugin a group chat can be read only. |
 | Push notifications, the preview of a page of the host, the agent's preview on a phone | The backend changes in [`host/patches`](host/patches). Run `host/patches/apply.sh /path/to/hermes-checkout`, then restart Hermes. [Its README](host/patches/README.md) says what each part does and which settings turn it on. |
 
-Both are plain Python on parts that Hermes ships for macOS, Linux and Windows.
+All of them are plain Python on parts that Hermes ships for macOS, Linux and Windows.
 A host with none of them still works: a feature that misses its part says so.
 
 ## Layout
