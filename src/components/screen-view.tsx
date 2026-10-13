@@ -1,10 +1,12 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, type LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { SCREEN_KEYS, screenProblem, type Size, tapPoint } from '@/core/screen'
+import { clampPan, clampZoom, dragPoints, SCREEN_KEYS, screenProblem, type Size, tapPoint } from '@/core/screen'
 import {
   $screen,
   $screenHold,
@@ -15,6 +17,7 @@ import {
   loadScreenWindows,
   openScreen,
   type ScreenInput,
+  type ScreenTarget,
   sendScreenInput,
   showScreenWindow,
   takeScreen
@@ -77,7 +80,7 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
         <View style={styles.head}>
           <View style={styles.fill}>
             <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
-              {frame?.app || 'Screen'}
+              {frame?.app || (frame && frame.pid === null ? 'The whole screen' : 'Screen')}
             </Text>
             <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
               {frame?.title || (problem ? ' ' : 'Looking for the window…')}
@@ -107,7 +110,7 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
             <>
               <View style={styles.line}>
                 <View style={[styles.dot, { backgroundColor: t.accent }]} />
-                <Text style={[type.small, styles.fill, { color: t.muted }]}>You have the screen. Hermes waits. Tap the picture to click; hold for a right click.</Text>
+                <Text style={[type.small, styles.fill, { color: t.muted }]}>You have the screen. Hermes waits. Tap to click, hold for a right click, move one finger to drag. Two fingers make the picture larger.</Text>
               </View>
               <View style={styles.line}>
                 <TextInput
@@ -164,12 +167,28 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
   )
 }
 
-/** The picture and the touches on it. It alone reads the picture, which changes every second. */
+/**
+ * The picture and the touches on it. It alone reads the picture, which changes every second.
+ *
+ * Two fingers make the picture larger and move it. One finger acts in the
+ * window while the user holds the screen: a tap clicks, a long press is a
+ * right click, a move is a drag. A touch is read inside the enlarged picture,
+ * so it lands on the same place of the window at any zoom.
+ */
 function Picture({ held, onInput }: { held: boolean; onInput: (input: ScreenInput) => void }) {
   const t = useTheme()
   const picture = useStore($screenPicture)
   const { frame, problem } = useStore($screen)
   const [box, setBox] = useState<Size>({ width: 0, height: 0 })
+  const [zoomed, setZoomed] = useState(false)
+  const scale = useSharedValue(1)
+  const startScale = useSharedValue(1)
+  const moveX = useSharedValue(0)
+  const moveY = useSharedValue(0)
+  const startX = useSharedValue(0)
+  const startY = useSharedValue(0)
+  // The window can be acted in: the user holds the screen and the picture is one window, not the whole screen.
+  const acts = held && frame !== null && frame.pid !== null
 
   const touch = (action: 'click' | 'right_click') => (event: { nativeEvent: { locationX: number; locationY: number } }) => {
     const point = frame && tapPoint(box, frame, { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY })
@@ -179,27 +198,103 @@ function Picture({ held, onInput }: { held: boolean; onInput: (input: ScreenInpu
     }
   }
 
+  const drag = (fromX: number, fromY: number, toX: number, toY: number) => {
+    const points = frame && dragPoints(box, frame, { x: fromX, y: fromY }, { x: toX, y: toY })
+
+    if (points) {
+      onInput({ action: 'drag', ...points })
+    }
+  }
+
+  const fit = () => {
+    scale.set(withTiming(1))
+    moveX.set(withTiming(0))
+    moveY.set(withTiming(0))
+    setZoomed(false)
+  }
+
+  const gestures = useMemo(() => {
+    const pinch = Gesture.Pinch()
+      .onStart(() => {
+        startScale.set(scale.get())
+      })
+      .onUpdate(event => {
+        scale.set(clampZoom(startScale.get() * event.scale))
+        moveX.set(clampPan(moveX.get(), box.width, scale.get()))
+        moveY.set(clampPan(moveY.get(), box.height, scale.get()))
+      })
+      .onEnd(() => {
+        runOnJS(setZoomed)(scale.get() > 1.01)
+      })
+
+    const move = Gesture.Pan()
+      .minPointers(2)
+      .onStart(() => {
+        startX.set(moveX.get())
+        startY.set(moveY.get())
+      })
+      .onUpdate(event => {
+        moveX.set(clampPan(startX.get() + event.translationX, box.width, scale.get()))
+        moveY.set(clampPan(startY.get() + event.translationY, box.height, scale.get()))
+      })
+
+    return Gesture.Simultaneous(pinch, move)
+  }, [box.width, box.height, scale, startScale, moveX, moveY, startX, startY])
+
+  // One finger that moves is a drag in the window. It starts after a clear move, so a tap stays a tap.
+  const dragging = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(acts)
+        .maxPointers(1)
+        .minDistance(14)
+        .onEnd((event, done) => {
+          if (done) {
+            runOnJS(drag)(event.x - event.translationX, event.y - event.translationY, event.x, event.y)
+          }
+        }),
+    // `drag` reads the box and the frame of this draw.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [acts, box.width, box.height, frame?.width, frame?.height]
+  )
+
+  const moved = useAnimatedStyle(() => ({ transform: [{ translateX: moveX.get() }, { translateY: moveY.get() }, { scale: scale.get() }] }))
+
   return (
-    <View onLayout={(event: LayoutChangeEvent) => setBox(event.nativeEvent.layout)} style={[styles.fill, { backgroundColor: t.soft }]}>
+    // A gesture inside a Modal needs a root of its own on iOS.
+    <GestureHandlerRootView style={[styles.fill, styles.clip, { backgroundColor: t.soft }]}>
       {picture ? (
-        <Pressable
-          accessibilityHint={held ? 'Tap to click in the window. Hold for a right click.' : undefined}
-          accessibilityLabel="The window on the host"
-          delayLongPress={450}
-          disabled={!held}
-          onLongPress={touch('right_click')}
-          onPress={touch('click')}
-          style={styles.fill}
-        >
-          <Image fadeDuration={0} resizeMode="contain" source={{ uri: picture }} style={styles.fill} />
-        </Pressable>
+        <GestureDetector gesture={gestures}>
+          <View onLayout={(event: LayoutChangeEvent) => setBox(event.nativeEvent.layout)} style={styles.fill}>
+            <GestureDetector gesture={dragging}>
+              <Animated.View style={[styles.fill, moved]}>
+                <Pressable
+                  accessibilityHint={acts ? 'Tap to click in the window. Hold for a right click. Move one finger to drag.' : 'Use two fingers to make it larger.'}
+                  accessibilityLabel="The window on the host"
+                  delayLongPress={450}
+                  disabled={!acts}
+                  onLongPress={touch('right_click')}
+                  onPress={touch('click')}
+                  style={styles.fill}
+                >
+                  <Image fadeDuration={0} resizeMode="contain" source={{ uri: picture }} style={styles.fill} />
+                </Pressable>
+              </Animated.View>
+            </GestureDetector>
+          </View>
+        </GestureDetector>
       ) : (
         <View style={styles.empty}>
           {problem ? <Feather color={t.muted} name="monitor" size={28} /> : <ActivityIndicator color={t.muted} />}
           {problem ? <Text style={[type.body, { color: t.muted, textAlign: 'center' }]}>{problem}</Text> : null}
         </View>
       )}
-    </View>
+      {zoomed ? (
+        <View style={styles.fit}>
+          <IconButton icon="minimize-2" label="Show the whole picture" onPress={fit} />
+        </View>
+      ) : null}
+    </GestureHandlerRootView>
   )
 }
 
@@ -218,7 +313,7 @@ function KeyButton({ icon, label, onPress }: { icon: React.ComponentProps<typeof
   )
 }
 
-function WindowSheet({ visible, onPick, onClose }: { visible: boolean; onPick: (target: { pid: number; window_id: number } | null) => void; onClose: () => void }) {
+function WindowSheet({ visible, onPick, onClose }: { visible: boolean; onPick: (target: ScreenTarget) => void; onClose: () => void }) {
   const t = useTheme()
   const windows = useStore($screenWindows)
 
@@ -230,7 +325,12 @@ function WindowSheet({ visible, onPick, onClose }: { visible: boolean; onPick: (
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
         <FlatList
-          ListHeaderComponent={<WindowRow label="The window Hermes works in" onPress={() => onPick(null)} title="Follows the agent of this chat" />}
+          ListHeaderComponent={
+            <>
+              <WindowRow label="The window Hermes works in" onPress={() => onPick(null)} title="Follows the agent of this chat" />
+              <WindowRow label="The whole screen" onPress={() => onPick('whole')} title="Every window, to look at. Choose one window to act in it." />
+            </>
+          }
           data={windows}
           keyExtractor={item => `${item.pid}:${item.window_id}`}
           renderItem={({ item }) => <WindowRow label={item.app} onPress={() => onPick(item)} title={item.title} />}
@@ -285,6 +385,8 @@ export function ScreenPill({ working, onOpen, onHide }: { working: boolean; onOp
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  clip: { overflow: 'hidden' },
+  fit: { position: 'absolute', right: space.md, bottom: space.md },
   strong: { fontWeight: '700' },
   dim: { opacity: 0.6 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.sm },

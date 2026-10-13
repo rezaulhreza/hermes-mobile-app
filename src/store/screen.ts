@@ -45,10 +45,13 @@ interface FrameAnswer extends ScreenFrame {
 interface Watch {
   /** The stored id of the chat: the host finds the window its agent works in. */
   storedId: string
-  /** The window the user chose. Null follows the agent. */
-  target: { pid: number; window_id: number } | null
+  /** The window the user chose, or the whole screen (to look at, with no input). Null follows the agent. */
+  target: ScreenTarget
   timer: ReturnType<typeof setTimeout> | null
 }
+
+/** What the picture shows: one window, every window (`whole`), or the window of the agent (null). */
+export type ScreenTarget = { pid: number; window_id: number } | 'whole' | null
 
 let watch: Watch | null = null
 
@@ -65,7 +68,7 @@ function api() {
 async function nextFrame(current: Watch): Promise<void> {
   const last = $screen.get().frame?.digest
   const query = [
-    current.target ? `pid=${current.target.pid}&window_id=${current.target.window_id}` : `session_id=${encodeURIComponent(current.storedId)}`,
+    current.target === 'whole' ? 'whole=1' : current.target ? `pid=${current.target.pid}&window_id=${current.target.window_id}` : `session_id=${encodeURIComponent(current.storedId)}`,
     last ? `last=${last}` : ''
   ]
     .filter(Boolean)
@@ -133,7 +136,7 @@ export async function loadScreenWindows(): Promise<void> {
 }
 
 /** Show another window, or follow the agent again with null. */
-export function showScreenWindow(target: { pid: number; window_id: number } | null): void {
+export function showScreenWindow(target: ScreenTarget): void {
   if (watch) {
     watch.target = target
     $screen.set({ frame: null, problem: null })
@@ -182,13 +185,14 @@ export type ScreenInput =
   | { action: 'type'; text: string }
   | { action: 'key'; keys: string }
   | { action: 'scroll'; direction: 'up' | 'down'; x?: number; y?: number }
+  | { action: 'drag'; x: number; y: number; to_x: number; to_y: number }
 
 /** One tap, text, key or scroll into the window of the picture. Resolves with a problem to show, or null. */
 export async function sendScreenInput(input: ScreenInput): Promise<string | null> {
   const frame = $screen.get().frame
 
   if (!frame || frame.pid === null || frame.window_id === null) {
-    return 'There is no window to act in yet.'
+    return frame && watch?.target === 'whole' ? 'This is the whole screen. Choose a window to act in it.' : 'There is no window to act in yet.'
   }
 
   try {

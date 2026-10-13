@@ -74,6 +74,21 @@ def _agent_target(session_id: str) -> tuple[Optional[int], Optional[int]]:
     return None, None
 
 
+def _is_blank(png_b64: str) -> bool:
+    """True for a picture of one shade: a whole-screen capture that the system did not fill."""
+    try:
+        from PIL import Image
+
+        # Small, so the test costs little. A real screen has light and dark places; an unfilled capture is
+        # near one value everywhere (a compressed black is not exactly one value).
+        image = Image.open(BytesIO(base64.b64decode(png_b64, validate=False))).convert("L")
+        image.thumbnail((64, 64))
+        low, high = image.getextrema()
+        return high - low <= 12
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _phone_picture(png_b64: str, mime: Optional[str]) -> tuple[str, str]:
     """A small JPEG for the phone -> (data, mime). The driver's PNG when Pillow is not there."""
     try:
@@ -107,21 +122,31 @@ def windows() -> dict[str, Any]:
 
 @router.get("/frame")
 def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id: Optional[str] = None,
-          last: Optional[str] = None) -> dict[str, Any]:
+          last: Optional[str] = None, whole: bool = False) -> dict[str, Any]:
     """The picture of one window now. With no window: the window the agent of ``session_id`` works in, else the
-    frontmost window. ``last`` is the digest of the picture the phone has: an unchanged picture is not sent again."""
-    if (pid is None or window_id is None) and session_id:
+    frontmost window. ``last`` is the digest of the picture the phone has: an unchanged picture is not sent again.
+    ``whole`` gives the whole screen, every window on it: a picture to look at. It names no window, so the phone
+    sends no input for it."""
+    if not whole and (pid is None or window_id is None) and session_id:
         pid, window_id = _agent_target(session_id)
-    exact = pid is not None and window_id is not None
+    exact = not whole and pid is not None and window_id is not None
     with _tool()._backend_for_call(SESSION) as backend:
-        capture = backend.capture(mode="vision", **({"pid": pid, "window_id": window_id} if exact else {}))
-        target = {"pid": getattr(backend, "_active_pid", None), "window_id": getattr(backend, "_active_window_id", None)}
+        if whole:
+            # This is the plugin's own driver session: the window the agent works in is in the agent's session.
+            capture = backend.capture(mode="vision", app="screen")
+            target = {"pid": None, "window_id": None}
+        else:
+            capture = backend.capture(mode="vision", **({"pid": pid, "window_id": window_id} if exact else {}))
+            target = {"pid": getattr(backend, "_active_pid", None), "window_id": getattr(backend, "_active_window_id", None)}
     if not capture.png_b64:
         raise HTTPException(status_code=404, detail=capture.note or "The window gave no picture. It may be closed.")
+    if whole and _is_blank(capture.png_b64):
+        raise HTTPException(status_code=404, detail="The host gave an empty picture of the whole screen. Its screen "
+                                                    "driver cannot capture every window here. Choose one window.")
     if hold_state.read():
         hold_state.hold()  # an open view keeps the hold alive
     digest = hashlib.sha256(capture.png_b64.encode("ascii", "ignore")).hexdigest()[:16]
-    head = {**target, "app": capture.app, "title": capture.window_title, "width": capture.width,
+    head = {**target, "app": "" if whole else capture.app, "title": "" if whole else capture.window_title, "width": capture.width,
             "height": capture.height, "digest": digest, "hold": hold_state.read()}
     if digest == last:
         return {**head, "unchanged": True}

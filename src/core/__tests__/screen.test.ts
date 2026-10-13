@@ -44,3 +44,43 @@ describe('words', () => {
     expect(screenProblem(new Error('409: {"detail":"Take control first."}'))).toBe('Take control first.')
   })
 })
+
+describe('zoom and drag of the screen picture', () => {
+  const { clampPan, clampZoom, dragPoints, MAX_ZOOM } = jest.requireActual('../screen') as typeof import('../screen')
+  const box = { width: 400, height: 800 }
+  const frame = { width: 800, height: 600 }
+
+  it('keeps the zoom between the whole picture and the limit', () => {
+    expect(clampZoom(0.4)).toBe(1)
+    expect(clampZoom(2.5)).toBe(2.5)
+    expect(clampZoom(40)).toBe(MAX_ZOOM)
+  })
+
+  it('does not let an edge of the picture come inside the box', () => {
+    expect(clampPan(500, 400, 2)).toBe(200)
+    expect(clampPan(-500, 400, 2)).toBe(-200)
+    expect(clampPan(50, 400, 1)).toBe(0)
+  })
+
+  it('turns a move of the finger into a drag in the window', () => {
+    // The picture is 400 by 300, in the middle of the box: 250 points of band above it.
+    expect(dragPoints(box, frame, { x: 0, y: 250 }, { x: 200, y: 400 })).toEqual({ x: 0, y: 0, to_x: 400, to_y: 300 })
+  })
+
+  it('refuses a drag that starts or ends on a band', () => {
+    expect(dragPoints(box, frame, { x: 10, y: 10 }, { x: 200, y: 400 })).toBeNull()
+    expect(dragPoints(box, frame, { x: 10, y: 300 }, { x: 200, y: 790 })).toBeNull()
+  })
+})
+
+describe('screenProblem for a 404', () => {
+  const { screenProblem } = jest.requireActual('../screen') as typeof import('../screen')
+
+  it('says the plugin is missing when the route is not there', () => {
+    expect(screenProblem(new Error('404: {"detail":"Not Found"}'))).toMatch(/no screen-remote plugin/)
+  })
+
+  it('gives the words of the plugin for its own 404', () => {
+    expect(screenProblem(new Error('404: {"detail":"The host gave an empty picture of the whole screen."}'))).toBe('The host gave an empty picture of the whole screen.')
+  })
+})

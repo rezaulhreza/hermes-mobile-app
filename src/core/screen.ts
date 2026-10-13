@@ -57,6 +57,31 @@ export interface Size {
   height: number
 }
 
+/** The picture can be made this many times larger with two fingers. */
+export const MAX_ZOOM = 5
+
+export function clampZoom(scale: number): number {
+  return Math.max(1, Math.min(MAX_ZOOM, scale))
+}
+
+/**
+ * How far the enlarged picture may move from the middle: an edge of the
+ * picture never comes inside the box. At scale 1 it does not move.
+ */
+export function clampPan(offset: number, side: number, scale: number): number {
+  const limit = (side * (scale - 1)) / 2
+
+  return Math.max(-limit, Math.min(limit, offset))
+}
+
+/** A drag in the window on the host for a move of one finger on its picture. Null when an end is outside the window. */
+export function dragPoints(box: Size, frame: Size, from: { x: number; y: number }, to: { x: number; y: number }): { x: number; y: number; to_x: number; to_y: number } | null {
+  const start = tapPoint(box, frame, from)
+  const end = tapPoint(box, frame, to)
+
+  return start && end ? { ...start, to_x: end.x, to_y: end.y } : null
+}
+
 /**
  * The position in the window on the host for a touch on its picture. The
  * picture is drawn whole inside the box (`contain`), so a wide window leaves
@@ -103,7 +128,8 @@ export const SCREEN_KEYS = [
 export function screenProblem(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error)
 
-  if (/\b404\b/.test(text) && !/window gave no picture/i.test(text)) {
+  // The plugin gives its own words with a 404 (no window, an empty picture). A 404 with none means the route is not there.
+  if (/\b404\b/.test(text) && (!/"detail":"/.test(text) || /"detail":"(Not Found|No such API endpoint)"/.test(text))) {
     return 'This Hermes host has no screen-remote plugin. Install it on the host (the folder host/screen-remote of the app, install.sh), then restart Hermes.'
   }
 
