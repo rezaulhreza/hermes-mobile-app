@@ -1039,10 +1039,23 @@ last, then ask about the notification buttons.
     parameter first.
 13. **Settings**: DONE: the vault (`src/app/vault.tsx`), Voice
     (`src/app/voice.tsx`), providers and models (`src/app/providers.tsx`), API
-    keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Left: custom
-    endpoints (`/api/providers/custom-endpoints`), the auxiliary models
-    (`POST /api/model/set` with `scope: "auxiliary"`), a key check before the
-    save (`/api/providers/validate`), memory, notifications. Appearance is
+    keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Eighth session,
+    every "Left" line CLOSED (`src/app/host.tsx`, `core/host-settings.ts`,
+    `store/host-settings.ts`; Settings, "Helper models and memory"): the
+    helper models (`GET /api/model/auxiliary` → `tasks`; `POST /api/model/set
+    {scope: 'auxiliary', task, provider, model}`, `provider: 'auto'` gives the
+    choice back), own endpoints (`/api/providers/custom-endpoints`: list,
+    `POST` to add, `/validate` to reach it first, `/{id}/activate`, `DELETE`),
+    the kind of memory (`GET /api/memory`, `PUT /api/memory/provider
+    {provider}`; `''` is the built-in memory), the key check
+    (`POST /api/providers/validate {key: <env name>, value}` → `{ok,
+    reachable, message}`; `saveProviderKey` calls it first). Seen: the screen
+    in light and dark; the four calls with values that change nothing (a
+    wrong key was refused, a dead address said so). NOT pressed in the app:
+    add, use and remove of an endpoint (no endpoint server to add).
+    Notifications: the row of Settings shows the state and opens the system
+    settings (sixth session). WHICH requests push is `push.kinds` in the
+    host's config: a host setting, no route sets it. Appearance is
     DONE (seventh session): System, Light or Dark in Settings, stored in the
     preferences and applied with `Appearance.setColorScheme` (the value for
     "system" is `'unspecified'` in this React Native, not null). Every new
