@@ -23,6 +23,8 @@ export interface Schedule {
   profile: string
   /** A script runs, with no agent. */
   scriptOnly: boolean
+  /** The Hermes folder of the bot on the host. The text of a run is a file under it. */
+  home: string
 }
 
 interface WireJob {
@@ -41,6 +43,7 @@ interface WireJob {
   deliver?: unknown
   profile?: unknown
   no_agent?: unknown
+  hermes_home?: unknown
 }
 
 function time(value: unknown): number | null {
@@ -75,7 +78,8 @@ export function scheduleRows(jobs: unknown): Schedule[] {
         lastError: text(job.last_error),
         deliver: text(job.deliver) || 'local',
         profile: text(job.profile) || 'default',
-        scriptOnly: job.no_agent === true
+        scriptOnly: job.no_agent === true,
+        home: text(job.hermes_home)
       } satisfies Schedule
     })
     .sort((a, b) => rank(a) - rank(b) || (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity) || a.name.localeCompare(b.name))
@@ -147,9 +151,99 @@ export function scheduleProblem(prompt: string, when: string): string | null {
     : 'Write the time as “every 2h”, as five cron fields (“0 9 * * *”), or as a date and a time.'
 }
 
+const RUN_FILE_PREFIX = 'cron_output:'
+
+/**
+ * The file on the host with the whole text of a run that has no conversation
+ * (a script, or a run older than its session). The id of such a run is
+ * `cron_output:<job>:<stamp>` and its file is `<stamp>.md` in the job's output
+ * folder. Null for a run with a conversation.
+ */
+export function runFilePath(schedule: Pick<Schedule, 'id' | 'home'>, run: Pick<ScheduleRun, 'id'>): string | null {
+  if (!run.id.startsWith(RUN_FILE_PREFIX) || !schedule.home) {
+    return null
+  }
+
+  const stamp = run.id.slice(RUN_FILE_PREFIX.length).split(':').pop() ?? ''
+  const slash = schedule.home.includes('\\') && !schedule.home.includes('/') ? '\\' : '/'
+
+  return stamp ? [schedule.home.replace(/[\\/]+$/, ''), 'cron', 'output', schedule.id, `${stamp}.md`].join(slash) : null
+}
+
+/** A place a result can go, as `GET /api/cron/delivery-targets` lists it. */
+export interface DeliveryTarget {
+  id: string
+  name: string
+}
+
+/**
+ * The words for a place a result goes. The host names the chat of a bot by
+ * the key of its profile ("Bot Chat (default)"); a person knows the bot by
+ * its own name.
+ */
+export function deliveryLabel(id: string, targets: readonly DeliveryTarget[], botTitles: ReadonlyMap<string, string>): string {
+  if (!id || id === 'local') {
+    return 'Only save it on the host'
+  }
+
+  if (id === 'origin') {
+    return 'Where the schedule was made'
+  }
+
+  if (id.startsWith('bot-chat:')) {
+    const profile = id.slice('bot-chat:'.length)
+
+    return `The chat of ${botTitles.get(profile) ?? profile}`
+  }
+
+  return targets.find(target => target.id === id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)
+}
+
+/** One field of a template of the host: what to ask the user. */
+export interface BlueprintField {
+  name: string
+  type: string
+  label: string
+  default?: unknown
+  options?: unknown[]
+  optional?: boolean
+  help?: string
+}
+
+export interface Blueprint {
+  key: string
+  title: string
+  description: string
+  fields: BlueprintField[]
+}
+
+export function blueprintRows(result: unknown): Blueprint[] {
+  const list = (result as { blueprints?: unknown } | null)?.blueprints
+
+  return Array.isArray(list)
+    ? list.flatMap((item: Partial<Blueprint>) =>
+        typeof item?.key === 'string' && typeof item.title === 'string'
+          ? [{ key: item.key, title: item.title, description: text(item.description), fields: Array.isArray(item.fields) ? item.fields.filter(field => typeof field?.name === 'string') : [] }]
+          : []
+      )
+    : []
+}
+
+/** The values a template starts with: the default of each field, as text. */
+export function blueprintDefaults(blueprint: Blueprint): Record<string, string> {
+  return Object.fromEntries(blueprint.fields.map(field => [field.name, field.default === undefined || field.default === null ? '' : String(field.default)]))
+}
+
+/** The first field the user must still fill, or null. */
+export function blueprintMissing(blueprint: Blueprint, values: Readonly<Record<string, string>>): BlueprintField | null {
+  return blueprint.fields.find(field => !field.optional && !(values[field.name] ?? '').trim()) ?? null
+}
+
 export interface ScheduleRun {
   id: string
   title: string
+  /** The run has a conversation of its own, which a chat screen can open. False: its text is a file on the host. */
+  hasChat: boolean
   /** Unix milliseconds. */
   at: number
 }
@@ -160,7 +254,7 @@ export function scheduleRuns(result: unknown): ScheduleRun[] {
   return Array.isArray(runs)
     ? runs.flatMap((run: { id?: unknown; title?: unknown; preview?: unknown; started_at?: unknown }) =>
         typeof run?.id === 'string'
-          ? [{ id: run.id, title: (text(run.title) || text(run.preview)).replace(/[#*]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 200), at: typeof run.started_at === 'number' ? run.started_at * 1000 : 0 }]
+          ? [{ id: run.id, hasChat: !run.id.startsWith(RUN_FILE_PREFIX), title: (text(run.title) || text(run.preview)).replace(/[#*]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 200), at: typeof run.started_at === 'number' ? run.started_at * 1000 : 0 }]
           : []
       )
     : []

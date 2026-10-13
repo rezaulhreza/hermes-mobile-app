@@ -59,7 +59,42 @@ describe('scheduleProblem', () => {
 
 it('reads the run history', () => {
   expect(scheduleRuns({ runs: [{ id: 'r1', title: 'COMPLETED · # Cron Job: **Prune**', started_at: 100 }, { title: 'no id' }] })).toEqual([
-    { id: 'r1', title: 'COMPLETED · Cron Job: Prune', at: 100_000 }
+    { id: 'r1', hasChat: true, title: 'COMPLETED · Cron Job: Prune', at: 100_000 }
   ])
   expect(scheduleRuns(null)).toEqual([])
+})
+
+describe('runs, delivery and templates of a schedule', () => {
+  const { blueprintDefaults, blueprintMissing, blueprintRows, deliveryLabel, runFilePath, scheduleRuns } = jest.requireActual('../cron') as typeof import('../cron')
+
+  it('finds the file of a run that has no conversation', () => {
+    expect(runFilePath({ id: 'j1', home: '/Users/me/.hermes' }, { id: 'cron_output:j1:2026-10-06_01-56-52' })).toBe('/Users/me/.hermes/cron/output/j1/2026-10-06_01-56-52.md')
+    expect(runFilePath({ id: 'j1', home: 'C:\\Users\\me\\.hermes\\' }, { id: 'cron_output:j1:2026-10-06_01-56-52' })).toBe('C:\\Users\\me\\.hermes\\cron\\output\\j1\\2026-10-06_01-56-52.md')
+    expect(runFilePath({ id: 'j1', home: '/Users/me/.hermes' }, { id: '20261006_015652_abc' })).toBeNull()
+  })
+
+  it('knows a run with a conversation from a run with a file', () => {
+    const runs = scheduleRuns({ runs: [{ id: 'cron_output:j1:x', title: 'A' }, { id: '20261006_015652_abc', title: 'B' }] })
+
+    expect(runs.map(run => run.hasChat)).toEqual([false, true])
+  })
+
+  it('names a place for a result with the name of the bot', () => {
+    const targets = [{ id: 'telegram', name: 'Telegram' }]
+    const titles = new Map([['default', 'Manager']])
+
+    expect(deliveryLabel('local', targets, titles)).toBe('Only save it on the host')
+    expect(deliveryLabel('bot-chat:default', targets, titles)).toBe('The chat of Manager')
+    expect(deliveryLabel('bot-chat:qa', targets, titles)).toBe('The chat of qa')
+    expect(deliveryLabel('telegram', targets, titles)).toBe('Telegram')
+    expect(deliveryLabel('discord', targets, titles)).toBe('Discord')
+  })
+
+  it('reads the templates and what the user must fill', () => {
+    const [blueprint] = blueprintRows({ blueprints: [{ key: 'k', title: 'Reminder', description: 'd', fields: [{ name: 'what', type: 'text', label: 'What?' }, { name: 'time', type: 'time', label: 'When?', default: '08:00' }, { name: 'note', type: 'text', label: 'Note', optional: true }] }, { title: 'no key' }] })
+
+    expect(blueprintDefaults(blueprint)).toEqual({ what: '', time: '08:00', note: '' })
+    expect(blueprintMissing(blueprint, blueprintDefaults(blueprint))?.name).toBe('what')
+    expect(blueprintMissing(blueprint, { what: 'Water the plants', time: '08:00' })).toBeNull()
+  })
 })

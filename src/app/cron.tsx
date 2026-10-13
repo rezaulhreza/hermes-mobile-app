@@ -1,19 +1,58 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { BotAvatar } from '@/components/bot-sheet'
+import { type Choice, ChoiceRow, ChoiceSheet } from '@/components/choice'
+import { Markdown } from '@/components/markdown'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Schedule, SCHEDULE_CHOICES, scheduleLine, scheduleProblem, type ScheduleRun } from '@/core/cron'
-import { relativeTime } from '@/core/format'
-import { $schedules, createSchedule, deleteSchedule, loadRuns, loadSchedules, pauseSchedule, runSchedule, updateSchedule } from '@/store/cron'
+import { type Blueprint, blueprintDefaults, blueprintMissing, deliveryLabel, type Schedule, SCHEDULE_CHOICES, scheduleLine, scheduleProblem, type ScheduleRun } from '@/core/cron'
+import { faultWords, relativeTime } from '@/core/format'
+import { $bots } from '@/store/bots'
+import {
+  $deliveryTargets,
+  $schedules,
+  createFromBlueprint,
+  createSchedule,
+  deleteSchedule,
+  loadBlueprints,
+  loadDeliveryTargets,
+  loadRuns,
+  loadRunText,
+  loadSchedules,
+  pauseSchedule,
+  runSchedule,
+  updateSchedule
+} from '@/store/cron'
 import { $linkState } from '@/store/link'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
-const say = (error: unknown) => Alert.alert('That did not work', error instanceof Error ? error.message : String(error))
+const say = (error: unknown) => Alert.alert('That did not work', faultWords(error))
+
+/** The places a result can go, as choices with the names of the bots. */
+function useDelivery(): { choices: Choice[]; label: (id: string) => string } {
+  const targets = useStore($deliveryTargets)
+  const bots = useStore($bots)
+  const titles = useMemo(() => new Map((bots ?? []).map(bot => [bot.name, bot.title])), [bots])
+
+  useEffect(() => {
+    if (!targets) {
+      void loadDeliveryTargets().catch(() => undefined)
+    }
+  }, [targets])
+
+  return useMemo(
+    () => ({
+      choices: (targets ?? [{ id: 'local', name: '' }]).map(target => ({ id: target.id, label: deliveryLabel(target.id, targets ?? [], titles) })),
+      label: (id: string) => deliveryLabel(id, targets ?? [], titles)
+    }),
+    [targets, titles]
+  )
+}
 
 function colour(schedule: Schedule, t: Palette): string {
   return schedule.failed && schedule.state !== 'completed' ? t.red : schedule.state === 'scheduled' ? t.green : t.muted
@@ -136,6 +175,26 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
   const [runs, setRuns] = useState<ScheduleRun[] | null>(null)
   const changed = prompt.trim() !== schedule.prompt || when.trim() !== schedule.when
   const problem = changed ? scheduleProblem(prompt, when) : null
+  const delivery = useDelivery()
+  const [delivering, setDelivering] = useState(false)
+  // The whole text of one run, open over the sheet.
+  const [reading, setReading] = useState<{ title: string; text: string | null } | null>(null)
+
+  const openRun = (item: ScheduleRun) => {
+    if (item.hasChat) {
+      // A run of the agent is a conversation: the chat screen shows all of it.
+      onClose()
+      router.push({ pathname: '/chat/[id]', params: { id: item.id, title: schedule.name, ...(schedule.profile && schedule.profile !== 'default' ? { profile: schedule.profile } : {}) } })
+
+      return
+    }
+
+    setReading({ title: item.at ? relativeTime(item.at / 1000) : 'Run', text: null })
+    loadRunText(schedule, item).then(
+      text => setReading(current => current && { ...current, text: text || 'This run wrote nothing.' }),
+      error => setReading(current => current && { ...current, text: faultWords(error) })
+    )
+  }
 
   useEffect(() => {
     loadRuns(schedule).then(setRuns, () => setRuns([]))
@@ -159,10 +218,21 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
   return (
     <SheetFrame onClose={onClose} title={schedule.name}>
       <Text style={[type.small, { color: colour(schedule, t) }]}>
-        {[scheduleLine(schedule, now), schedule.deliver === 'local' ? 'the result is saved on the host' : `the result goes to ${schedule.deliver}`, schedule.scriptOnly ? 'a script, with no agent' : '']
-          .filter(Boolean)
-          .join(' · ')}
+        {[scheduleLine(schedule, now), schedule.scriptOnly ? 'a script, with no agent' : ''].filter(Boolean).join(' · ')}
       </Text>
+      <ChoiceRow icon="send" label="The result goes to" onPress={() => setDelivering(true)} value={delivery.label(schedule.deliver)} />
+      {delivering ? (
+        <ChoiceSheet
+          choices={delivery.choices}
+          current={schedule.deliver}
+          onClose={() => setDelivering(false)}
+          onPick={id => {
+            setDelivering(false)
+            run('deliver', () => updateSchedule(schedule, { deliver: id }))
+          }}
+          title="The result goes to"
+        />
+      ) : null}
       {schedule.failed && schedule.lastError ? <Text style={[type.small, styles.error, { color: t.red, backgroundColor: t.redBg }]}>{schedule.lastError}</Text> : null}
 
       <View style={styles.actions}>
@@ -187,18 +257,33 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
         <ActivityIndicator color={t.muted} />
       ) : runs.length ? (
         runs.map(item => (
-          <View key={item.id} style={[styles.run, { borderColor: t.line }]}>
-            <Text style={[type.small, { color: t.muted }]}>{item.at ? relativeTime(item.at / 1000) : ''}</Text>
-            <Text numberOfLines={3} style={[type.small, { color: t.ink }]}>
-              {item.title}
-            </Text>
-          </View>
+          <Pressable
+            accessibilityHint="Shows the whole run"
+            accessibilityLabel={`Run ${item.at ? relativeTime(item.at / 1000) : ''}: ${item.title}`}
+            accessibilityRole="button"
+            key={item.id}
+            onPress={() => openRun(item)}
+            style={({ pressed }) => [styles.run, { borderColor: t.line }, pressed && { backgroundColor: t.soft }]}
+          >
+            <View style={styles.fill}>
+              <Text style={[type.small, { color: t.muted }]}>{item.at ? relativeTime(item.at / 1000) : ''}</Text>
+              <Text numberOfLines={3} style={[type.small, { color: t.ink }]}>
+                {item.title}
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={16} />
+          </Pressable>
         ))
       ) : (
         <Text style={[type.small, { color: t.muted }]}>It has not run yet.</Text>
       )}
 
       <Button busy={busy === 'delete'} icon="trash-2" label="Delete this schedule" onPress={remove} tone="danger" />
+      {reading ? (
+        <SheetFrame onClose={() => setReading(null)} title={`Run, ${reading.title}`}>
+          {reading.text === null ? <ActivityIndicator color={t.muted} /> : <Markdown text={reading.text} />}
+        </SheetFrame>
+      ) : null}
     </SheetFrame>
   )
 }
@@ -211,6 +296,22 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [tried, setTried] = useState(false)
   const problem = scheduleProblem(prompt, when)
+  const bots = useStore($bots) ?? []
+  // The bot that does the work. The main bot with none chosen.
+  const [owner, setOwner] = useState<string | null>(null)
+  const [deliver, setDeliver] = useState('local')
+  const delivery = useDelivery()
+  const [choosing, setChoosing] = useState<'bot' | 'deliver' | 'template' | null>(null)
+  const [templates, setTemplates] = useState<Blueprint[] | null>(null)
+  const [template, setTemplate] = useState<Blueprint | null>(null)
+  const ownerBot = bots.find(bot => bot.name === owner) ?? bots.find(bot => bot.isDefault)
+  const profile = ownerBot && !ownerBot.isDefault ? ownerBot.name : undefined
+
+  const openTemplates = () => {
+    setChoosing('template')
+    setTemplates(null)
+    loadBlueprints(profile).then(setTemplates, () => setTemplates([]))
+  }
 
   const add = () => {
     setTried(true)
@@ -220,13 +321,15 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
     }
 
     setBusy(true)
-    createSchedule(prompt, when, name)
+    createSchedule(prompt, when, name, profile, deliver)
       .then(onClose, say)
       .finally(() => setBusy(false))
   }
 
   return (
     <SheetFrame onClose={onClose} title="Add a schedule">
+      <Button icon="layers" label="Start from a template" onPress={openTemplates} />
+      {bots.length > 1 ? <ChoiceRow icon="user" label="The bot that does it" onPress={() => setChoosing('bot')} value={ownerBot?.title ?? 'The main bot'} /> : null}
       <Field
         error={tried && !prompt.trim() ? problem : null}
         label="What the agent does"
@@ -258,8 +361,91 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
       </View>
       <Field error={tried && prompt.trim() ? problem : null} label="Or write it: “every 2h”, or cron fields" onChangeText={setWhen} value={when} />
 
-      <Text style={[type.small, { color: t.muted }]}>The result is saved on your Hermes host. Ask your agent in a chat to send it to a messaging app.</Text>
+      <ChoiceRow icon="send" label="The result goes to" onPress={() => setChoosing('deliver')} value={delivery.label(deliver)} />
       <Button busy={busy} icon="plus" label="Add the schedule" onPress={add} tone="primary" />
+
+      {choosing === 'bot' ? (
+        <ChoiceSheet
+          choices={bots.map(bot => ({ id: bot.name, label: bot.title, detail: bot.description, lead: <BotAvatar bot={bot} size={36} t={t} /> }))}
+          current={ownerBot?.name}
+          onClose={() => setChoosing(null)}
+          onPick={id => (setOwner(id), setChoosing(null))}
+          title="The bot that does it"
+        />
+      ) : null}
+      {choosing === 'deliver' ? (
+        <ChoiceSheet choices={delivery.choices} current={deliver} onClose={() => setChoosing(null)} onPick={id => (setDeliver(id), setChoosing(null))} title="The result goes to" />
+      ) : null}
+      {choosing === 'template' ? (
+        <ChoiceSheet
+          choices={(templates ?? []).map(item => ({ id: item.key, label: item.title, detail: item.description }))}
+          footer={templates === null ? <ActivityIndicator color={t.muted} /> : templates.length ? null : <Text style={[type.body, { color: t.muted }]}>This host has no template.</Text>}
+          onClose={() => setChoosing(null)}
+          onPick={key => (setTemplate(templates?.find(item => item.key === key) ?? null), setChoosing(null))}
+          title="Template"
+        />
+      ) : null}
+      {template ? <TemplateSheet blueprint={template} delivery={delivery} onClose={() => setTemplate(null)} onMade={onClose} profile={profile} /> : null}
+    </SheetFrame>
+  )
+}
+
+/** The few questions of one template of the host. Each answer is text; a field with a fixed set of answers opens a list. */
+function TemplateSheet({
+  blueprint,
+  profile,
+  delivery,
+  onClose,
+  onMade
+}: {
+  blueprint: Blueprint
+  profile?: string
+  delivery: { label: (id: string) => string }
+  onClose: () => void
+  onMade: () => void
+}) {
+  const t = useTheme()
+  const [values, setValues] = useState(() => blueprintDefaults(blueprint))
+  const [picking, setPicking] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const missing = blueprintMissing(blueprint, values)
+  const picked = blueprint.fields.find(field => field.name === picking)
+  // The answers that name a place for the result read as a person says them.
+  const words = (field: string, value: string) => (field === 'deliver' ? delivery.label(value) : value)
+
+  const make = () => {
+    setBusy(true)
+    createFromBlueprint(blueprint.key, values, profile)
+      .then(onMade, say)
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <SheetFrame onClose={onClose} title={blueprint.title}>
+      {blueprint.description ? <Text style={[type.small, { color: t.muted }]}>{blueprint.description}</Text> : null}
+      {blueprint.fields.map(field =>
+        field.options?.length ? (
+          <ChoiceRow icon="list" key={field.name} label={field.label || field.name} onPress={() => setPicking(field.name)} value={words(field.name, values[field.name] ?? '') || 'Choose'} />
+        ) : (
+          <Field
+            autoCapitalize="none"
+            key={field.name}
+            label={[field.label || field.name, field.help].filter(Boolean).join(' — ')}
+            onChangeText={text => setValues(current => ({ ...current, [field.name]: text }))}
+            value={values[field.name] ?? ''}
+          />
+        )
+      )}
+      <Button busy={busy} disabled={Boolean(missing)} icon="plus" label={missing ? `Fill “${missing.label || missing.name}”` : 'Add the schedule'} onPress={make} tone="primary" />
+      {picked ? (
+        <ChoiceSheet
+          choices={(picked.options ?? []).map(option => ({ id: String(option), label: words(picked.name, String(option)) }))}
+          current={values[picked.name]}
+          onClose={() => setPicking(null)}
+          onPick={id => (setValues(current => ({ ...current, [picked.name]: id })), setPicking(null))}
+          title={picked.label || picked.name}
+        />
+      ) : null}
     </SheetFrame>
   )
 }
@@ -276,7 +462,7 @@ const styles = StyleSheet.create({
   error: { padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
   prompt: { minHeight: 96, textAlignVertical: 'top', paddingTop: space.md },
   heading: { fontWeight: '700', marginTop: space.sm },
-  run: { gap: 2, paddingBottom: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
+  run: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   chip: { paddingHorizontal: space.md, minHeight: 36, justifyContent: 'center', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth }
 })
