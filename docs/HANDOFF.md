@@ -1061,20 +1061,31 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
       routes of this host take a path only, and no bot here has such a
       backend to check against.
     The check cleared the list of recent folders of the Simulator.
-11. **Kanban**: BUILT, PARTLY checked (eighth session; `core/kanban.ts`,
-    `store/kanban.ts`, `src/app/kanban.tsx`; the "Board" button of the Bots
-    tab). Routes under `/api/plugins/kanban`, each with `?board=<slug>`:
-    `GET /boards`, `GET /board` (`columns: [{name, tasks}]`; a task carries its
-    whole body, so the store keeps a short row), `GET /tasks/{id}` (`task`,
-    `comments`), `PATCH /tasks/{id} {status, assignee, title, body}`,
-    `POST /tasks/{id}/comments {body, author}`, `POST /tasks {title, body,
-    assignee, triage}`, `DELETE /tasks/{id}`. Seen: the screen in 0.3 s, the
-    list of the five boards. NEXT, first thing: check a card on a real board
-    (open, comments), and every write on a THROWAWAY card (make, comment,
-    move, assign, delete), in light and dark. Not built: links between cards,
-    attachments, runs of a card (`/runs/{id}`, terminate, reclaim), a new
-    board, the live update (`latest_event_id`; the screen has pull to
-    refresh).
+11. **Kanban**: DONE (`core/kanban.ts`, `store/kanban.ts`,
+    `src/app/kanban.tsx`; the "Board" button of the Bots tab). Routes under
+    `/api/plugins/kanban`, each with `?board=<slug>`: `GET /boards`,
+    `GET /board` (`columns: [{name, tasks}]`; a task carries its whole body,
+    so the store keeps a short row), `GET /tasks/{id}` (`task`, `comments`),
+    `PATCH /tasks/{id} {status, assignee, title, body, summary,
+    block_reason}`, `POST /tasks/{id}/comments {body, author}`,
+    `POST /tasks {title, body, assignee, triage}`, `DELETE /tasks/{id}`.
+    Ninth session, SEEN in light and dark: a real card with its comments
+    (255 ms; the board 190 ms), and on a throwaway card of the empty Default
+    board: make, comment, move, assign, unassign, delete (each 130 to 350 ms).
+    Host rules found and built in (`moveChoices`, `moveQuestion`,
+    `cardFault`): the host refuses `running` ("In work" is not offered), it
+    closes a card only with a `summary` (the sheet asks "What was done"), a
+    block takes `block_reason` (the sheet asks, optional), and a refusal shows
+    in plain words. A card in `ready` with a bot on it STARTS that bot: never
+    put a test card there. The host itself rewrites a card that waits to be
+    sorted (title, text, and it gave the card to `default`): that is its
+    triage step, not the app.
+    DRIVER: a card row is pressed by `h.pressLike("<title><last line>")`;
+    `h.press("Board", -1)` presses the LAST control of that name (the Bots tab
+    has a "Board" button under the screen).
+    Not built: links between cards, attachments, runs of a card
+    (`/runs/{id}`, terminate, reclaim), a new board, the live update
+    (`latest_event_id`; the screen has pull to refresh).
 12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
     (`connectors.*`). The owner (2026-10-09): Hermes configures all of
     these PER PROFILE (each bot has its own). The screen must start from a
