@@ -155,7 +155,7 @@ function ProviderSheet({ row, currentModel, onClose }: { row: ProviderRow; curre
               <Text style={[type.small, { color: t.muted }]}>
                 The key goes to your Hermes host, which keeps it in its own secrets file as {row.keyEnv}. The phone does not keep it.
               </Text>
-              <SecretForm label={`${row.name} API key`} onSave={key => saveProviderKey(row.slug, key)} saveLabel="Connect" />
+              <SecretForm label={`${row.name} API key`} onSave={key => saveProviderKey(row.slug, key, row.keyEnv)} saveLabel="Connect" />
             </>
           ) : (
             <Notice detail={row.signInNote} icon="monitor" title="Sign in on the computer" />

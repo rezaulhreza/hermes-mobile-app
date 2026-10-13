@@ -267,7 +267,20 @@ function SectionSheet({ sections, current, onPick, onClose }: { sections: readon
 }
 
 /** The models of the providers that are connected on the host, to choose the model of one bot. */
-function BotModelSheet({ current, onPick, onClose }: { current: string; onPick: (provider: string, model: string) => void; onClose: () => void }) {
+export function BotModelSheet({
+  current,
+  onPick,
+  onClose,
+  title = 'Model of this bot',
+  auto
+}: {
+  current: string
+  onPick: (provider: string, model: string) => void
+  onClose: () => void
+  title?: string
+  /** The words of a first row that gives the choice back to the host. Absent: no such row. */
+  auto?: string
+}) {
   const t = useTheme()
   const options = useStore($providers)
   const [query, setQuery] = useState('')
@@ -295,7 +308,7 @@ function BotModelSheet({ current, onPick, onClose }: { current: string; onPick: 
     <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible>
       <View style={[styles.fill, { backgroundColor: t.bg }]}>
         <View style={[styles.sheetHead, { borderBottomColor: t.line }]}>
-          <Text style={[type.heading, styles.fill, { color: t.ink }]}>Model of this bot</Text>
+          <Text style={[type.heading, styles.fill, { color: t.ink }]}>{title}</Text>
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
         <TextInput
@@ -309,6 +322,19 @@ function BotModelSheet({ current, onPick, onClose }: { current: string; onPick: 
           value={query}
         />
         <FlatList
+          ListHeaderComponent={
+            auto && !query.trim() ? (
+              <Pressable
+                accessibilityLabel={`Model: ${auto}`}
+                accessibilityRole="button"
+                onPress={() => onPick('auto', '')}
+                style={({ pressed }) => [styles.modelRow, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
+              >
+                <Text style={[type.label, styles.fill, { color: t.ink }]}>{auto}</Text>
+                {current ? null : <Feather color={t.accent} name="check" size={18} />}
+              </Pressable>
+            ) : null
+          }
           ListEmptyComponent={
             options ? (
               <Text style={[type.body, styles.empty, { color: t.muted }]}>No model of a connected provider matches.</Text>

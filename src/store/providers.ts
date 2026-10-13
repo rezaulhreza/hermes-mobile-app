@@ -6,6 +6,7 @@ import type { ModelOptionsResult } from '@/core/gateway/gateway-contract.generat
 import { type KeyRow, keyRows, tidySecret } from '@/core/providers'
 
 import { readCached, writeCached } from './cache'
+import { checkProviderKey } from './host-settings'
 import { currentApi, rpc } from './link'
 import { $activeWorkspace } from './workspaces'
 
@@ -41,7 +42,9 @@ export function restoreProviders(): void {
   }
 }
 
-export async function saveProviderKey(slug: string, key: string): Promise<void> {
+/** Connect a provider with a key. `keyEnv` names the key on the host: with it, the provider is asked first if it takes the key. */
+export async function saveProviderKey(slug: string, key: string, keyEnv = ''): Promise<void> {
+  await checkProviderKey(keyEnv, key)
   await rpc('model.save_key', { slug, api_key: tidySecret(key) }, 60_000)
   await loadProviders()
 }

@@ -12,6 +12,7 @@ import { clearPreviews } from '@/store/browser'
 import { clearConversations } from '@/store/chat'
 import { clearCatalog } from '@/store/commands'
 import { clearSchedules, restoreSchedules } from '@/store/cron'
+import { clearHostSettings } from '@/store/host-settings'
 import { $linkState, closeLink, openLink, redialNow } from '@/store/link'
 import { refreshScreenHold } from '@/store/screen'
 import { loadPreferences } from '@/store/preferences'
@@ -61,6 +62,7 @@ export default function RootLayout() {
     clearWorkspace()
     clearProviders()
     clearPush()
+    clearHostSettings()
 
     if (workspace) {
       // What the last run showed is on screen before the host answers.
@@ -108,6 +110,7 @@ export default function RootLayout() {
           <Stack.Screen name="cron" />
           <Stack.Screen name="file" />
           <Stack.Screen name="room" />
+          <Stack.Screen name="host" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
