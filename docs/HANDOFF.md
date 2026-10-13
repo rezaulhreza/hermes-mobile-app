@@ -846,14 +846,29 @@ last, then ask about the notification buttons.
    row's sheet; `POST /api/sessions/bulk-delete` needs `profile` NAMED, also
    `default`), export as Markdown (built on the phone from the REST rows).
 4b. **Browser preview**: DONE (`core/preview/browser.ts`, `store/browser.ts`,
-   `components/preview-pane.tsx`). Left: several tabs (the phone shows the
-   last opened page), the annotation actions (`pin`, `hold`, `strobe` draw
-   nothing on the phone), file and artifact previews from `preview.open`
-   (only web addresses load), `preview.restart`.
+   `components/preview-pane.tsx`). Eighth session, every "Left" line CLOSED:
+   several pages (`$previewTabs`; the More button lists them; one WebView
+   shows one page), the agent's marks (the desktop's overlay
+   `watch-in-page.ts` is vendored as `WATCH_ENGINE_SOURCE` by
+   `scripts/vendor-preview-engine.mjs`; `pin` / `unpin` / `hold` / `strobe`
+   of `preview.act`, and a mark on a click), a file of the host as a preview
+   (`hostFilePath`; it loads through `/api/fs/download`), and "Ask Hermes to
+   start the server again" (`preview.restart`, for a loopback page). Seen: two
+   pages, a pin with its label, a host HTML file. NOT seen: the restart (it
+   needs a development server that hangs).
+   The tool the model calls is `desktop_preview {action: open}` here.
 5. **Subagents and the todo list**: DONE (`core/work.ts`, `store/work.ts`,
-   `components/work-sheet.tsx`). Left: check steer and stop on a helper that
-   runs long, the spawn tree (`spawn_tree.*`), failed async delegations
-   (`delegations` of `subagent.list`), `delegation.pause`.
+   `components/work-sheet.tsx`). Eighth session, every "Left" line CLOSED and
+   SEEN on a helper that ran 50 s: a message from the phone changed what it
+   reported ("steered"), Stop gave "Stopped". The list is in tree order
+   (`helpersInTree`; this host has `max_spawn_depth` 1, so a helper of a
+   helper was not seen). Failed starts (`delegations` of `subagent.list`) show
+   with the reason. A row pauses new helpers (`delegation.pause`). When a turn
+   ends the helpers are saved with `spawn_tree.save` under the STORED id, in
+   the terminal app's record shape; "Earlier runs" lists them
+   (`spawn_tree.list` / `load`). "Plan and helpers" is also in the chat's menu.
+   A `delegate_task` of this host can be async: the turn ends and the result
+   comes later as a new message.
 6. **Push notifications (iOS)**: DONE on the placeholder bundle ID
    (`core/push.ts`, `store/push.ts`). Left for the release item: see "Push,
    what is left" above. Approve / Deny buttons inside the notification itself:
@@ -863,31 +878,36 @@ last, then ask about the notification buttons.
    path in the app.
 7. **Voice**: DONE in the Simulator: full duplex, live words, speech while
    the answer streams, barge-in, wake word, gpt-live (built, see what is
-   untested above), background audio. Left:
-   - A check on a real phone: echo cancellation, the lock screen, a headset.
-     The duck gain is 1 (`MIC_GAIN_WITH_ECHO_CANCELLING`); if the voice
-     interrupts itself on a phone, look at `PLAYBACK_TAIL_MS` and the echo
-     check first.
-   - gpt-live with an OpenAI key on the host.
-   - The earpiece (`duplexAudio.setSpeaker(false)` exists, no button), a
-     voice picker, the wake word on Android (the module is iOS only).
-   - The level in the call view is the microphone. Show the voice's level
-     while it speaks.
-   - A relay call in a loud room: `SPEECH_LEVEL` and `BARGE_LEVEL` in
-     `store/voice-relay.ts` are first guesses.
-7b. **Watch and take over the agent's screen work**: DONE (seventh session;
-   `core/screen.ts`, `store/screen.ts`, `components/screen-view.tsx`,
-   `host/screen-remote`). See "Done on 2026-10-09, seventh session". Left:
-   - Check on a running turn that the stop message reaches the agent at
-     once (`redirectTurn`), and "Hand back and continue".
-   - The view follows the agent's window only while the agent's driver
-     session is in the backend's memory (`_agent_target`); else it shows the
-     frontmost window. The user can choose a window (the layers button).
-   - A drag from the phone (the route takes it; the view has no gesture).
-   - Pinch zoom of the picture; a full-screen (all windows) picture.
-   - The hold ends by itself after 30 minutes with no open view.
-   - `display.*` (a VNC view of a separate virtual desktop) is NOT this
-     item. Do not use Docker.
+   untested above), background audio. Eighth session CLOSED: the level of
+   Hermes's voice in the call view (the audio module sends `onOutputLevel`
+   from a tap on the player, only while it plays; seen 0.03 to 1.0 during
+   speech), the earpiece button (`setCallSpeaker`, kept in the preferences),
+   a voice list for the Deepgram engine (Settings, Voice; `DEEPGRAM_VOICES`;
+   the phone opens the speak socket, so the voice is the phone's choice; the
+   Orion voice spoke in a fed call). The other engines speak with the host's
+   voice: the host has no route that sets it.
+   CANNOT be closed here, and why:
+   - Echo cancellation, the lock screen, a headset, a loud room
+     (`SPEECH_LEVEL`, `BARGE_LEVEL`): only a real phone shows them.
+   - gpt-live after the session answer: the host has no OpenAI key.
+   - The wake word on Android: Android is deferred by the owner.
+7b. **Watch and take over the agent's screen work**: DONE (`core/screen.ts`,
+   `store/screen.ts`, `components/screen-view.tsx`, `host/screen-remote`).
+   Eighth session CLOSED: SEEN on a running turn, the stop message reached
+   the agent at once ("redirected") and it said what was left; "Hand back and
+   continue" released the hold and the agent took its capture. Two fingers
+   zoom and move the picture; one finger that moves is a drag (the plugin's
+   `drag`). "The whole screen" in the window list (`/frame?whole=1`,
+   `capture(app="screen")`): on this Mac the driver gives an EMPTY picture,
+   and the plugin answers that in words (`_is_blank`). The strip is closable
+   and shows only for live screen work or a hold; "Screen" is in the chat's
+   menu (the owner found the strip always there).
+   NOT made by a script: the pinch, the two-finger move, the one-finger drag.
+   The view follows the agent's window only while its driver session is in
+   the backend's memory; else the frontmost window. The hold ends by itself
+   30 minutes after the last open view. `display.*` is NOT this item.
+   LEDGER: the row of the plugin in `scripts/local-features/README.md` does
+   not say "whole screen" yet. Add it with the next backend commit.
 8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
    `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
    its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
