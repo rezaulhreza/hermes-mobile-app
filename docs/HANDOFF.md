@@ -908,28 +908,60 @@ last, then ask about the notification buttons.
    30 minutes after the last open view. `display.*` is NOT this item.
    LEDGER: the row of the plugin in `scripts/local-features/README.md` does
    not say "whole screen" yet. Add it with the next backend commit.
-8. **Bots tab**: DONE for profiles (`core/bots.ts`, `store/bots.ts`,
-   `src/app/(tabs)/bots.tsx`): the list with pictures, the bot's own chat in
-   its profile, role, SOUL.md, rename, delete, add (new or a copy). Checked
-   in the Simulator on the owner's 12 bots; create, describe, rename and
-   delete ran on a throwaway bot through the same calls. Left: the model of a
-   bot (`PUT /api/profiles/{name}/model`), a picture from the phone
-   (`profiles.set_asset`), `agents.list`, the bot cron of hermes-bots, and
-   the other calls of a bot's chat: `session.resume` takes `profile`, and the
-   calls after it go by the live session id, but REST calls for that chat
-   (tool output of a stored row, file download) do not send `?profile=` yet.
-8a. **A bot's own chat** (owner, 2026-10-09, eighth session): the header of
-   a bot's chat must show the bot (picture, readable name) and open the bot's
-   profile and configuration from there (role, instructions, model, picture,
-   and the per-profile capabilities of item 12). The chat must open as fast
-   as any other chat (the page path of "Speed" takes the bot's `profile`).
-8b. **Group chat of bots** (owner, 2026-10-09, eighth session): NOT built
-   yet. The owner wants the bots' group chat as the desktop app has it: the
-   sections of the Bots view (the assigned section and the others), and every
-   control the desktop has there, curated for a phone, not copied. Read the
-   desktop first (`apps/desktop/AGENTS.md` and `apps/desktop/src/AGENTS.md`,
-   "Bot Mode"; the hermes-bots plugin and its routes), list its sections and
-   controls here, then build. Do it with the "Left" lines of item 8.
+8. **Bots tab**: DONE (`core/bots.ts`, `store/bots.ts`,
+   `src/app/(tabs)/bots.tsx`, `components/bot-sheet.tsx`). Eighth session:
+   - The model of a bot (`PUT /api/profiles/{name}/model {provider, model}`;
+     the host refuses a provider that is not connected, in words), a picture
+     from the phone (`profiles.set_asset {name, asset: 'avatar', data}`, a
+     256 px JPEG data address). Both calls ran on a throwaway bot; the photo
+     picker itself cannot be driven.
+   - The sections of the desktop app's Bots list. Each profile carries
+     `ui_meta['hermes-bots']` = `{title, pinned, hidden, sectionId,
+     sectionName, groups}`. `botGroups` makes the headings (Pinned, each
+     section by name, No section, Put away); the readable name is
+     `ui_meta.title`. The sheet files a bot (`profiles.configure {name,
+     ui_meta, ui_meta_expected_revisions}`; it sends the whole record back,
+     so no field of the desktop is lost). The ORDER of sections is a list in
+     the desktop's own plugin storage, not on the host: the phone sorts by
+     name.
+   - `agents.list` is a list of background processes: it goes to item 14.
+   - The schedules of one bot: see item 9.
+   - REST calls of a bot's chat send the profile (the history page, the tool
+     output). The download of a host file takes no profile: it is a path.
+   Left: pin, put away and hide a bot from the phone (the fields are read, no
+   button writes them); "Start as a copy of" in the new-bot sheet is a wrap of
+   chips (the owner wants a button that opens a list).
+8a. **A bot's own chat**: DONE (eighth session). The header shows the bot's
+   picture and name (the title "Bot Chat" is plumbing: `BOT_CHAT_TITLE`); the
+   menu has "Profile and settings of <bot>"; the menu has NO rename, archive,
+   delete or pin for that chat, because the host finds a bot's chat by its
+   title (see `apps/desktop/src/AGENTS.md`, "Bot Mode": never store a session
+   id for it, never rename it). It opens through the page path: 0.2 s.
+   Left: the per-profile capabilities in the sheet (item 12).
+8b. **Group chat of bots**: PARTLY built (eighth session). What the desktop
+   does, learned from `apps/desktop/src/plugins/hermes-bots/` (about 12 000
+   lines: `group-chat.ts`, `group-rounds.ts`, `group-turns.ts`, `relay.ts`,
+   `group-round-prompt.ts`, `group-membership.ts`):
+   - A room lives in the DESKTOP: its log and its state are in the desktop's
+     plugin storage. The desktop runs each round itself: it gives a message
+     to each member in a hidden session of that bot and collects the answers.
+     The host has no "post to a room" call.
+   - A bounded copy rides on the main profile: `ui_meta['hermes-bots-groups']`
+     = `{version: 3, rooms: {key: {name, roomId, members: [{name, handle}],
+     log: [{id, from: {kind: 'user' | 'member', name}, text, at}], omitted,
+     revision}}, deleted}` (the newest messages, 48 KB at most).
+   - Built: the Bots tab lists the rooms; `src/app/room.tsx` shows the copy
+     (members by their names, also former names of a profile; the bot's
+     picture on each message). Rooms are NOT kept on the phone's disk.
+   - NOT built: a message from the phone into a room. Two ways, for the
+     owner to choose: (1) the phone runs a simple round (each member gets the
+     message through a hidden session of its profile, the answers are added
+     to the log, the copy is written back with its revision), which is a new
+     engine and must not fight a desktop that has the room open; (2) a small
+     host plugin that runs the round, so the phone and the desktop only read
+     and post. Way 2 is cleaner. ASK the owner.
+   - Also not built: make, rename or close a room, add or remove a member,
+     the "needs you" badge of a room, a member's question inside a room.
 9. **Cron**: DONE (`core/cron.ts`, `store/cron.ts`, `src/app/cron.tsx`;
    opened from the clock button of the Bots tab and from Settings). Checked
    in the Simulator on the owner's 5 jobs; create, resume, pause and delete
