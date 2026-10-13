@@ -1,4 +1,4 @@
-import { boardColumns, boardRows, cardDetail, columnName, firstColumn } from '../kanban'
+import { boardColumns, boardRows, cardDetail, cardFault, columnName, firstColumn, moveChoices, moveQuestion } from '../kanban'
 
 describe('boards and columns', () => {
   it('lists the boards that are not archived', () => {
@@ -44,5 +44,24 @@ describe('cardDetail', () => {
       comments: [{ id: '3', author: 'qa', body: 'Stuck', at: 50 }]
     })
     expect(cardDetail({})).toBeNull()
+  })
+})
+
+describe('moving a card', () => {
+  it('does not offer the column that only a bot can put a card in', () => {
+    expect(moveChoices(['todo', 'ready', 'running', 'done'], 'todo')).toEqual(['todo', 'ready', 'done'])
+    expect(moveChoices(['ready', 'running'], 'running')).toEqual(['ready', 'running'])
+  })
+
+  it('asks what the host needs for the column', () => {
+    expect(moveQuestion('done')).toMatchObject({ field: 'summary', required: true })
+    expect(moveQuestion('blocked')).toMatchObject({ field: 'block_reason', required: false })
+    expect(moveQuestion('ready')).toBeNull()
+  })
+
+  it('says a refusal of the host in plain words', () => {
+    expect(cardFault('completion blocked: t_1 has no result or summary evidence')).toBe('The host closes a card only with a line about what was done.')
+    expect(cardFault("Cannot set status to 'running' directly; use the dispatcher/claim path")).toMatch(/Only a bot/)
+    expect(cardFault('Something new')).toBe('Something new')
   })
 })

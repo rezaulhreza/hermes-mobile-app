@@ -10,7 +10,7 @@ import { Markdown } from '@/components/markdown'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
-import { type Card, type CardDetail, columnName, firstColumn } from '@/core/kanban'
+import { type Card, type CardDetail, cardFault, columnName, firstColumn, moveChoices, moveDetail, moveQuestion } from '@/core/kanban'
 import { $bots } from '@/store/bots'
 import { $boards, $boardSlug, $columns, clearKanban, commentCard, createCard, deleteCard, loadBoard, loadBoards, loadCard, showBoard, updateCard } from '@/store/kanban'
 import { $linkState } from '@/store/link'
@@ -153,6 +153,10 @@ function CardSheet({ id, columns, bots, byName, onClose }: { id: string; columns
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  // The column the user chose, while the host's question for it waits for an answer.
+  const [moving, setMoving] = useState<string | null>(null)
+  const [answer, setAnswer] = useState('')
+  const question = moving ? moveQuestion(moving) : null
 
   const read = () => loadCard(id).then(setCard, error => setFault(faultWords(error)))
 
@@ -167,8 +171,16 @@ function CardSheet({ id, columns, bots, byName, onClose }: { id: string; columns
     setFault(null)
     work()
       .then(read)
-      .catch(error => setFault(faultWords(error)))
+      .catch(error => setFault(cardFault(faultWords(error))))
       .finally(() => setBusy(null))
+  }
+
+  const move = (key: string, said = '') => {
+    const asks = moveQuestion(key)
+
+    setMoving(null)
+    setAnswer('')
+    run('column', () => updateCard(id, { status: key, ...(asks && said.trim() ? { [asks.field]: said.trim() } : {}) }))
   }
 
   return (
@@ -182,6 +194,15 @@ function CardSheet({ id, columns, bots, byName, onClose }: { id: string; columns
         <>
           <ChoiceRow disabled={Boolean(busy)} icon="columns" label="Column" onPress={() => setChoosing('column')} value={columnName(card.status)} />
           <ChoiceRow disabled={Boolean(busy)} icon="user" label="Who has it" onPress={() => setChoosing('bot')} value={byName.get(card.assignee)?.title ?? (card.assignee || 'Nobody')} />
+          {moving && question ? (
+            <View style={[styles.confirm, { backgroundColor: t.soft }]}>
+              <Field label={question.label} multiline onChangeText={setAnswer} placeholder={question.placeholder} style={styles.commentField} value={answer} />
+              <View style={styles.line}>
+                <Button label="Leave it" onPress={() => (setMoving(null), setAnswer(''))} style={styles.fill} />
+                <Button disabled={question.required && !answer.trim()} label={`Move to ${columnName(moving)}`} onPress={() => move(moving, answer)} style={styles.fill} tone="primary" />
+              </View>
+            </View>
+          ) : null}
           {card.note ? <Text style={[type.small, styles.note, { color: t.ink, backgroundColor: card.status === 'blocked' ? t.redBg : t.soft }]}>{card.note}</Text> : null}
           {card.body ? <Markdown text={card.body} /> : <Text style={[type.small, { color: t.muted }]}>This card has no text.</Text>}
 
@@ -216,10 +237,10 @@ function CardSheet({ id, columns, bots, byName, onClose }: { id: string; columns
 
           {choosing === 'column' ? (
             <ChoiceSheet
-              choices={columns.map(key => ({ id: key, label: columnName(key) }))}
+              choices={moveChoices(columns, card.status).map(key => ({ id: key, label: columnName(key), detail: moveDetail(key) }))}
               current={card.status}
               onClose={() => setChoosing(null)}
-              onPick={key => (setChoosing(null), key !== card.status && run('column', () => updateCard(id, { status: key })))}
+              onPick={key => (setChoosing(null), key !== card.status && (moveQuestion(key) ? setMoving(key) : move(key)))}
               title="Column"
             />
           ) : null}

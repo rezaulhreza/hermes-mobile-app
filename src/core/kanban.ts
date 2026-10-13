@@ -131,3 +131,50 @@ export function cardDetail(result: unknown): CardDetail | null {
     )
   }
 }
+
+/** The columns a person can put a card in. Only the host puts a card in work, when a bot takes it. */
+export function moveChoices(columns: readonly string[], current: string): string[] {
+  return columns.filter(key => key !== 'running' || key === current)
+}
+
+/** What a move does, said under the name of the column. Empty: the name says it. */
+export function moveDetail(key: string): string {
+  return key === 'ready' ? 'The bot that has the card starts on it' : key === 'done' ? 'Asks what was done' : key === 'blocked' ? 'Asks what it waits for' : ''
+}
+
+export interface MoveQuestion {
+  /** The field of the host that takes the answer. */
+  field: 'summary' | 'block_reason'
+  label: string
+  placeholder: string
+  /** The host refuses the move without an answer. */
+  required: boolean
+}
+
+/** What the host wants to know before a card goes to this column. Null: nothing. */
+export function moveQuestion(key: string): MoveQuestion | null {
+  if (key === 'done') {
+    return { field: 'summary', label: 'What was done', placeholder: 'A line for the record of the card', required: true }
+  }
+
+  return key === 'blocked' ? { field: 'block_reason', label: 'What it waits for', placeholder: 'A person, a key, another card', required: false } : null
+}
+
+/** The host's refusal of a change, in words for a person. Words the app does not know stay as they are. */
+export function cardFault(words: string): string {
+  if (/no result or summary evidence/i.test(words)) {
+    return 'The host closes a card only with a line about what was done.'
+  }
+
+  if (/running.*directly|dispatcher\/claim/i.test(words)) {
+    return 'Only a bot puts a card in work. Move it to Ready and the bot takes it.'
+  }
+
+  if (/not valid from current state/i.test(words)) {
+    return 'The host does not allow this move from the column the card is in.'
+  }
+
+  const waits = /(?:blocked by|open parent)[^:]*:\s*(.+)$/i.exec(words)
+
+  return waits ? `This card waits for another card: ${waits[1]}` : words
+}

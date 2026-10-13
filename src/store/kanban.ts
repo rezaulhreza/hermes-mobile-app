@@ -51,8 +51,8 @@ export async function loadCard(id: string): Promise<CardDetail | null> {
   return cardDetail(await api().request({ path: `${ROUTE}/tasks/${encodeURIComponent(id)}${on($boardSlug.get())}` }))
 }
 
-/** Change a card: its column, who has it, its title or its text. */
-export async function updateCard(id: string, change: { status?: string; assignee?: string; title?: string; body?: string }): Promise<void> {
+/** Change a card: its column (with the line the host wants for it), who has it, its title or its text. */
+export async function updateCard(id: string, change: { status?: string; assignee?: string; title?: string; body?: string; summary?: string; block_reason?: string }): Promise<void> {
   await api().request({ path: `${ROUTE}/tasks/${encodeURIComponent(id)}${on($boardSlug.get())}`, method: 'PATCH', body: change, timeoutMs: 60_000 })
   await loadBoard()
 }
