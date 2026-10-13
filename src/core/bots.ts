@@ -7,6 +7,9 @@
 
 import type { ProfileRow } from './gateway/gateway-contract.generated'
 
+/** The title the host gives the one long conversation of a bot. It is plumbing: a person sees the bot's name. */
+export const BOT_CHAT_TITLE = 'Bot Chat'
+
 export interface Bot {
   /** The name of the profile on the host: the id in every call. */
   name: string

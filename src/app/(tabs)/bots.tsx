@@ -1,17 +1,17 @@
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { BotAvatar as Avatar, BotSheet, SheetFrame } from '@/components/bot-sheet'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Bot, botInitials, botNameProblem, botSlug, filterBots } from '@/core/bots'
+import { type Bot, botNameProblem, filterBots } from '@/core/bots'
 import { relativeTime } from '@/core/format'
-import { modelLabel } from '@/core/models'
-import { $botAvatars, $bots, createBot, deleteBot, describeBot, loadBots, loadBotSoul, renameBot, saveBotSoul } from '@/store/bots'
+import { $bots, createBot, loadBots } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
-import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
+import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
@@ -141,125 +141,6 @@ export default function Bots() {
       {open ? <BotSheet bot={open} onClose={() => setDetail(null)} onTalk={() => void talk(open)} /> : null}
       {adding && bots ? <NewBotSheet bots={bots} onClose={() => setAdding(false)} /> : null}
     </SafeAreaView>
-  )
-}
-
-function Avatar({ bot, size, t }: { bot: Bot; size: number; t: Palette }) {
-  const picture = useStore($botAvatars)[bot.name]
-  const shape = { width: size, height: size, borderRadius: size / 2 }
-
-  return picture ? (
-    <Image accessibilityIgnoresInvertColors source={{ uri: picture }} style={shape} />
-  ) : (
-    <View style={[shape, styles.initials, { backgroundColor: bot.isDefault ? t.accentBg : t.soft }]}>
-      <Text style={[type.label, { color: bot.isDefault ? t.accent : t.muted }]}>{botInitials(bot.title)}</Text>
-    </View>
-  )
-}
-
-function SheetFrame({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const t = useTheme()
-  const insets = useSafeAreaInsets()
-
-  return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible>
-      <View style={[styles.fill, { backgroundColor: t.bg }]}>
-        <View style={[styles.sheetHead, { borderBottomColor: t.line }]}>
-          <Text numberOfLines={1} style={[type.heading, styles.fill, { color: t.ink }]}>
-            {title}
-          </Text>
-          <IconButton icon="x" label="Close" onPress={onClose} />
-        </View>
-        <ScrollView contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
-      </View>
-    </Modal>
-  )
-}
-
-/** What a bot is: its role, its own instructions, its name. Each part saves by itself. */
-function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => void; onTalk: () => void }) {
-  const t = useTheme()
-  const [description, setDescription] = useState(bot.description)
-  const [soul, setSoul] = useState<string | null>(null)
-  const [savedSoul, setSavedSoul] = useState('')
-  const [name, setName] = useState(bot.name)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  useEffect(() => {
-    loadBotSoul(bot.name).then(text => {
-      setSoul(text)
-      setSavedSoul(text)
-    }, () => setSoul(''))
-  }, [bot.name])
-
-  const run = (what: string, work: () => Promise<unknown>) => {
-    setBusy(what)
-    work()
-      .catch(say)
-      .finally(() => setBusy(null))
-  }
-
-  const remove = () =>
-    Alert.alert(`Delete ${bot.title}?`, 'Hermes deletes this bot with its conversations, its memory and its skills. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => run('delete', () => deleteBot(bot.name).then(onClose)) }
-    ])
-
-  return (
-    <SheetFrame onClose={onClose} title={bot.title}>
-      <View style={styles.who}>
-        <Avatar bot={bot} size={64} t={t} />
-        <View style={styles.fill}>
-          <Text style={[type.small, { color: t.muted }]}>
-            {[bot.isDefault ? 'The main bot' : bot.name, bot.model ? modelLabel(bot.model) : '', `${bot.skillCount} skills`].filter(Boolean).join(' · ')}
-          </Text>
-          <Button
-            icon="message-circle"
-            label="Talk to this bot"
-            onPress={() => {
-              onClose()
-              onTalk()
-            }}
-            style={styles.talk}
-            tone="primary"
-          />
-        </View>
-      </View>
-
-      <Field label="Role" multiline onChangeText={setDescription} placeholder="What this bot is for, in a sentence" style={styles.role} value={description} />
-      <Button busy={busy === 'role'} disabled={description.trim() === bot.description} label="Save the role" onPress={() => run('role', () => describeBot(bot.name, description))} />
-
-      <Field
-        editable={soul !== null}
-        label="Its own instructions (SOUL.md)"
-        multiline
-        onChangeText={setSoul}
-        placeholder={soul === null ? 'Reading…' : 'How this bot thinks and talks'}
-        style={styles.soul}
-        value={soul ?? ''}
-      />
-      <Button
-        busy={busy === 'soul'}
-        disabled={soul === null || soul === savedSoul}
-        label="Save the instructions"
-        onPress={() => run('soul', () => saveBotSoul(bot.name, soul ?? '').then(() => setSavedSoul(soul ?? '')))}
-      />
-
-      {bot.isDefault ? null : (
-        <>
-          <Field label="Name on the host" onChangeText={setName} value={name} />
-          <Button
-            busy={busy === 'name'}
-            disabled={botSlug(name) === bot.name || !botSlug(name)}
-            label={`Rename to ${botSlug(name) || '…'}`}
-            onPress={() => run('name', () => renameBot(bot.name, name).then(onClose))}
-          />
-          <Button busy={busy === 'delete'} icon="trash-2" label="Delete this bot" onPress={remove} tone="danger" />
-        </>
-      )}
-    </SheetFrame>
   )
 }
 

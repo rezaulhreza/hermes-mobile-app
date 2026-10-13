@@ -23,6 +23,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
+import { BotAvatar, BotSheet } from '@/components/bot-sheet'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
@@ -37,6 +38,7 @@ import { WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
+import { BOT_CHAT_TITLE } from '@/core/bots'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
 import { answerFiles } from '@/core/host-files'
@@ -60,6 +62,7 @@ import {
   type SendMode,
   stopTurn
 } from '@/store/chat'
+import { $bots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { hostFilesThatExist } from '@/store/preview'
 import { $linkState } from '@/store/link'
@@ -195,6 +198,11 @@ export default function Chat() {
   const holdsScreen = useStore($screenHold) !== null
   const [watching, setWatching] = useState(false)
   const [workOpen, setWorkOpen] = useState(false)
+  // The bot this chat belongs to, when it is a chat of a bot.
+  const bot = useStore($bots)?.find(known => known.name === params.profile && !known.isDefault)
+  const [botOpen, setBotOpen] = useState(false)
+  // The one long conversation of the bot. The host finds it by its title, so the phone must not rename or remove it.
+  const botChat = bot && (!conversation?.title || conversation.title === BOT_CHAT_TITLE) ? bot : null
   // The strip is for what happens now: the agent works on the screen, or the user holds it. The user can put
   // it away; the chat's menu opens the view at any time. New screen work shows the strip again.
   const [hiddenAt, setHiddenAt] = useState<number | null>(null)
@@ -318,8 +326,10 @@ export default function Chat() {
           style={styles.fill}
         >
           <View style={styles.titleRow}>
+            {/* The chat of a bot: its picture and its name, not the name of its chat. */}
+            {bot ? <BotAvatar bot={bot} size={30} t={t} /> : null}
             <Text numberOfLines={1} style={[type.label, styles.pillText, { color: t.ink }]}>
-              {conversation?.title || params.title || 'New chat'}
+              {botChat ? botChat.title : conversation?.title || params.title || 'New chat'}
             </Text>
             {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
           </View>
@@ -540,9 +550,14 @@ export default function Chat() {
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
+      {bot && botOpen ? <BotSheet bot={bot} onClose={() => setBotOpen(false)} /> : null}
       {sessionId && workOpen ? <WorkSheet onClose={() => setWorkOpen(false)} sessionId={sessionId} storedId={conversation?.storedId} /> : null}
       <SessionActionsSheet
+            // The long conversation of a bot can be exported and branched. It cannot be renamed, archived or deleted from here.
+            only={botChat ? ['branch', 'export-text', 'export'] : undefined}
+            shownTitle={botChat?.title}
             extra={[
+              ...(bot ? [{ icon: 'user' as const, label: `Profile and settings of ${bot.title}`, onPress: () => setBotOpen(true) }] : []),
               { icon: 'list', label: 'Plan and helpers', onPress: () => setWorkOpen(true) },
               { icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }
             ]}

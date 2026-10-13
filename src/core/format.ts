@@ -96,3 +96,22 @@ export function statusWords(text: string): string {
 
   return `${words[0]!.toUpperCase()}${words.slice(1)}${dots}`
 }
+
+/**
+ * What went wrong, in the words of the host and nothing else: a refused
+ * request arrives as `400: {"detail":"..."}`, and a person needs only the
+ * sentence. Text that is no such answer comes back as it is.
+ */
+export function faultWords(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const body = text.replace(/^(HttpError: )?\d{3}: /, '')
+
+  try {
+    const detail = (JSON.parse(body) as { detail?: unknown; message?: unknown }) ?? {}
+    const words = typeof detail.detail === 'string' ? detail.detail : typeof detail.message === 'string' ? detail.message : ''
+
+    return words || body
+  } catch {
+    return body
+  }
+}

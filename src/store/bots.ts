@@ -1,5 +1,7 @@
 /** The bots (profiles) of the active workspace. */
 
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
+import * as ImagePicker from 'expo-image-picker'
 import { atom, map } from 'nanostores'
 
 import { type Bot, botRows, botSlug } from '@/core/bots'
@@ -111,6 +113,42 @@ export async function renameBot(name: string, typedName: string): Promise<void> 
 
 export async function describeBot(name: string, description: string): Promise<void> {
   await api().request({ path: `/api/profiles/${encodeURIComponent(name)}/description`, method: 'PUT', body: { description: description.trim() } })
+  await loadBots()
+}
+
+/** The model this bot thinks with. The other bots and the host keep theirs. */
+export async function setBotModel(name: string, provider: string, model: string): Promise<void> {
+  await api().request({ path: `/api/profiles/${encodeURIComponent(name)}/model`, method: 'PUT', body: { provider, model }, timeoutMs: 60_000 })
+  await loadBots()
+}
+
+const PICTURE_SIDE = 256
+
+/** Choose a photo of the phone as the picture of a bot. Resolves with no change when the user chooses nothing. */
+export async function chooseBotPicture(name: string): Promise<void> {
+  const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1 })
+  const asset = picked.canceled ? null : picked.assets[0]
+
+  if (!asset) {
+    return
+  }
+
+  // A picture of a list row: small on the host and on every phone that reads it.
+  const small = await (await ImageManipulator.manipulate(asset.uri).resize({ width: PICTURE_SIDE, height: PICTURE_SIDE }).renderAsync()).saveAsync({
+    format: SaveFormat.JPEG,
+    compress: 0.85,
+    base64: true
+  })
+
+  if (!small.base64) {
+    throw new Error('The phone could not read this picture.')
+  }
+
+  const data = `data:image/jpeg;base64,${small.base64}`
+
+  await rpc('profiles.set_asset', { name, asset: 'avatar', data }, 60_000)
+  $botAvatars.setKey(name, data)
+  writeCached('avatars', $botAvatars.get())
   await loadBots()
 }
 

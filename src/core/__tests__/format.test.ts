@@ -52,3 +52,16 @@ describe('statusWords', () => {
     expect(statusWords(' \u25C9_\u25C9 ')).toBe('\u25C9_\u25C9')
   })
 })
+
+describe('faultWords', () => {
+  const { faultWords } = jest.requireActual('../format') as typeof import('../format')
+
+  it('gives the sentence of a refused request', () => {
+    expect(faultWords(new Error('400: {"detail":"This provider is not connected."}'))).toBe('This provider is not connected.')
+  })
+
+  it('leaves other text as it is', () => {
+    expect(faultWords(new Error('Not connected to a Hermes workspace.'))).toBe('Not connected to a Hermes workspace.')
+    expect(faultWords('502: Bad Gateway')).toBe('Bad Gateway')
+  })
+})

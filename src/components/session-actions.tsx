@@ -3,7 +3,7 @@ import { type ComponentProps, useState } from 'react'
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { type SessionAction, sessionActions, type SessionRow, sessionTitle } from '@/core/sessions'
+import { type SessionAction, type SessionActionId, sessionActions, type SessionRow, sessionTitle } from '@/core/sessions'
 import { $selectedSessions, branchSession, deleteSession, exportSession, exportSessionText, updateSession } from '@/store/sessions'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -23,6 +23,10 @@ interface Props {
   /** Actions of the screen that opened the sheet, above the actions of the conversation. The sheet closes first. */
   /** The sheet opened from the list: the user can mark more rows from there. */
   canSelect?: boolean
+  /** Show only these actions of the conversation. */
+  only?: readonly SessionActionId[]
+  /** The words over the list, in the place of the title of the conversation. */
+  shownTitle?: string
   extra?: readonly { icon: ComponentProps<typeof Feather>['name']; label: string; onPress: () => void }[]
 }
 
@@ -31,16 +35,16 @@ interface Props {
  * row of the list and from the title of an open conversation, so the actions
  * are the same in both places.
  */
-export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved, extra, canSelect }: Props) {
+export function SessionActionsSheet({ row, onClose, onBranched, onRenamed, onRemoved, extra, canSelect, only, shownTitle }: Props) {
   if (!row) {
     return null
   }
 
   // A new conversation is a new sheet: no text or question from the last one stays.
-  return <Sheet canSelect={canSelect} extra={extra} key={row.id} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
+  return <Sheet canSelect={canSelect} extra={extra} key={row.id} only={only} shownTitle={shownTitle} onBranched={onBranched} onClose={onClose} onRemoved={onRemoved} onRenamed={onRenamed} row={row} />
 }
 
-function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [], canSelect }: Props & { row: SessionRow }) {
+function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [], canSelect, only, shownTitle }: Props & { row: SessionRow }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [step, setStep] = useState<'list' | 'rename' | 'delete'>('list')
@@ -125,7 +129,7 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [], can
         <View style={[styles.sheet, { backgroundColor: t.bg, paddingBottom: Math.max(insets.bottom, space.lg) }]}>
           <View style={[styles.grabber, { backgroundColor: t.line }]} />
           <Text numberOfLines={2} style={[type.label, styles.title, { color: t.ink }]}>
-            {sessionTitle(row)}
+            {shownTitle ?? sessionTitle(row)}
           </Text>
 
           {problem ? <Text style={[type.small, styles.problem, { color: t.red, backgroundColor: t.redBg }]}>{problem}</Text> : null}
@@ -174,7 +178,7 @@ function Sheet({ row, onClose, onBranched, onRenamed, onRemoved, extra = [], can
                 <Text style={[type.body, styles.fill, { color: t.ink }]}>{action.label}</Text>
               </Pressable>
             ))}
-            {sessionActions(row).filter(action => action.id !== 'select' || canSelect).map(action => (
+            {sessionActions(row).filter(action => (action.id !== 'select' || canSelect) && (!only || only.includes(action.id))).map(action => (
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
