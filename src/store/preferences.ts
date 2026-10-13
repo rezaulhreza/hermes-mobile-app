@@ -18,6 +18,10 @@ export interface Preferences {
   roots: string[]
   /** Light, dark, or what the system says. */
   appearance: AppearanceChoice
+  /** The voice of a call on the Deepgram engine. Empty: the voice the host is set to. */
+  voice: string
+  /** A call plays through the loudspeaker. False: the earpiece, as a phone call. */
+  speaker: boolean
 }
 
 export type AppearanceChoice = 'system' | 'light' | 'dark'
@@ -28,7 +32,7 @@ function applyAppearance(choice: AppearanceChoice): void {
 }
 
 const STORAGE_KEY = 'hermes.preferences'
-const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [], appearance: 'system' }
+const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [], appearance: 'system', voice: '', speaker: true }
 const ENGINES: readonly string[] = ['auto', 'deepgram', 'relay', 'gpt-live']
 
 export const $preferences = atom<Preferences>(DEFAULTS)
@@ -41,7 +45,9 @@ export async function loadPreferences(): Promise<void> {
       engine: ENGINES.includes(String(stored.engine)) ? (stored.engine as Preferences['engine']) : DEFAULTS.engine,
       wake: stored.wake === true,
       roots: Array.isArray(stored.roots) ? stored.roots.filter((root): root is string => typeof root === 'string') : [],
-      appearance: stored.appearance === 'light' || stored.appearance === 'dark' ? stored.appearance : 'system'
+      appearance: stored.appearance === 'light' || stored.appearance === 'dark' ? stored.appearance : 'system',
+      voice: typeof stored.voice === 'string' ? stored.voice : '',
+      speaker: stored.speaker !== false
     })
     applyAppearance($preferences.get().appearance)
   } catch {

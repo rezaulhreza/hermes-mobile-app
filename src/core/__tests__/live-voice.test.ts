@@ -181,3 +181,23 @@ describe('PCM helpers', () => {
     expect([...file.subarray(44)]).toEqual([1, 2, 3, 4])
   })
 })
+
+describe('the voice of a call', () => {
+  const { DEEPGRAM_VOICES, voiceName, withVoice, speakUrl } = jest.requireActual('../live-voice') as typeof import('../live-voice')
+  const settings = { available: true, voice: 'aura-2-thalia-en', listen_model: 'flux-general-en', eot_threshold: 0.7, eot_timeout_ms: 3000, speed: 1, keyterms: [], mip_opt_out: true }
+
+  it('names a voice for a person', () => {
+    expect(voiceName('aura-2-thalia-en')).toBe('Thalia')
+    expect(voiceName('aura-2-cordelia-en')).toBe('Cordelia')
+    expect(voiceName('aura-asteria-en')).toBe('Asteria')
+  })
+
+  it('has no voice twice', () => {
+    expect(new Set(DEEPGRAM_VOICES.map(voice => voice.id)).size).toBe(DEEPGRAM_VOICES.length)
+  })
+
+  it('takes the voice of the phone in the place of the voice of the host', () => {
+    expect(speakUrl(withVoice(settings, 'aura-2-orion-en'))).toContain('model=aura-2-orion-en')
+    expect(withVoice(settings, '')).toBe(settings)
+  })
+})

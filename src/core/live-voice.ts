@@ -23,6 +23,46 @@ export interface DeepgramSettings {
   mip_opt_out: boolean
 }
 
+/** A voice of the Deepgram speech model that a call can use. */
+export interface VoiceChoice {
+  id: string
+  name: string
+  /** How it sounds, in two or three words. */
+  tone: string
+}
+
+/** Voices of Deepgram's second Aura family, English. The id is the model name the speak socket takes. */
+export const DEEPGRAM_VOICES: readonly VoiceChoice[] = [
+  { id: 'aura-2-thalia-en', name: 'Thalia', tone: 'Clear and bright' },
+  { id: 'aura-2-andromeda-en', name: 'Andromeda', tone: 'Easy and warm' },
+  { id: 'aura-2-helena-en', name: 'Helena', tone: 'Friendly and calm' },
+  { id: 'aura-2-luna-en', name: 'Luna', tone: 'Young and light' },
+  { id: 'aura-2-athena-en', name: 'Athena', tone: 'Calm and smooth' },
+  { id: 'aura-2-apollo-en', name: 'Apollo', tone: 'Sure and easy' },
+  { id: 'aura-2-arcas-en', name: 'Arcas', tone: 'Natural and smooth' },
+  { id: 'aura-2-aries-en', name: 'Aries', tone: 'Warm and lively' },
+  { id: 'aura-2-orion-en', name: 'Orion', tone: 'Calm and polite' },
+  { id: 'aura-2-zeus-en', name: 'Zeus', tone: 'Deep and steady' }
+]
+
+/** The name of a voice for a person: "Thalia" for `aura-2-thalia-en`. A voice the list does not have shows its own middle word. */
+export function voiceName(id: string): string {
+  const known = DEEPGRAM_VOICES.find(voice => voice.id === id)
+
+  if (known) {
+    return known.name
+  }
+
+  const word = id.replace(/^aura(-\d+)?-/, '').replace(/-[a-z]{2}$/, '')
+
+  return word ? word.charAt(0).toUpperCase() + word.slice(1) : 'The voice of the host'
+}
+
+/** The settings of a call, with the voice this phone chose in the place of the host's. */
+export function withVoice(settings: DeepgramSettings, chosen: string): DeepgramSettings {
+  return chosen ? { ...settings, voice: chosen } : settings
+}
+
 export const INPUT_SAMPLE_RATE = 16_000
 export const OUTPUT_SAMPLE_RATE = 24_000
 /** The listening model is tuned for frames of this length. */

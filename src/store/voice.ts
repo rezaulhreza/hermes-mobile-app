@@ -31,7 +31,8 @@ import {
   spokenVerdict,
   TOOL_LINE_QUIET_MS,
   toolLine,
-  type UserTurn
+  type UserTurn,
+  withVoice
 } from '@/core/live-voice'
 import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
 import { requestSummary } from '@/core/requests'
@@ -40,7 +41,7 @@ import { duplexAudio } from '@/native/duplex-audio'
 
 import { $conversations, sendDraft, stopTurn } from './chat'
 import { currentApi, onGatewayEvent } from './link'
-import { $preferences } from './preferences'
+import { $preferences, setPreference } from './preferences'
 import { $requests, answerRequest } from './requests'
 import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
 import { type EngineEvents, type EngineName, trace, type VoiceEngine } from './voice-engine'
@@ -89,6 +90,8 @@ export const $callSession = computed($call, call => call?.sessionId ?? null)
 
 const LEVEL_EVERY_MS = 80
 let levelShownAt = 0
+/** The voice of the agent plays now. The level on screen is then the level of that voice. */
+let voicePlays = false
 
 function showLevel(level: number): void {
   const now = Date.now()
@@ -128,6 +131,11 @@ interface Host {
 }
 
 let host: Host | null = null
+
+/** The voice the host is set to for the Deepgram engine. Null before the engines were asked for, or with no such engine. */
+export function hostVoice(): string | null {
+  return host?.deepgram?.voice ?? null
+}
 
 /** Ask the host which engines it has. The answer is kept for the link. */
 export async function loadEngines(): Promise<EngineChoice[]> {
@@ -540,7 +548,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     const events = engineEvents(sessionId, mine)
     const next: VoiceEngine =
       name === 'deepgram' && host?.deepgram
-        ? new DeepgramEngine(api, host.deepgram, events)
+        ? new DeepgramEngine(api, withVoice(host.deepgram, $preferences.get().voice), events)
         : name === 'gpt-live'
           ? new GptLiveEngine(api, () => liveHistory(spokenTurns(sessionId)), events)
           : new RelayEngine(api, host?.liveStt ?? false, events)
@@ -549,7 +557,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     $callEnded.set(null)
 
     if (!next.ownsAudio) {
-      await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_WITH_ECHO_CANCELLING, speaker: true })
+      await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: MIC_GAIN_WITH_ECHO_CANCELLING, speaker: $preferences.get().speaker })
     }
 
     if (!alive()) {
@@ -577,14 +585,20 @@ export async function startCall(sessionId: string, options: { greeting?: string 
         }
 
         next.frame(fed ?? pcmBytes(frame.data), level)
-        showLevel(level)
+
+        if (!voicePlays) {
+          showLevel(level)
+        }
       }),
       audio.addListener('onPlayback', state => {
         if (alive()) {
           trace(`sound ${state.playing}`)
+          voicePlays = state.playing
           next.playback(state.playing)
         }
       }),
+      // While Hermes speaks the bars show its voice, not the quiet microphone.
+      audio.addListener('onOutputLevel', state => alive() && voicePlays && showLevel(state.level)),
       audio.addListener('onInterruption', state => alive() && state.reason === 'failed' && patch({ error: state.message ?? 'The audio stopped.' }))
     ]
     await next.start()
@@ -636,6 +650,7 @@ export function endCall(): void {
   injected = []
   announced.clear()
   $callLevel.set(0)
+  voicePlays = false
   $call.set(null)
 }
 
@@ -643,6 +658,12 @@ export function setCallMuted(muted: boolean): void {
   duplexAudio?.setMuted(muted)
   engine?.setMuted?.(muted)
   patch({ muted, partial: '' })
+}
+
+/** Play the call through the loudspeaker, or through the earpiece as a phone call. The choice stays for the next call. */
+export function setCallSpeaker(speaker: boolean): void {
+  duplexAudio?.setSpeaker(speaker)
+  setPreference('speaker', speaker)
 }
 
 export function showCallFull(full: boolean): void {

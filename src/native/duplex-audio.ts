@@ -42,6 +42,8 @@ interface DuplexModule {
   setMuted(muted: boolean): void
   setSpeaker(speaker: boolean): void
   addListener(event: 'onFrame', listener: (frame: MicFrame) => void): EventSubscription
+  /** The level of the voice that plays, 0 to 1, about ten times a second while it plays. */
+  addListener(event: 'onOutputLevel', listener: (state: { level: number }) => void): EventSubscription
   addListener(event: 'onPlayback', listener: (state: { playing: boolean }) => void): EventSubscription
   addListener(event: 'onInterruption', listener: (state: { reason: 'began' | 'ended' | 'failed'; message?: string }) => void): EventSubscription
 }

@@ -23,7 +23,7 @@ import { duplexAudio } from '@/native/duplex-audio'
 import { voiceTrace } from '@/store/voice-engine'
 import { GptLiveEngine } from '@/store/voice-gpt-live'
 import { pcmBytes } from '@/core/live-voice'
-import { $call, $dictation, $engines, injectSpeech, setCallMuted } from '@/store/voice'
+import { $call, $callLevel, $dictation, $engines, injectSpeech, setCallMuted } from '@/store/voice'
 import { $preferences, setPreference } from '@/store/preferences'
 import { $wake, setWake } from '@/store/wake'
 import { $work } from '@/store/work'
@@ -234,7 +234,7 @@ const helpers = {
 
     return 'fed'
   },
-  stores: { $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $callLevel, $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),

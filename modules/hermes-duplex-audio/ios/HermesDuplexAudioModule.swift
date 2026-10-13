@@ -58,7 +58,7 @@ public final class HermesDuplexAudioModule: Module {
   public func definition() -> ModuleDefinition {
     Name("HermesDuplexAudio")
 
-    Events("onFrame", "onPlayback", "onInterruption")
+    Events("onFrame", "onPlayback", "onInterruption", "onOutputLevel")
 
     AsyncFunction("start") { (options: DuplexOptions) -> [String: Any] in
       try self.start(options)
@@ -195,6 +195,7 @@ public final class HermesDuplexAudioModule: Module {
 
     self.engine = engine
     self.player = player
+    watchOutput(player, format: format)
     self.playFormat = format
     self.converter = converter
     self.targetFormat = target
@@ -223,10 +224,37 @@ public final class HermesDuplexAudioModule: Module {
     convertFailures = 0
     self.engine = engine
     self.player = player
+    watchOutput(player, format: format)
     self.playFormat = format
     engine.prepare()
     try engine.start()
     player.play()
+  }
+
+  /// The level of the voice that plays, about ten times a second, for the bars of the call view.
+  /// Nothing is sent while nothing plays.
+  private func watchOutput(_ player: AVAudioPlayerNode, format: AVAudioFormat) {
+    player.installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate * 0.1), format: format) { [weak self] buffer, _ in
+      guard let self, let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else {
+        return
+      }
+
+      self.lock.lock()
+      let audible = self.playing
+      self.lock.unlock()
+
+      guard audible else {
+        return
+      }
+
+      var sum: Float = 0
+
+      for index in 0..<Int(buffer.frameLength) {
+        sum += samples[index] * samples[index]
+      }
+
+      self.sendEvent("onOutputLevel", ["level": min(1, (sum / Float(buffer.frameLength)).squareRoot() * 6)])
+    }
   }
 
   private func tearDownEngine() {
@@ -239,6 +267,7 @@ public final class HermesDuplexAudioModule: Module {
       engine?.inputNode.removeTap(onBus: 0)
     }
 
+    player?.removeTap(onBus: 0)
     player?.stop()
     engine?.stop()
     engine = nil

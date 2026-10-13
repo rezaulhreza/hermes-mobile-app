@@ -8,7 +8,8 @@ import { requestSummary } from '@/core/requests'
 import type { TranscriptItem } from '@/core/transcript'
 import { callTimer, type CallPhase, PHASE_HEADING, PHASE_HINT } from '@/core/voice'
 import { $requests } from '@/store/requests'
-import { $call, $callLevel, $engines, type Call, endCall, interruptCall, restartCall, setCallMuted, showCallFull } from '@/store/voice'
+import { $preferences } from '@/store/preferences'
+import { $call, $callLevel, $engines, type Call, endCall, interruptCall, restartCall, setCallMuted, setCallSpeaker, showCallFull } from '@/store/voice'
 import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -99,6 +100,7 @@ export function VoiceCallScreen({ sessionId, title, items }: Props) {
 
 function FullCall({ call, title, items }: { call: Call; title: string; items: readonly TranscriptItem[] }) {
   const t = useTheme()
+  const speaker = useStore($preferences).speaker
   const insets = useSafeAreaInsets()
   const seconds = useSeconds(call.startedAt)
   const requests = useStore($requests).filter(request => request.sessionId === call.sessionId)
@@ -207,6 +209,11 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
 
         <View style={[styles.bar, { borderTopColor: t.line }]}>
           <IconButton icon={call.muted ? 'mic-off' : 'mic'} label={call.muted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!call.muted)} />
+          <IconButton
+            icon={speaker ? 'volume-2' : 'phone'}
+            label={speaker ? 'Loudspeaker is on. Use the earpiece' : 'Earpiece is on. Use the loudspeaker'}
+            onPress={() => setCallSpeaker(!speaker)}
+          />
           <IconButton icon="message-circle" label="Show the chat" onPress={hide} />
           <Pressable accessibilityLabel="End the call" accessibilityRole="button" onPress={endCall} style={[styles.end, { backgroundColor: t.redBg }]}>
             <Feather color={t.red} name="phone-off" size={22} />
