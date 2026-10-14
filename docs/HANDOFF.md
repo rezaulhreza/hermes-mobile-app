@@ -1209,8 +1209,25 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
     this work's own session logs), "Stop it" (nothing ran).
     Not built: the memory reset (`POST /api/memory/reset`, destructive), a
     download of the backup to the phone, hooks, checkpoints.
-15. **Tablet layout**: list + detail split at 768 pt and wider
-    (`useIsTablet`). Screens already cap their width at 760 pt.
+15. **Tablet layout**: BUILT, the mechanics checked, the LOOK NOT SEEN
+    (ninth session; `core/layout.ts`, `store/pane.ts`, `(tabs)/index.tsx`,
+    `chat/[id].tsx`). At 768 pt and wider the Chats tab is a split: the list
+    on the left (`listPaneWidth`: about a third, 320 to 420 pt), the open chat
+    on the right (`ChatScreen` with `embedded`: no back button; "leave" and
+    "open another chat" are the caller's work). `openChat` puts a chat in the
+    pane on a wide screen and pushes the route on a phone. The pane has a key
+    for each chat, so the screen of the chat before is taken down with its
+    call and its timers (`$conversations` held one chat after a switch). The
+    tab bar stays under the list while the Chats tab is open. The other
+    screens keep their 760 pt column.
+    WHY the look was not seen: no iPad simulator is installed and the rule
+    is one Simulator; the iPhone simulator does not rotate by a script
+    (synthetic input does not reach it). `h.wide(true)` forces the split on
+    the phone: it shows that the pane opens, swaps and closes, not how it
+    looks at 768 pt. FIRST THING on a real tablet or an iPad simulator: look
+    at the Chats tab in both orientations and at the tab bar under the list.
+    Not built: a split for Bots, Activity, Workspace and Settings; a pointer
+    or keyboard shortcut.
 16. **Android**: build, back gesture, permissions. Push needs FCM, which the
     backend does not have. Deferred.
 17. **Release**: take over the old app's bundle ID and configuration (see
