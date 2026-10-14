@@ -11,7 +11,7 @@ import { IconButton } from './ui'
 type IconName = ComponentProps<typeof Feather>['name']
 
 /** One setting as a row: what it is, what it is set to, and a tap that opens the list of choices. */
-export function ChoiceRow({ icon, label, value, onPress, disabled }: { icon: IconName; label: string; value: string; onPress: () => void; disabled?: boolean }) {
+export function ChoiceRow({ icon, lead, label, value, onPress, disabled }: { icon: IconName; /** A picture in place of the icon: the bot that is set. */ lead?: ReactNode; label: string; value: string; onPress: () => void; disabled?: boolean }) {
   const t = useTheme()
 
   return (
@@ -23,7 +23,7 @@ export function ChoiceRow({ icon, label, value, onPress, disabled }: { icon: Ico
       onPress={onPress}
       style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }, disabled && styles.dim]}
     >
-      <Feather color={t.muted} name={icon} size={20} />
+      {lead ?? <Feather color={t.muted} name={icon} size={20} />}
       <View style={styles.fill}>
         <Text style={[type.small, { color: t.muted }]}>{label}</Text>
         <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>

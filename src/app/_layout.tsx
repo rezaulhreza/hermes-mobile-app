@@ -112,6 +112,7 @@ export default function RootLayout() {
           <Stack.Screen name="room" />
           <Stack.Screen name="host" />
           <Stack.Screen name="kanban" />
+          <Stack.Screen name="capabilities" />
           <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>

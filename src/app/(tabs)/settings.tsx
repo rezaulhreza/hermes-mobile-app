@@ -115,6 +115,22 @@ export default function Settings() {
             <Feather color={t.muted} name="chevron-right" size={20} />
           </Pressable>
           <Pressable
+            accessibilityHint="What each bot can do: its skills, tools, MCP servers and plugins"
+            accessibilityLabel="Skills and tools"
+            accessibilityRole="button"
+            onPress={() => router.push('/capabilities')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="tool" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Skills and tools</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                What each bot can do, bot by bot
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+          <Pressable
             accessibilityHint="The models of small jobs, your own endpoints, and the kind of memory"
             accessibilityLabel="Helper models and memory"
             accessibilityRole="button"

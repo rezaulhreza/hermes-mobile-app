@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
+import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -177,6 +178,25 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
           sections={sections}
         />
       ) : null}
+      <Pressable
+        accessibilityHint="Opens the skills, tools, MCP servers and plugins of this bot"
+        accessibilityLabel="Skills and tools"
+        accessibilityRole="button"
+        onPress={() => {
+          onClose()
+          router.push({ pathname: '/capabilities', params: { profile: bot.name } })
+        }}
+        style={({ pressed }) => [styles.setting, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+      >
+        <Feather color={t.muted} name="tool" size={20} />
+        <View style={styles.fill}>
+          <Text style={[type.small, { color: t.muted }]}>Skills and tools</Text>
+          <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+            {bot.skillCount} skills on
+          </Text>
+        </View>
+        <Feather color={t.muted} name="chevron-right" size={18} />
+      </Pressable>
       <View style={styles.filing}>
         <Button
           busy={busy === 'pin'}
