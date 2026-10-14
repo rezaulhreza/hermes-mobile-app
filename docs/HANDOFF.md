@@ -1122,12 +1122,36 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
     Not built: links between cards, attachments, runs of a card
     (`/runs/{id}`, terminate, reclaim), a new board, the live update
     (`latest_event_id`; the screen has pull to refresh).
-12. **Capabilities**: skills, MCP servers, toolsets, plugins, connectors
-    (`connectors.*`). The owner (2026-10-09): Hermes configures all of
-    these PER PROFILE (each bot has its own). The screen must start from a
-    profile choice (the Profiles list of the Chats tab is the model), and
-    every call must send that `profile`. Check each route for its profile
-    parameter first.
+12. **Capabilities**: DONE, PER PROFILE (ninth session; `core/capabilities.ts`,
+    `store/capabilities.ts`, `src/app/capabilities.tsx`; Settings, "Skills and
+    tools", and the same row in a bot's sheet, which opens the screen on that
+    bot). The screen starts from a Bot row (the bot's picture, a list of the
+    bots), then a Show row (Skills, Tools, MCP servers, Plugins, each with
+    "N of M on"), a search field, and a virtual list with a switch a line.
+    Every call sends the profile: `GET /api/skills?profile=`,
+    `PUT /api/skills/toggle {name, enabled, profile}`,
+    `GET /api/tools/toolsets?profile=`, `PUT /api/tools/toolsets/{name}
+    {enabled, profile}`, `GET /api/mcp/servers?profile=`,
+    `PUT /api/mcp/servers/{name}/enabled {enabled, profile}`,
+    `plugins.manage {action: 'list' | 'toggle', key, enable, profile}`.
+    SEEN on a throwaway bot, light and dark: a skill, a group of tools and a
+    plugin switched off and on again; the host showed the change for that bot
+    and the main bot kept its values. Times: skills 0.5 to 0.9 s (147 rows,
+    25 KB), tools 0.3 s, MCP 0.1 s, plugins 0.8 s; a switch 150 ms. The lists
+    are dropped when the screen closes.
+    Rules built in: a row keeps its place when its switch moves; the sign-in
+    plugin of the host (`dashboard_auth/*`) cannot be switched off from the
+    phone; a group of tools the host cannot run is locked with the reason; a
+    description made of tool keys shows as a count; a plugin change that
+    needs a restart says so (`restart_required`).
+    DRIVER: `h.flip("<title>", true|false)` sets a switch, `h.switches()`
+    lists them.
+    NOT pressed: the switch of an MCP server (the throwaway bot has none, and
+    the owner's two servers were left alone).
+    Not built: connectors (`connectors.list {profile, owner: {type:
+    'account'}}` answers `available: false` on this host, so nothing can be
+    checked), add or remove an MCP server, install a skill or a plugin, the
+    text of a skill.
 13. **Settings**: DONE: the vault (`src/app/vault.tsx`), Voice
     (`src/app/voice.tsx`), providers and models (`src/app/providers.tsx`), API
     keys (`src/app/keys.tsx`); rules in `core/providers.ts`. Eighth session,
