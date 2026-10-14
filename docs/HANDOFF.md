@@ -1175,9 +1175,40 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
     preferences and applied with `Appearance.setColorScheme` (the value for
     "system" is `'unspecified'` in this React Native, not null). Every new
     screen must be checked in dark mode too (the owner asked for both).
-14. **Ops**: System (gateway status, logs, restart, update), Usage (tokens,
-    cost), Maintenance (doctor, audit, backup, debug share, curator, memory
-    reset), session import (`session.foreign.*`).
+14. **Ops**: DONE (ninth session; `core/ops.ts`, `store/ops.ts`,
+    `src/app/ops.tsx`; Settings, "The host"). One "Show" row opens six views,
+    each read when it is chosen, all rows of one virtual list:
+    - State: `GET /api/status`, `/api/system/stats`, `/api/hermes/update/check`
+      at the same time (0.5 s). "Start messaging again"
+      (`POST /api/gateway/restart`) and, only when the host says
+      `update_available` and `can_apply`, "Update Hermes"
+      (`POST /api/hermes/update`), each behind a question in the screen.
+    - Usage: `GET /api/analytics/usage?days=7|30|90` (0.3 to 2 s): totals, by
+      model, by day with a bar.
+    - Background work: `agents.list` (`processes: [{session_id, command,
+      status, uptime}]`), "Stop it" is `process.stop {session_id}`.
+    - Logs: `GET /api/logs?file=errors|agent|gateway&lines=200`, the newest
+      line first, each cut into time, level and words.
+    - Care: health check, security check, backup (`POST /api/ops/doctor`,
+      `/security-audit`, `/backup`; each starts a background action whose
+      output is `GET /api/actions/<name>/status?lines=` → `{running,
+      exit_code, lines}`, read every 1.5 s until it ends), report for support
+      (`POST /api/ops/debug-share`, an UPLOAD, behind a question), the skill
+      curator (`GET /api/curator`, `PUT /api/curator/paused {paused}`).
+    - Chats from other tools: `session.foreign.list` (Claude Code, Codex),
+      "Take it into Hermes" is `session.foreign.import {id}`.
+    SEEN, light and dark: State, Usage, the empty Background work, Logs, the
+    health check and the security check with their output (a check that ends
+    with a fault code "found things to look at"), the curator paused and
+    running again, the question before the upload and before the restart, the
+    list of chats of other tools. Memory after the screen: 485 MB; the lists
+    are dropped and the action timer stops when the screen closes.
+    NOT pressed, on purpose: the restart of messaging (it cuts the owner's
+    Telegram bot), the update, the backup (it writes an archive on the host),
+    the upload of the report, the import of a chat (the only chats listed are
+    this work's own session logs), "Stop it" (nothing ran).
+    Not built: the memory reset (`POST /api/memory/reset`, destructive), a
+    download of the backup to the phone, hooks, checkpoints.
 15. **Tablet layout**: list + detail split at 768 pt and wider
     (`useIsTablet`). Screens already cap their width at 760 pt.
 16. **Android**: build, back gesture, permissions. Push needs FCM, which the
