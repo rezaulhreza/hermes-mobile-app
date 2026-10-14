@@ -74,6 +74,10 @@ describe('the host in facts', () => {
     expect(curatorOf({}, now).line).toBe('It did not run yet')
   })
 
+  it('shows no wrapper tag of the other tool as a title', () => {
+    expect(foreignChats({ sessions: [{ id: 'y', label: 'Claude Code', title: '<pasted_content id="a1">', excerpt: '<pasted_content id="a1">\nFix the build\n</pasted_content>' }] })[0].title).toBe('Fix the build')
+  })
+
   it('reads the chats of other tools', () => {
     expect(foreignChats({ sessions: [{ id: 'x', source: 'claude', label: 'Claude Code', title: ' Fix  the bug ', turn_count: 4, mtime: 9 }, { source: 'codex' }] })).toEqual([{ id: 'x', tool: 'Claude Code', title: 'Fix the bug', turns: 4, at: 9 }])
   })

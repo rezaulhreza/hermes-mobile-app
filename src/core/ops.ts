@@ -273,8 +273,17 @@ export interface ForeignChat {
   at: number
 }
 
+/** The first words of a chat for a person: no wrapper tags of the tool that wrote it. */
+function chatTitle(words: string): string {
+  return words
+    .replace(/<[^>]{1,80}>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+}
+
 export function foreignChats(result: unknown): ForeignChat[] {
   return rows(record(result).sessions).flatMap(row =>
-    text(row.id) ? [{ id: text(row.id), tool: text(row.label) || text(row.source), title: (text(row.title) || text(row.excerpt) || 'A chat with no title').replace(/\s+/g, ' ').trim().slice(0, 120), turns: number(row.turn_count), at: number(row.mtime) }] : []
+    text(row.id) ? [{ id: text(row.id), tool: text(row.label) || text(row.source), title: chatTitle(text(row.title)) || chatTitle(text(row.excerpt)) || 'A chat with no title', turns: number(row.turn_count), at: number(row.mtime) }] : []
   )
 }
