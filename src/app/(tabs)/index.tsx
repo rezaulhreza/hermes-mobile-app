@@ -4,7 +4,7 @@ import { router } from 'expo-router'
 import { useMemo, useRef, useState } from 'react'
 // The plain swipeable, not the Reanimated one: with a hundred rows that one cost 2 MB a row.
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/components/channel-filter'
@@ -25,11 +25,13 @@ import {
   snippetParts,
   withMessageHits
 } from '@/core/sessions'
+import { listPaneWidth } from '@/core/layout'
 import { tap } from '@/native/haptics'
 import { $botAvatars, $bots } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
+import { $pane, closePane, openChat, useWide } from '@/store/pane'
 import { $requests } from '@/store/requests'
 import {
   $sessionHits,
@@ -56,6 +58,8 @@ import {
   updateSession
 } from '@/store/sessions'
 import { $activeWorkspace } from '@/store/workspaces'
+
+import { ChatScreen } from '../chat/[id]'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
@@ -102,6 +106,9 @@ export default function Chats() {
   }
 
   const view = useStore($sessionView)
+  const { width } = useWindowDimensions()
+  const wide = useWide()
+  const pane = useStore($pane)
   const source = useStore($sessionSource)
   const [acting, setActing] = useState<Row | null>(null)
 
@@ -131,7 +138,7 @@ export default function Chats() {
       const owner = shownBot && !shownBot.isDefault ? shownBot.name : undefined
       const { storedId } = await createConversation(owner, project?.path ?? undefined)
 
-      router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1', ...(owner ? { profile: owner } : {}) } })
+      openChat({ id: storedId, live: true, profile: owner })
     } finally {
       setStarting(false)
     }
@@ -222,7 +229,8 @@ export default function Chats() {
   const filtered = Boolean(query || activeSource)
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
+    <View style={[styles.split, { backgroundColor: t.bg }]}>
+    <SafeAreaView edges={wide ? ['top', 'left'] : ['top']} style={[wide ? { width: listPaneWidth(width) } : styles.fill, { backgroundColor: t.bg }]}>
       <SectionList
         ListEmptyComponent={
           linkState === 'open' && !loading ? (
@@ -290,11 +298,26 @@ export default function Chats() {
       ) : null}
       <SessionActionsSheet
         canSelect
-        onBranched={storedId => router.push({ pathname: '/chat/[id]', params: { id: storedId, ...(acting && rowProfile(acting) ? { profile: rowProfile(acting) } : {}) } })}
+        onBranched={storedId => openChat({ id: storedId, profile: (acting && rowProfile(acting)) || undefined })}
         onClose={() => setActing(null)}
         row={acting}
       />
     </SafeAreaView>
+      {wide ? (
+        <View style={[styles.fill, styles.pane, { borderLeftColor: t.line }]}>
+          {pane ? (
+            // A key for each chat: the screen of the chat before is taken down, with its call and its timers.
+            <ChatScreen
+              embedded={{ onClose: closePane, onOpen: (id, owner) => openChat({ id, profile: owner }) }}
+              key={pane.id}
+              params={{ id: pane.id, title: pane.title, live: pane.live ? '1' : undefined, profile: pane.profile }}
+            />
+          ) : (
+            <Notice detail="The chat opens here, beside the list." icon="message-circle" title="Choose a chat" />
+          )}
+        </View>
+      ) : null}
+    </View>
   )
 }
 
@@ -351,7 +374,7 @@ function SessionRow({ row, bot, owner, onActions, selected }: { row: Row; bot?: 
       accessibilityRole="button"
       delayLongPress={350}
       onLongPress={() => (tap(), selected === undefined ? onActions() : toggleSelected(row.id))}
-      onPress={() => selected !== undefined ? toggleSelected(row.id) : router.push({ pathname: '/chat/[id]', params: { id: row.id, title, ...(rowProfile(row) ? { profile: rowProfile(row) } : {}) } })}
+      onPress={() => selected !== undefined ? toggleSelected(row.id) : openChat({ id: row.id, title, profile: rowProfile(row) || undefined })}
       // The row hides the actions under it until it slides, so it needs a colour of its own.
       style={({ pressed }) => [styles.row, { borderBottomColor: t.line, backgroundColor: pressed ? t.soft : t.bg }]}
     >
@@ -417,6 +440,8 @@ const styles = StyleSheet.create({
   swipe: { flexDirection: 'row' },
   swipeAction: { width: 84, alignItems: 'center', justifyContent: 'center', gap: 4 },
   fill: { flex: 1 },
+  split: { flex: 1, flexDirection: 'row' },
+  pane: { borderLeftWidth: StyleSheet.hairlineWidth },
   list: { paddingBottom: TAB_BAR_CLEARANCE, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   header: { padding: space.lg, gap: space.md },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },

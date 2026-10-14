@@ -77,4 +77,4 @@ export const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' })
 export const TOUCH = 44
 
 /** At this width and above, the app shows a list and a detail pane side by side. */
-export const TABLET_MIN_WIDTH = 768
+export { TABLET_MIN_WIDTH } from '@/core/layout'

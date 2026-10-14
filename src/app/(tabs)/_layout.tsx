@@ -2,10 +2,12 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { Redirect, Tabs } from 'expo-router'
 import type { ComponentProps } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { IconName } from '@/components/ui'
+import { listPaneWidth } from '@/core/layout'
+import { useWide } from '@/store/pane'
 import { $requests } from '@/store/requests'
 import { $workspaces, $workspacesLoaded } from '@/store/workspaces'
 import { radius, space } from '@/theme/tokens'
@@ -47,10 +49,13 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const waiting = useStore($requests).length
+  const { width } = useWindowDimensions()
+  // On a wide screen the Chats tab has a chat open on the right: the bar stays under the list.
+  const beside = useWide() && state.routes[state.index]?.name === 'index'
 
   return (
-    <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
-      <View style={[styles.bar, { backgroundColor: t.paper, borderColor: t.line }]}>
+    <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, space.md) }, beside && { alignItems: 'flex-start', paddingLeft: Math.max(insets.left, space.md) }]}>
+      <View style={[styles.bar, { backgroundColor: t.paper, borderColor: t.line }, beside && { width: listPaneWidth(width) - 2 * space.md }]}>
         {state.routes.map((route, index) => {
           const tab = TABS[route.name]
 

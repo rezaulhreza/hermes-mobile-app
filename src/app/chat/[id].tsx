@@ -76,8 +76,26 @@ import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
 
 export default function Chat() {
-  const t = useTheme()
   const params = useLocalSearchParams<{ id: string; title?: string; live?: string; profile?: string }>()
+
+  return <ChatScreen params={params} />
+}
+
+interface ChatParams {
+  id: string
+  title?: string
+  live?: string
+  profile?: string
+}
+
+/**
+ * One conversation. As a route it fills the screen and "back" leaves it. On
+ * a wide screen it is `embedded` beside the list: it has no back button, and
+ * leaving it or going to another chat is the caller's work.
+ */
+export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?: { onClose: () => void; onOpen: (id: string, profile?: string) => void } }) {
+  const t = useTheme()
+  const leave = embedded ? embedded.onClose : () => router.back()
   // The route carries the stored id. `live=1` means the conversation was just
   // created and is in the store already. When it is not there (the app
   // started again on this route), the stored id opens it like any other.
@@ -282,7 +300,7 @@ export default function Chat() {
         return setSheet(effect.sheet)
 
       case 'sessions':
-        return router.back()
+        return leave()
     }
   }
 
@@ -316,7 +334,7 @@ export default function Chat() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={[styles.header, { borderBottomColor: t.line }]}>
-        <IconButton icon="chevron-left" label="Back" onPress={() => router.back()} />
+        {embedded ? null : <IconButton icon="chevron-left" label="Back" onPress={leave} />}
         <Pressable
           accessibilityHint="Opens rename, pin, branch, export, archive and delete"
           accessibilityLabel="Conversation actions"
@@ -561,9 +579,9 @@ export default function Chat() {
               { icon: 'list', label: 'Plan and helpers', onPress: () => setWorkOpen(true) },
               { icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }
             ]}
-            onBranched={storedId => router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } })}
+            onBranched={storedId => (embedded ? embedded.onOpen(storedId, params.profile) : router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } }))}
             onClose={() => setActing(false)}
-            onRemoved={() => router.back()}
+            onRemoved={leave}
             onRenamed={title => setConversationTitle(sessionId, title)}
             // The list row knows the flags (pinned, archived). A chat not in the list yet still has its id and title.
             row={
