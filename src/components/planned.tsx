@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
-/** A tab whose screens are not built yet. It names what will be there. See docs/HANDOFF.md. */
+/** A tab whose screens are not built yet. It names what will be there. See docs/CONTRIBUTING.md. */
 export function Planned({ title, items }: { title: string; items: string[] }) {
   const t = useTheme()
 
