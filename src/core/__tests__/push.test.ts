@@ -1,4 +1,4 @@
-import { INBOX_ROUTE, isDeviceToken, isStoredSessionId, pushRoute, pushEnvironment, readPushPayload, registrationBody, registrationKey, showsBanner } from '../push'
+import { answerFailure, APPROVAL_ACTIONS, INBOX_ROUTE, isDeviceToken, isStoredSessionId, pushAnswer, pushEnvironment, pushRoute, readPushPayload, registrationBody, registrationKey, showsBanner } from '../push'
 
 const TOKEN = 'A1'.repeat(32)
 
@@ -61,5 +61,31 @@ describe('a notification', () => {
     expect(showsBanner(payload, 'live2')).toBe(true)
     expect(showsBanner(payload, null)).toBe(true)
     expect(showsBanner(readPushPayload({}), 'live1')).toBe(true)
+  })
+})
+
+describe('the buttons of an approval', () => {
+  const approval = { sessionId: 's1', profile: 'qa', kind: 'approval' }
+
+  it('offers the four answers of Hermes, the refusal last', () => {
+    expect(APPROVAL_ACTIONS.map(action => action.id)).toEqual(['once', 'session', 'always', 'deny'])
+    expect(APPROVAL_ACTIONS.filter(action => action.destructive).map(action => action.id)).toEqual(['deny'])
+  })
+
+  it('reads a button as an answer for the conversation of the notification', () => {
+    expect(pushAnswer('session', approval)).toEqual({ sessionId: 's1', choice: 'session' })
+    expect(pushAnswer('deny', approval)).toEqual({ sessionId: 's1', choice: 'deny' })
+  })
+
+  it('opens the app for a tap, an unknown button, another kind or no conversation', () => {
+    expect(pushAnswer('expo.modules.notifications.actions.DEFAULT', approval)).toBeNull()
+    expect(pushAnswer('later', approval)).toBeNull()
+    expect(pushAnswer('once', { ...approval, kind: 'clarify' })).toBeNull()
+    expect(pushAnswer('once', { ...approval, sessionId: '' })).toBeNull()
+  })
+
+  it('says why an answer did not arrive', () => {
+    expect(answerFailure(409)).toMatch(/answered already/)
+    expect(answerFailure(null)).toMatch(/did not get your answer/)
   })
 })

@@ -356,10 +356,10 @@ index 0000000000..686c9bd07c
 +    return [d for d in load_devices(path) if not d.get("profile") or d.get("profile") == wanted]
 diff --git a/hermes_cli/push/sender.py b/hermes_cli/push/sender.py
 new file mode 100644
-index 0000000000..768ba885bb
+index 0000000000..f7e14aa12b
 --- /dev/null
 +++ b/hermes_cli/push/sender.py
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,243 @@
 +"""Sign an APNs provider token and POST one alert to Apple's HTTP/2 push endpoint.
 +
 +Apple's endpoint speaks HTTP/2 only — Python's ``requests`` cannot — so the live transport is
@@ -421,6 +421,10 @@ index 0000000000..768ba885bb
 +    return "sandbox" if (environment or "").strip().lower() != "sandbox" else "production"
 +
 +
++#: Request kinds a phone can answer from the notification itself -> the category the app registers.
++ACTION_CATEGORIES = {"approval": "hermes.approval"}
++
++
 +def build_payload(*, session_id: str, profile: str, kind: str, title: str, body: str,
 +                  sender: str = "") -> dict:
 +    """The APNs payload: a short alert plus the routing keys a tap needs.
@@ -441,6 +445,9 @@ index 0000000000..768ba885bb
 +    }
 +    if sender:
 +        payload["sender"] = sender
++    if kind in ACTION_CATEGORIES:
++        # The app shows the answers of this kind as buttons on the notification.
++        payload["aps"]["category"] = ACTION_CATEGORIES[kind]
 +    return payload
 +
 +
@@ -894,13 +901,20 @@ index 5504968d50..5a346a8e66 100644
          from hermes_cli.gitlock import fetch_full_commit_graph
          from hermes_cli.update_cmd import _no_prompt_git_kwargs
 diff --git a/hermes_cli/web_models.py b/hermes_cli/web_models.py
-index 25bab5fb15..cf1c4b8ef1 100644
+index 25bab5fb15..41a8408f34 100644
 --- a/hermes_cli/web_models.py
 +++ b/hermes_cli/web_models.py
-@@ -408,6 +408,22 @@ class ImportRequest(BaseModel):
+@@ -408,6 +408,29 @@ class ImportRequest(BaseModel):
      # hit EOF and abort; the dashboard confirms in its own modal.
      force: bool = False
  
++class PushAnswerRequest(BaseModel):
++    """The answer a phone gives to an approval from the notification itself: the session the
++    push named and one of the choices Hermes offers."""
++    session_id: str
++    choice: str
++
++
 +class PushRegisterRequest(BaseModel):
 +    """The iOS app's APNs device token and where it came from.
 +
@@ -1345,10 +1359,10 @@ index 0000000000..5d9c949a72
 +_HMR_LIMITATION = "hmr-websocket-not-proxied"
 diff --git a/hermes_cli/web_routers/push.py b/hermes_cli/web_routers/push.py
 new file mode 100644
-index 0000000000..e8b70d0744
+index 0000000000..a63d637c3a
 --- /dev/null
 +++ b/hermes_cli/web_routers/push.py
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,86 @@
 +"""APNs device-registration routes for the Hermes iOS app.
 +
 +The phone registers its device token here once, after the user grants notification permission,
@@ -1365,13 +1379,14 @@ index 0000000000..e8b70d0744
 +from starlette.concurrency import run_in_threadpool
 +
 +from hermes_cli.push import devices as store
-+from hermes_cli.web_models import PushRegisterRequest
++from hermes_cli.web_models import PushAnswerRequest, PushRegisterRequest
 +
 +log = logging.getLogger("hermes_cli.web_server")
 +
 +router = APIRouter()
 +
 +_VALID_ENVIRONMENTS = ("production", "sandbox")
++_APPROVAL_CHOICES = ("once", "session", "always", "deny")
 +
 +
 +def _validate(body: PushRegisterRequest) -> tuple[str, str]:
@@ -1407,6 +1422,33 @@ index 0000000000..e8b70d0744
 +    token, _environment = _validate(body)
 +    removed = await run_in_threadpool(store.remove_device, token)
 +    return {"ok": True, "removed": removed}
++
++
++def _approval_respond(session_id: str, choice: str) -> dict:
++    """The gateway's answer to ``approval.respond`` for this session, as its JSON-RPC envelope."""
++    from tui_gateway import server
++    return server.handle_request({
++        "jsonrpc": "2.0", "id": "push-answer", "method": "approval.respond",
++        "params": {"session_id": session_id, "choice": choice}}) or {}
++
++
++@router.post("/api/push/answer")
++async def answer_from_push(body: PushAnswerRequest):
++    """Answer the approval a push announced, with no socket: a phone that iOS wakes for a button
++    of the notification has seconds and no live connection. The answer goes through the gateway's
++    own ``approval.respond``, so it is the same answer the chat screen gives."""
++    session_id = (body.session_id or "").strip()
++    choice = (body.choice or "").strip().lower()
++    if not session_id:
++        raise HTTPException(status_code=422, detail="session_id is required")
++    if choice not in _APPROVAL_CHOICES:
++        raise HTTPException(status_code=422, detail="choice must be once, session, always or deny")
++
++    answer = await run_in_threadpool(_approval_respond, session_id, choice)
++    if "error" in answer:
++        # The approval is gone (answered elsewhere, or the turn ended): the phone says so.
++        raise HTTPException(status_code=409, detail=str((answer["error"] or {}).get("message") or "no approval waits"))
++    return {"ok": True, "resolved": (answer.get("result") or {}).get("resolved")}
 diff --git a/hermes_cli/web_server.py b/hermes_cli/web_server.py
 index 5564047073..aff2a2163b 100644
 --- a/hermes_cli/web_server.py

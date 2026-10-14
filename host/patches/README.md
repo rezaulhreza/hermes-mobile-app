@@ -33,7 +33,7 @@ and says what it did. If that fails, the patch needs a new version: check out th
 
 | Part | What the app gets from it | Main files |
 |---|---|---|
-| Push notifications | A notification when the agent needs the user (an approval, a question, a secret, a sign-in), which opens the exact chat. The backend sends through the Apple Push Notification service with YOUR key. | `hermes_cli/push/`, `hermes_cli/web_routers/push.py`, `tui_gateway/server_requests.py`, `tui_gateway/session_notifications.py` |
+| Push notifications | A notification when the agent needs the user (an approval, a question, a secret, a sign-in), which opens the exact chat. An approval can be answered from the buttons of the notification itself (once, this chat, always, deny). The backend sends through the Apple Push Notification service with YOUR key. | `hermes_cli/push/`, `hermes_cli/web_routers/push.py`, `tui_gateway/server_requests.py`, `tui_gateway/session_notifications.py` |
 | Preview route | A page of a server on the host (`localhost:3000`) loads on the phone, through the backend, with the app's sign-in. A page is rewritten against the address it came from after a redirect. | `hermes_cli/web_routers/preview_host.py`, `hermes_cli/web_server.py` |
 | Local-development sites | A site that only the host's own resolver serves (`app.test`) loads by its name. Off until you list the domain (see below). | `hermes_cli/web_routers/preview_host.py` |
 | The agent's preview on a phone | The agent opens, reads and drives a page in the app's preview. | `tui_gateway/gui_bridges.py`, `tools/*preview*`, `tools/desktop_ui.py` |

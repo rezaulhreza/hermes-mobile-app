@@ -14,7 +14,22 @@ import { atom } from 'nanostores'
 import { Platform } from 'react-native'
 
 import type { HermesApi } from '@/core/api'
-import { isDeviceToken, isStoredSessionId, type PushPayload, pushEnvironment, pushRoute, readPushPayload, registrationBody, registrationKey, showsBanner } from '@/core/push'
+import {
+  answerFailure,
+  APPROVAL_ACTIONS,
+  APPROVAL_CATEGORY,
+  isDeviceToken,
+  isStoredSessionId,
+  pushAnswer,
+  type PushChoice,
+  type PushPayload,
+  pushEnvironment,
+  pushRoute,
+  readPushPayload,
+  registrationBody,
+  registrationKey,
+  showsBanner
+} from '@/core/push'
 
 import { $conversations, $shownSession } from './chat'
 import { $linkState, currentApi, rpc } from './link'
@@ -71,14 +86,72 @@ export function installPush(): void {
       return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false }
     }
   })
-  api.addNotificationResponseReceivedListener(response => openPayload(payloadOf(response.notification)))
+  // The answers of an approval as buttons. None of them opens the app: iOS wakes it for some seconds.
+  void api
+    .setNotificationCategoryAsync(
+      APPROVAL_CATEGORY,
+      APPROVAL_ACTIONS.map(action => ({ identifier: action.id, buttonTitle: action.title, options: { opensAppToForeground: false, isDestructive: action.destructive } }))
+    )
+    .catch(() => undefined)
+  api.addNotificationResponseReceivedListener(pressed)
 
-  // The tap that started the app came before this listener.
+  // The press that started the app came before this listener.
   const first = api.getLastNotificationResponse()
 
   if (first) {
-    openPayload(payloadOf(first.notification))
+    pressed(first)
   }
+}
+
+/** A press on a notification: a button of an approval answers it, a tap opens its conversation. */
+function pressed(response: NotificationsModule.NotificationResponse): void {
+  const payload = payloadOf(response.notification)
+  const answer = pushAnswer(response.actionIdentifier, payload)
+
+  if (answer) {
+    void answerFromPush(answer.sessionId, answer.choice, payload)
+  } else {
+    openPayload(payload)
+  }
+}
+
+const ANSWER_WAIT_MS = 12_000
+
+/**
+ * Give the answer to the host with one request. The app may have been woken
+ * for this press alone, so the workspace is still loading: wait a short time
+ * for its backend. When the answer does not arrive, say so with a
+ * notification that opens the chat: a silent failure would leave the agent
+ * waiting while the user believes it was answered.
+ */
+export async function answerFromPush(sessionId: string, choice: PushChoice, payload?: PushPayload): Promise<boolean> {
+  const until = Date.now() + ANSWER_WAIT_MS
+  let status: number | null = null
+
+  while (!currentApi() && Date.now() < until) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+
+  try {
+    const backend = currentApi()
+
+    if (backend) {
+      await backend.request({ path: '/api/push/answer', method: 'POST', body: { session_id: sessionId, choice }, timeoutMs: 15_000 })
+
+      return true
+    }
+  } catch (error) {
+    status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : null
+  }
+
+  await module()
+    ?.scheduleNotificationAsync({
+      content: { title: 'Hermes', body: answerFailure(status), data: { session_id: sessionId, profile: payload?.profile ?? '', kind: 'approval' } },
+      trigger: null
+    })
+    .catch(() => undefined)
+
+  return false
 }
 
 /** A notification from APNs has its keys in the payload of the trigger; `data` is then empty. */

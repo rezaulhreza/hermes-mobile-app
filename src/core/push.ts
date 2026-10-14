@@ -95,3 +95,33 @@ export function showsBanner(payload: PushPayload, shownSessionId: string | null)
 export function registrationKey(workspaceId: string, token: string): string {
   return `${workspaceId}:${token.toLowerCase()}`
 }
+
+/** The category the backend puts on the push of an approval. The buttons hang on it. */
+export const APPROVAL_CATEGORY = 'hermes.approval'
+
+export type PushChoice = 'once' | 'session' | 'always' | 'deny'
+
+/** The answers Hermes itself offers for an approval, as the buttons of the notification. */
+export const APPROVAL_ACTIONS: readonly { id: PushChoice; title: string; destructive: boolean }[] = [
+  { id: 'once', title: 'Allow once', destructive: false },
+  { id: 'session', title: 'Allow in this chat', destructive: false },
+  { id: 'always', title: 'Always allow', destructive: false },
+  { id: 'deny', title: 'Deny', destructive: true }
+]
+
+/**
+ * What a press on a notification means. A button of an approval is an answer
+ * for the conversation the notification names; everything else (a tap on the
+ * banner, a button the app does not know, a notification with no
+ * conversation) opens the app.
+ */
+export function pushAnswer(actionId: unknown, payload: PushPayload): { sessionId: string; choice: PushChoice } | null {
+  const action = APPROVAL_ACTIONS.find(known => known.id === actionId)
+
+  return action && payload.kind === 'approval' && payload.sessionId ? { sessionId: payload.sessionId, choice: action.id } : null
+}
+
+/** The line the phone shows when an answer from a notification did not arrive. */
+export function answerFailure(status: number | null): string {
+  return status === 409 ? 'This approval was answered already, or Hermes no longer waits for it.' : 'Hermes did not get your answer. Open the chat to answer there.'
+}
