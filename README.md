@@ -11,16 +11,24 @@ JSON-RPC WebSocket.
   messages, filters by channel and by profile, streaming answers, tool rows,
   attachments, queue and steer during a turn.
 - **Hermes needs you**: approvals, questions, secrets and sign-in codes, in the
-  chat, in the Activity tab and as push notifications.
+  chat, in the Activity tab and as push notifications. An approval can be
+  answered from the buttons of its notification.
 - **Voice**: a full-duplex call with the agent, dictation, read aloud, and a
   wake word.
-- **Bots**: the profiles of the host. Talk to one, edit one, add one.
+- **Bots**: the profiles of the host. Talk to one, edit one, add one. A group
+  chat of bots: read it, write into it, make one, change its members.
+- **Board and schedules**: the Kanban cards the bots work on, and the cron
+  jobs of every bot.
+- **Skills and tools**: for each bot, its skills, groups of tools, MCP
+  servers and plugins, each with a switch.
 - **Screen**: watch the window the agent works in, stop the agent with a
   reason, act in the window from the phone, hand back.
 - **Workspace**: a folder of the host. Browse and edit files, review and
   commit git changes, run commands, preview a page.
-- **Settings**: providers and models, API keys, logins and cards, schedules,
-  voice, appearance (system, light, dark).
+- **Settings**: providers and models, API keys, logins and cards, voice,
+  appearance (system, light, dark).
+- **The host**: its state, usage, background work, logs and care jobs.
+- **Tablet**: on a wide screen the chat list stays beside the open chat.
 
 ## Requirements
 
@@ -40,7 +48,10 @@ On first launch, enter the address of your Hermes and your account. The app
 stores them in the Keychain / Keystore. Nothing about a host is in the source.
 
 The bundle identifier and the signing team come from the environment at build
-time. Do not commit them.
+time (`app.config.js` lists the names). Do not commit them.
+`scripts/release-ios.sh upload` archives and sends a build to TestFlight with
+values from a file outside the tree. To change the app, read
+[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
 
 ## The host side
 
