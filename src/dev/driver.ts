@@ -15,7 +15,7 @@ import { $attachments, stage } from '@/store/attachments'
 import { $previews } from '@/store/browser'
 import { $conversations, $shownSession, loadOlderHistory } from '@/store/chat'
 import { $linkState, currentApi, observeRequests, onGatewayEvent, rpc } from '@/store/link'
-import { $push, openFromPush, registerPush, unregisterPush } from '@/store/push'
+import { $push, answerFromPush, openFromPush, registerPush, unregisterPush } from '@/store/push'
 import { $requests } from '@/store/requests'
 import { $screen, $screenHold, $screenPicture, screenWatching, sendScreenInput } from '@/store/screen'
 import { $sessions, $sessionSource, $sessionView, branchSession, exportSessionText, loadMoreSessions } from '@/store/sessions'
@@ -185,6 +185,8 @@ const helpers = {
   voiceTrace,
   /** The tap on a notification, which a script cannot make. */
   openFromPush,
+  /** Answer the approval of a session as a button of its notification does. */
+  answerFromPush,
   notifications: Notifications,
   registerPush,
   unregisterPush,

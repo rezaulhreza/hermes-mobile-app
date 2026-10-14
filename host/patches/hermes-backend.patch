@@ -1359,10 +1359,10 @@ index 0000000000..5d9c949a72
 +_HMR_LIMITATION = "hmr-websocket-not-proxied"
 diff --git a/hermes_cli/web_routers/push.py b/hermes_cli/web_routers/push.py
 new file mode 100644
-index 0000000000..a63d637c3a
+index 0000000000..090cd5bde0
 --- /dev/null
 +++ b/hermes_cli/web_routers/push.py
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,90 @@
 +"""APNs device-registration routes for the Hermes iOS app.
 +
 +The phone registers its device token here once, after the user grants notification permission,
@@ -1448,7 +1448,11 @@ index 0000000000..a63d637c3a
 +    if "error" in answer:
 +        # The approval is gone (answered elsewhere, or the turn ended): the phone says so.
 +        raise HTTPException(status_code=409, detail=str((answer["error"] or {}).get("message") or "no approval waits"))
-+    return {"ok": True, "resolved": (answer.get("result") or {}).get("resolved")}
++    resolved = (answer.get("result") or {}).get("resolved")
++    if not resolved:
++        # Nothing waited: answered on another device, timed out, or the turn was stopped.
++        raise HTTPException(status_code=409, detail="no approval waits in this session")
++    return {"ok": True, "resolved": resolved}
 diff --git a/hermes_cli/web_server.py b/hermes_cli/web_server.py
 index 5564047073..aff2a2163b 100644
 --- a/hermes_cli/web_server.py

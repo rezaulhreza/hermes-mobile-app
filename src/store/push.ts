@@ -33,6 +33,7 @@ import {
 
 import { $conversations, $shownSession } from './chat'
 import { $linkState, currentApi, rpc } from './link'
+import { dropApprovalsOf } from './requests'
 import { $activeWorkspace } from './workspaces'
 
 export interface PushState {
@@ -137,6 +138,8 @@ export async function answerFromPush(sessionId: string, choice: PushChoice, payl
 
     if (backend) {
       await backend.request({ path: '/api/push/answer', method: 'POST', body: { session_id: sessionId, choice }, timeoutMs: 15_000 })
+      // The card of this approval must not wait in the app for an answer the host has.
+      dropApprovalsOf(sessionId)
 
       return true
     }
