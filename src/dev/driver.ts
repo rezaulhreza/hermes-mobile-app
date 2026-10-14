@@ -249,6 +249,26 @@ const helpers = {
    */
   press: (what: string, nth = 0) => pressOne(pressables().filter(fiber => labelOf(fiber) === what || nameOf(fiber) === what).at(nth), what),
 
+  /** Set a switch by the start of its accessibility label ("Airtable"). The label ends in ": on" or ": off". */
+  flip: (what: string, on: boolean) => {
+    const hit = fibers().find(fiber => typeof props(fiber).onValueChange === 'function' && String(props(fiber).accessibilityLabel ?? '').startsWith(`${what}: `))
+
+    if (!hit) {
+      return `not found: ${what}`
+    }
+
+    if (props(hit).disabled) {
+      return `disabled: ${what}`
+    }
+
+    ;(props(hit).onValueChange as (value: boolean) => void)(on)
+
+    return `set ${String(props(hit).accessibilityLabel)} -> ${on ? 'on' : 'off'}`
+  },
+
+  /** The switches on screen, by their labels. */
+  switches: () => [...new Set(fibers().filter(fiber => typeof props(fiber).onValueChange === 'function').map(fiber => String(props(fiber).accessibilityLabel ?? '')))],
+
   /** Press the first control whose name contains this. For a long title; never for a button. */
   pressLike: (what: string, nth = 0) => pressOne(pressables().filter(fiber => nameOf(fiber).includes(what)).at(nth), what),
 
