@@ -18,7 +18,9 @@
         "NSLocalNetworkUsageDescription": "Hermes connects to a Hermes host on your Wi-Fi or private network when you choose that connection.",
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Hermes uses the microphone when you talk to your agent."
       }
     },
     "android": {
