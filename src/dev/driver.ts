@@ -27,6 +27,7 @@ import { $call, $callLevel, $dictation, $engines, injectSpeech, setCallMuted } f
 import { $preferences, setPreference } from '@/store/preferences'
 import { $wake, setWake } from '@/store/wake'
 import { $work } from '@/store/work'
+import { $pane, $wideOverride } from '@/store/pane'
 
 const PORT = 8099
 const REDIAL_MS = 1500
@@ -234,7 +235,7 @@ const helpers = {
 
     return 'fed'
   },
-  stores: { $callLevel, $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView },
+  stores: { $callLevel, $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView, $pane },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),
@@ -265,6 +266,9 @@ const helpers = {
 
     return `set ${String(props(hit).accessibilityLabel)} -> ${on ? 'on' : 'off'}`
   },
+
+  /** Show the wide layout (list beside chat) on a phone, or give the choice back to the width with null. */
+  wide: (on: boolean | null) => ($wideOverride.set(on), `wide: ${String(on)}`),
 
   /** The switches on screen, by their labels. */
   switches: () => [...new Set(fibers().filter(fiber => typeof props(fiber).onValueChange === 'function').map(fiber => String(props(fiber).accessibilityLabel ?? '')))],
