@@ -429,6 +429,19 @@ that is the model of the host, and the largest part that is left. The first
 sound comes 1.2 to 1.7 s after the first text: the first sentence must be
 complete, then about 0.7 s for the provider and the way back.
 
+## Host changes (ninth session, 2026-10-09)
+
+- `~/.hermes/plugins/group-rooms/` (new) and `group-rooms` in
+  `plugins.enabled` of `~/.hermes/config.yaml`. Undo: `hermes plugins disable
+  group-rooms`, delete the folder, restart the backends. Config backup:
+  `~/.hermes/backups/group-rooms-2026-10-09/config.before.yaml`.
+- The phone's backend was restarted after each backend commit and each
+  install of the plugin.
+- MISTAKE to know about: a `grep` over `~/.hermes/logs/*.log` matched the
+  cloudflared log and printed session cookies and an Access token into the
+  session transcript. The owner was told. Never glob that folder: name the
+  one log file (`hermes-backend-mobile.err.log`).
+
 ## State
 
 Done and checked (`npm run verify` green, iOS bundle exports):
@@ -959,9 +972,10 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
    - The schedules of one bot: see item 9.
    - REST calls of a bot's chat send the profile (the history page, the tool
      output). The download of a host file takes no profile: it is a path.
-   Left: pin, put away and hide a bot from the phone (the fields are read, no
-   button writes them); "Start as a copy of" in the new-bot sheet is a wrap of
-   chips (the owner wants a button that opens a list).
+   Ninth session CLOSED: "Pin to the top" / "Unpin" and "Put away" / "Bring
+   back" in the bot sheet (`fileBot`; seen on a throwaway bot, the record on
+   the host changed each time); "Start as a copy of" is a row that opens a
+   list with the bots' pictures.
 8a. **A bot's own chat**: DONE (eighth session). The header shows the bot's
    picture and name (the title "Bot Chat" is plumbing: `BOT_CHAT_TITLE`); the
    menu has "Profile and settings of <bot>"; the menu has NO rename, archive,
@@ -969,30 +983,52 @@ WHERE THE WORK STANDS (end of the eighth session, 2026-10-09 20:00):
    title (see `apps/desktop/src/AGENTS.md`, "Bot Mode": never store a session
    id for it, never rename it). It opens through the page path: 0.2 s.
    Left: the per-profile capabilities in the sheet (item 12).
-8b. **Group chat of bots**: PARTLY built (eighth session). What the desktop
-   does, learned from `apps/desktop/src/plugins/hermes-bots/` (about 12 000
-   lines: `group-chat.ts`, `group-rounds.ts`, `group-turns.ts`, `relay.ts`,
-   `group-round-prompt.ts`, `group-membership.ts`):
-   - A room lives in the DESKTOP: its log and its state are in the desktop's
-     plugin storage. The desktop runs each round itself: it gives a message
-     to each member in a hidden session of that bot and collects the answers.
-     The host has no "post to a room" call.
-   - A bounded copy rides on the main profile: `ui_meta['hermes-bots-groups']`
-     = `{version: 3, rooms: {key: {name, roomId, members: [{name, handle}],
-     log: [{id, from: {kind: 'user' | 'member', name}, text, at}], omitted,
-     revision}}, deleted}` (the newest messages, 48 KB at most).
-   - Built: the Bots tab lists the rooms; `src/app/room.tsx` shows the copy
-     (members by their names, also former names of a profile; the bot's
-     picture on each message). Rooms are NOT kept on the phone's disk.
-   - NOT built: a message from the phone into a room. Two ways, for the
-     owner to choose: (1) the phone runs a simple round (each member gets the
-     message through a hidden session of its profile, the answers are added
-     to the log, the copy is written back with its revision), which is a new
-     engine and must not fight a desktop that has the room open; (2) a small
-     host plugin that runs the round, so the phone and the desktop only read
-     and post. Way 2 is cleaner. ASK the owner.
-   - Also not built: make, rename or close a room, add or remove a member,
-     the "needs you" badge of a room, a member's question inside a room.
+8b. **Group chat of bots**: DONE (ninth session; `host/group-rooms`,
+   `store/rooms.ts`, `components/room-sheets.tsx`, `src/app/room.tsx`).
+   FOUND: Hermes has its OWN room engine, the `groups.*` gateway methods
+   (`gateway/hosted_room*.py`): `groups.create {room_id, name, members:
+   [{member_id, profile, handle, display_name}]}` (2 to 6 members, FIXED at
+   creation), `groups.send {room_id, event_id, payload: {text, thread_id}}`,
+   `groups.log {since_seq}` (`message.user`, `message.member`,
+   `turn.settled`, `room.activity` with `status: settled|bounded` = the round
+   is closed), `groups.state` (`driver_status.working`), `groups.stop`,
+   `groups.disband`. The host runs the round. NO client uses it: the desktop
+   still runs its own rounds and keeps its rooms in plugin storage plus the
+   bounded record `ui_meta['hermes-bots-groups']` on the main profile (16
+   messages a room, 1200 characters a message, 48 KB), which it MERGES by
+   message id on a pull (`mergeRemoteGroupChatSnapshotIntoRooms`).
+   So the owner's "small host plugin" is a BRIDGE of about 380 lines
+   (`host/group-rooms/dashboard/plugin_api.py`, routes under
+   `/api/plugins/group-rooms`): `GET /status`, `GET /rooms/{id}`,
+   `POST /rooms {name, members}`, `PATCH /rooms/{id} {name?, members?}`,
+   `DELETE /rooms/{id}`, `POST /rooms/{id}/messages {text, id}`,
+   `POST /rooms/{id}/stop`. A message goes into the record, then into an
+   engine room `gr-<hash of room id and members>`; a thread of the plugin
+   copies each answer back into the record until the engine closes the round.
+   It calls only PUBLIC gateway methods, in process
+   (`tui_gateway.server.handle_request`). The record is written with its
+   revision (`ui_meta_expected_revisions`), and a refused write runs again.
+   SEEN on two throwaway bots, light and dark: a room made from the phone, a
+   message with both answers live (a round of two took 6 to 40 s), the stop
+   button, rename, a third member added and removed, "Choose at least 2
+   bots", close. The room opens in 70 ms from the list; one request every
+   two seconds while the bots answer, none after; no timer after the screen
+   closes (`unwatchRoom`).
+   A host without the plugin: the room is readable and says why it takes no
+   message; the "New group chat" button is not shown.
+   Limits, all said in the app or the ledger: a member change starts a new
+   engine room (the new member does not read the old messages); the engine
+   knows only what was sent through it, not what the desktop's own rounds
+   said; the record keeps 16 messages; a round made by the desktop app does
+   not go through the host.
+   NOT checked: the desktop app open on the same room at the same time (it
+   merges by message id, so no double message is expected; whether it starts
+   a round of its own for a message it did not send was not seen).
+   Not built: the "needs you" badge of a room, a member's question or
+   approval inside a room (`groups.approve`, `pending_actions` of
+   `groups.state`), `groups.retry`.
+   NEXT STEP for whoever owns the desktop app: move its rooms to `groups.*`;
+   then drop the plugin and let the phone call `groups.*` itself.
 9. **Cron**: DONE (`core/cron.ts`, `store/cron.ts`, `src/app/cron.tsx`;
    opened from the clock button of the Bots tab and from Settings). Checked
    in the Simulator on the owner's 5 jobs; create, resume, pause and delete
