@@ -1,4 +1,4 @@
-import { botInitials, botNameProblem, botRows, botSlug, filterBots } from '../bots'
+import { botInitials, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom } from '../bots'
 
 const NOW = 10_000
 
@@ -93,5 +93,31 @@ describe('sections and group chats of the Bots list', () => {
       { id: 'r1', name: 'Launch', members: ['default', 'qa'], omitted: 4, messages: [{ id: 'a', from: 'me', mine: true, text: 'Go', at: 10 }, { id: 'b', from: 'qa', mine: false, text: 'Done', at: 20 }] }
     ])
     expect(groupRooms([{ name: 'default', is_default: true }] as never[])).toEqual([])
+  })
+})
+
+describe('a room read again', () => {
+  const room = (id: string, name: string) => ({ id, name, members: [], messages: [], omitted: 0 })
+
+  it('reads the answer of the host for one room', () => {
+    expect(roomRow('id:r1', { room_id: 'r1', name: ' Launch ', members: [{ name: 'qa' }], log: [{ id: 'a', from: { kind: 'user', name: 'You' }, text: 'Go', at: 5 }] })).toEqual({
+      id: 'r1',
+      name: 'Launch',
+      members: ['qa'],
+      messages: [{ id: 'a', from: 'You', mine: true, text: 'Go', at: 5 }],
+      omitted: 0
+    })
+    expect(roomRow('id:r2', { name: ' ' })).toBeNull()
+  })
+
+  it('takes the place of its older copy, or goes first', () => {
+    expect(withRoom([room('a', 'A'), room('b', 'B')], room('b', 'B2')).map(item => item.name)).toEqual(['A', 'B2'])
+    expect(withRoom([room('a', 'A')], room('c', 'C')).map(item => item.name)).toEqual(['C', 'A'])
+  })
+
+  it('says why a count of members cannot be a room', () => {
+    expect(roomMembersProblem(1)).toMatch(/at least 2/)
+    expect(roomMembersProblem(7)).toMatch(/at most 6/)
+    expect(roomMembersProblem(3)).toBeNull()
   })
 })

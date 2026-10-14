@@ -7,12 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar as Avatar, BotSheet, SheetFrame } from '@/components/bot-sheet'
 import { ChoiceRow, ChoiceSheet } from '@/components/choice'
+import { NewRoomSheet } from '@/components/room-sheets'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { type Bot, botGroups, botNameProblem, filterBots } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
 import { $bots, $rooms, createBot, loadBots } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
+import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
@@ -35,6 +37,8 @@ export default function Bots() {
   const [detail, setDetail] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const rooms = useStore($rooms)
+  const roomsWritable = useStore($roomsWritable)
+  const [grouping, setGrouping] = useState(false)
   // The headings of the desktop app's Bots list: pinned, the user's sections, no section, put away.
   const groups = useMemo(() => botGroups(filterBots(bots ?? [], query)).map(group => ({ ...group, data: group.bots })), [bots, query])
   const open = bots?.find(bot => bot.name === detail)
@@ -45,6 +49,7 @@ export default function Bots() {
   useEffect(() => {
     if (linkState === 'open') {
       void load()
+      void checkRoomsWritable()
     }
   }, [linkState])
 
@@ -71,6 +76,7 @@ export default function Bots() {
     <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={styles.top}>
         <Text style={[type.title, styles.fill, { color: t.ink }]}>Bots</Text>
+        {roomsWritable ? <IconButton icon="users" label="New group chat" onPress={() => setGrouping(true)} /> : null}
         <IconButton icon="columns" label="Board" onPress={() => router.push('/kanban')} />
         <IconButton icon="clock" label="Schedules" onPress={() => router.push('/cron')} />
         <IconButton disabled={!bots} filled icon="plus" label="Add a bot" onPress={() => setAdding(true)} />
@@ -173,6 +179,15 @@ export default function Bots() {
       )}
 
       {open ? <BotSheet bot={open} onClose={() => setDetail(null)} onTalk={() => void talk(open)} /> : null}
+      {grouping ? (
+        <NewRoomSheet
+          onClose={() => setGrouping(false)}
+          onMade={id => {
+            setGrouping(false)
+            router.push({ pathname: '/room', params: { id } })
+          }}
+        />
+      ) : null}
       {adding && bots ? <NewBotSheet bots={bots} onClose={() => setAdding(false)} /> : null}
     </SafeAreaView>
   )

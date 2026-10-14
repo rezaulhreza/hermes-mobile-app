@@ -1,25 +1,28 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useMemo } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
+import { RoomSettingsSheet } from '@/components/room-sheets'
 import { IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage } from '@/core/bots'
-import { relativeTime } from '@/core/format'
+import { faultWords, relativeTime } from '@/core/format'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { radius, space, type } from '@/theme/tokens'
+import { $roomsWritable, $roomWorking, checkRoomsWritable, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 /**
- * A group chat of bots: who is in it and what was said last. The desktop app
- * runs a group chat (it gives each message to the members and collects their
- * answers) and keeps a copy of the newest messages on the host. The phone
- * reads that copy.
+ * A group chat of bots: who is in it, what was said last, and a field to say
+ * something to all of them. The host runs the round: it gives the message to
+ * each member in turn and logs the answers in the record every client reads.
+ * A host without the `group-rooms` plugin shows the record and takes no
+ * message.
  */
 export default function RoomScreen() {
   const t = useTheme()
@@ -31,11 +34,36 @@ export default function RoomScreen() {
   // The list is upside down: it opens at the newest message with only the rows on screen drawn.
   const newestFirst = useMemo(() => [...(room?.messages ?? [])].reverse(), [room?.messages])
 
+  const writable = useStore($roomsWritable)
+  const working = useStore($roomWorking) === id
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [fault, setFault] = useState<string | null>(null)
+  const [settings, setSettings] = useState(false)
+
   useEffect(() => {
     if (linkState === 'open') {
       void loadBots().catch(() => undefined)
+      void checkRoomsWritable().then(() => $roomsWritable.get() && watchRoom(id))
     }
-  }, [linkState])
+
+    // No timer reads the room after the screen closed.
+    return unwatchRoom
+  }, [linkState, id])
+
+  const send = () => {
+    const text = draft.trim()
+
+    setSending(true)
+    setFault(null)
+    setDraft('')
+    sendToRoom(id, text)
+      .catch(error => {
+        setDraft(text)
+        setFault(faultWords(error))
+      })
+      .finally(() => setSending(false))
+  }
 
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={[styles.fill, { backgroundColor: t.bg }]}>
@@ -51,7 +79,9 @@ export default function RoomScreen() {
             </Text>
           ) : null}
         </View>
+        {room && writable ? <IconButton icon="sliders" label="Group chat settings" onPress={() => setSettings(true)} /> : null}
       </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
 
       {!room ? (
         <Notice detail="It may be closed on the desktop app." icon="users" title="This group chat is not on the host" />
@@ -59,15 +89,22 @@ export default function RoomScreen() {
         <FlatList
           ListEmptyComponent={<Notice icon="message-circle" title="Nothing was said here yet" />}
           ListFooterComponent={
-            room.omitted ? <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are in the desktop app.</Text> : null
+            room.omitted ? <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are not kept on the host.</Text> : null
           }
           ListHeaderComponent={
-            <View style={[styles.foot, { backgroundColor: t.soft }]}>
-              <Feather color={t.muted} name="monitor" size={16} />
-              <Text style={[type.small, styles.fill, { color: t.muted }]}>
-                The desktop app runs this group chat. To say something to the group, write there. To talk to one bot, open it on the Bots tab.
-              </Text>
-            </View>
+            working ? (
+              <View style={styles.working}>
+                <ActivityIndicator color={t.muted} size="small" />
+                <Text style={[type.small, styles.fill, { color: t.muted }]}>The bots answer in turn.</Text>
+              </View>
+            ) : writable === false ? (
+              <View style={[styles.foot, { backgroundColor: t.soft }]}>
+                <Feather color={t.muted} name="monitor" size={16} />
+                <Text style={[type.small, styles.fill, { color: t.muted }]}>
+                  This host takes no message for a group chat from a phone: it needs the group-rooms plugin. Write in the desktop app, or open one bot on the Bots tab.
+                </Text>
+              </View>
+            ) : null
           }
           contentContainerStyle={styles.list}
           data={newestFirst}
@@ -78,6 +115,30 @@ export default function RoomScreen() {
           windowSize={7}
         />
       )}
+
+      {room && writable ? (
+        <View style={[styles.composer, { borderTopColor: t.line }]}>
+          {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
+          <View style={styles.sendRow}>
+            <TextInput
+              accessibilityLabel="Message to the group"
+              multiline
+              onChangeText={setDraft}
+              placeholder="Say something to all of them"
+              placeholderTextColor={t.muted}
+              style={[type.body, styles.input, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
+              value={draft}
+            />
+            {working && !draft.trim() ? (
+              <IconButton icon="square" label="Stop the bots" onPress={() => void stopRoom(id).catch(error => setFault(faultWords(error)))} />
+            ) : (
+              <IconButton disabled={!draft.trim() || sending} filled icon="arrow-up" label="Send to the group" onPress={send} />
+            )}
+          </View>
+        </View>
+      ) : null}
+      {settings && room ? <RoomSettingsSheet onClose={() => setSettings(false)} onClosed={() => router.back()} room={room} /> : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
@@ -113,6 +174,10 @@ const styles = StyleSheet.create({
   list: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   note: { textAlign: 'center', paddingVertical: space.md },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
+  working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
+  composer: { gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.sm, borderTopWidth: StyleSheet.hairlineWidth, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
+  input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   mine: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
   theirs: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   unknown: { width: 30, height: 30, borderRadius: 15 }

@@ -204,38 +204,63 @@ export interface Room {
   omitted: number
 }
 
-/** The group chats of the host, from the copy the desktop app keeps on the main profile. The newest room first. */
+interface StoredRoom {
+  name?: unknown
+  roomId?: unknown
+  room_id?: unknown
+  members?: unknown
+  log?: unknown
+  omitted?: unknown
+}
+
+/** One room of the record the host keeps. Null for a record with no name. */
+export function roomRow(key: string, value: unknown): Room | null {
+  const room = (value ?? {}) as StoredRoom
+
+  if (typeof room.name !== 'string' || !room.name.trim()) {
+    return null
+  }
+
+  const messages = (Array.isArray(room.log) ? room.log : []).flatMap((entry, index): RoomMessage[] => {
+    const { id, from, text, at } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown }
+
+    return typeof text === 'string' && text.trim()
+      ? [{ id: typeof id === 'string' ? id : `m${index}`, from: typeof from?.name === 'string' ? from.name : '', mine: from?.kind === 'user', text, at: typeof at === 'number' ? at : 0 }]
+      : []
+  })
+
+  return {
+    id: typeof room.roomId === 'string' ? room.roomId : typeof room.room_id === 'string' ? room.room_id : key,
+    name: room.name.trim(),
+    members: (Array.isArray(room.members) ? room.members : []).flatMap(member => (typeof (member as { name?: unknown })?.name === 'string' ? [(member as { name: string }).name] : [])),
+    messages,
+    omitted: typeof room.omitted === 'number' ? room.omitted : 0
+  }
+}
+
+const newestAt = (room: Room) => room.messages[room.messages.length - 1]?.at ?? 0
+
+/** The group chats of the host, from the record on the main profile. The newest room first. */
 export function groupRooms(profiles: readonly ProfileRow[]): Room[] {
   const main = profiles.find(row => row.is_default)
   const stored = (main?.ui_meta as Record<string, unknown> | null | undefined)?.[GROUP_META_KEY] as { rooms?: Record<string, unknown> } | undefined
 
   return Object.entries(stored?.rooms ?? {})
-    .flatMap(([key, value]) => {
-      const room = (value ?? {}) as { name?: unknown; roomId?: unknown; members?: unknown; log?: unknown; omitted?: unknown }
+    .flatMap(([key, value]) => roomRow(key, value) ?? [])
+    .sort((a, b) => newestAt(b) - newestAt(a))
+}
 
-      if (typeof room.name !== 'string' || !room.name.trim()) {
-        return []
-      }
+/** The rooms with one of them read again: it takes the place of its older copy, or goes first. */
+export function withRoom(rooms: readonly Room[], room: Room): Room[] {
+  return rooms.some(known => known.id === room.id) ? rooms.map(known => (known.id === room.id ? room : known)) : [room, ...rooms]
+}
 
-      const messages = (Array.isArray(room.log) ? room.log : []).flatMap((entry, index): RoomMessage[] => {
-        const { id, from, text, at } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown }
+/** The host runs a round for two to six bots. */
+export const ROOM_MEMBERS = { min: 2, max: 6 } as const
 
-        return typeof text === 'string' && text.trim()
-          ? [{ id: typeof id === 'string' ? id : `m${index}`, from: typeof from?.name === 'string' ? from.name : '', mine: from?.kind === 'user', text, at: typeof at === 'number' ? at : 0 }]
-          : []
-      })
-
-      return [
-        {
-          id: typeof room.roomId === 'string' ? room.roomId : key,
-          name: room.name.trim(),
-          members: (Array.isArray(room.members) ? room.members : []).flatMap(member => (typeof (member as { name?: unknown })?.name === 'string' ? [(member as { name: string }).name] : [])),
-          messages,
-          omitted: typeof room.omitted === 'number' ? room.omitted : 0
-        }
-      ]
-    })
-    .sort((a, b) => (b.messages[b.messages.length - 1]?.at ?? 0) - (a.messages[a.messages.length - 1]?.at ?? 0))
+/** Why these members cannot be a room, in words. Null: they can. */
+export function roomMembersProblem(count: number): string | null {
+  return count < ROOM_MEMBERS.min ? `Choose at least ${ROOM_MEMBERS.min} bots.` : count > ROOM_MEMBERS.max ? `A group chat has at most ${ROOM_MEMBERS.max} bots.` : null
 }
 
 export function filterBots(bots: readonly Bot[], query: string): Bot[] {
