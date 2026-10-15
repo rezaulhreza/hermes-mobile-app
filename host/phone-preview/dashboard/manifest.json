@@ -1,0 +1,8 @@
+{
+  "name": "phone-preview",
+  "label": "Phone Preview",
+  "description": "Backend route that hands a page of a server on the host to the preview of the phone app.",
+  "version": "0.1.0",
+  "tab": { "path": "/phone-preview", "hidden": true },
+  "api": "plugin_api.py"
+}

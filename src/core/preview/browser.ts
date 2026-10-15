@@ -30,6 +30,9 @@ export function isLoopbackUrl(url: string): boolean {
   return LOOPBACK.test(url.trim()) || LOCAL_DOMAIN.test(url.trim())
 }
 
+/** The route of the host's `phone-preview` plugin (`host/phone-preview`). A host without it cannot show its own pages. */
+export const PREVIEW_ROUTE = '/api/plugins/phone-preview'
+
 /**
  * The address the WebView loads. `localhost` in a URL from the agent is the
  * Hermes host, not the phone, so such a URL goes through the backend's preview
@@ -43,7 +46,7 @@ export function previewAddress(baseUrl: string, url: string): string {
     return `${baseUrl}/api/fs/download?path=${encodeURIComponent(path)}`
   }
 
-  return isLoopbackUrl(url) ? `${baseUrl}/api/preview/host?url=${encodeURIComponent(url.trim())}` : url.trim()
+  return isLoopbackUrl(url) ? `${baseUrl}${PREVIEW_ROUTE}/host?url=${encodeURIComponent(url.trim())}` : url.trim()
 }
 
 /**

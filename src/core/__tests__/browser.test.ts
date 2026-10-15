@@ -3,9 +3,9 @@ import { actionFromRequest, actScript, isLoopbackUrl, isNavKind, paneMessage, pr
 describe('previewAddress', () => {
   it('sends a loopback address through the host proxy', () => {
     expect(previewAddress('https://h.example.com', 'http://localhost:5173/app?x=1')).toBe(
-      'https://h.example.com/api/preview/host?url=http%3A%2F%2Flocalhost%3A5173%2Fapp%3Fx%3D1'
+      'https://h.example.com/api/plugins/phone-preview/host?url=http%3A%2F%2Flocalhost%3A5173%2Fapp%3Fx%3D1'
     )
-    expect(previewAddress('https://h.example.com', 'http://127.0.0.1:8000')).toContain('/api/preview/host?url=')
+    expect(previewAddress('https://h.example.com', 'http://127.0.0.1:8000')).toContain('/api/plugins/phone-preview/host?url=')
   })
 
   it('loads any other address as it is', () => {
@@ -84,7 +84,7 @@ describe('local-development sites', () => {
   it('loads a site under a local domain through the host', () => {
     expect(isLoopbackUrl('http://app.test/')).toBe(true)
     expect(isLoopbackUrl('http://api.shop.localhost:8080/x')).toBe(true)
-    expect(previewAddress('https://h.example', 'http://app.test')).toBe('https://h.example/api/preview/host?url=http%3A%2F%2Fapp.test')
+    expect(previewAddress('https://h.example', 'http://app.test')).toBe('https://h.example/api/plugins/phone-preview/host?url=http%3A%2F%2Fapp.test')
   })
 
   it('does not take a public name for a local one', () => {

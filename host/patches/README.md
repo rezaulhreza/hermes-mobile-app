@@ -20,7 +20,7 @@ host can be set up with one command.
 On Windows, run the script in Git Bash or WSL, or run
 `git apply --3way hermes-backend.patch` in the Hermes checkout.
 
-To take the changes out again: `git checkout . && git clean -fd hermes_cli/web_routers/preview_host.py tui_gateway/gui_bridges.py tui_gateway/session_notifications.py`
+To take the changes out again: `git checkout . && git clean -fd tui_gateway/gui_bridges.py`
 in the Hermes checkout, when you have no other change there. Else use `git apply --reverse`.
 
 ## After a Hermes update
@@ -33,22 +33,8 @@ and says what it did. If that fails, the patch needs a new version: check out th
 
 | Part | What the app gets from it | Main files |
 |---|---|---|
-| Preview route | A page of a server on the host (`localhost:3000`) loads on the phone, through the backend, with the app's sign-in. A page is rewritten against the address it came from after a redirect. | `hermes_cli/web_routers/preview_host.py`, `hermes_cli/web_server.py` |
-| Local-development sites | A site that only the host's own resolver serves (`app.test`) loads by its name. Off until you list the domain (see below). | `hermes_cli/web_routers/preview_host.py` |
 | The agent's preview on a phone | The agent opens, reads and drives a page in the app's preview. | `tui_gateway/gui_bridges.py`, `tools/*preview*`, `tools/desktop_ui.py` |
 | Session slot release | A turn that ends gives its slot back, on every surface, so a chat from the phone does not hold a session open. | `tui_gateway/session_lifecycle.py`, `tui_gateway/prompt_turn.py` |
-
-## Settings
-
-All of them go in the `config.yaml` of the Hermes home. Nothing is on until you set it.
-
-```yaml
-# Local-development sites for the preview. List a domain only when a resolver on the host
-# serves it (Laravel Herd and Valet serve "test"). A name is taken only when it ends in a
-# listed domain AND resolves to the host itself.
-preview:
-  local_domains: [test]
-```
 
 ## For maintainers: keep this folder in step
 

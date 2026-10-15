@@ -1,0 +1,6 @@
+manifest_version: 1
+name: phone-preview
+version: 0.1.0
+description: "Shows a page of a server on the Hermes host (a development server on localhost, a local-development site) in the preview of the Hermes phone app, with the app's sign-in."
+author: hermes-native
+kind: backend
