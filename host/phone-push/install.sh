@@ -14,8 +14,21 @@ cp "$here/push/"*.py "$target/push/"
 cp "$here/dashboard/plugin_api.py" "$here/dashboard/manifest.json" "$target/dashboard/"
 echo "Copied the plugin to $target"
 
-if command -v hermes >/dev/null 2>&1 && hermes plugins enable phone-push </dev/null >/dev/null 2>&1; then
-  echo "Enabled phone-push."
+# The enable installs the Python packages that plugin.yaml declares (h2). A plugin that is enabled
+# already gets no install, so an older copy is disabled and enabled again.
+enable() { hermes plugins enable phone-push </dev/null 2>&1; }
+if ! command -v hermes >/dev/null 2>&1; then
+  echo "No hermes command. Run  hermes plugins enable phone-push"
+elif out="$(enable)"; then
+  case "$out" in
+    *"already enabled"*)
+      if hermes plugins disable phone-push </dev/null >/dev/null 2>&1 && enable >/dev/null; then
+        echo "Enabled phone-push again, with its Python packages."
+      else
+        echo "Could not enable it again. Run  hermes plugins enable phone-push"
+      fi ;;
+    *) echo "Enabled phone-push." ;;
+  esac
 else
   echo "Could not enable it automatically. Run  hermes plugins enable phone-push"
 fi

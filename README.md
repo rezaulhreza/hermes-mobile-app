@@ -77,10 +77,11 @@ of them are in [`host/`](host):
 | Write into group chats | `host/group-rooms/install.sh` |
 | Push notifications | `host/phone-push/install.sh` |
 | Page preview of the host | `host/phone-preview/install.sh` |
-| The agent's own preview on the phone, and one session fix | `host/patches/apply.sh /path/to/hermes` |
+| One session fix: a chat open on the desktop does not refuse the phone | `host/patches/apply.sh /path/to/hermes` |
 
 Restart Hermes after each one. Without an add-on the app still works; the
 feature says what is missing. Details: [`host/patches/README.md`](host/patches/README.md).
+After a Hermes update, follow [`host/patches/LEDGER.md`](host/patches/LEDGER.md).
 
 ## Release your own build
 

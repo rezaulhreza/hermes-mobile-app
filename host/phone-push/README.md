@@ -21,7 +21,10 @@ push:
   kinds: [clarify, approval, mention, sudo, secret]
 ```
 
-The Hermes environment needs the `h2` package (HTTP/2, which Apple requires).
+The plugin needs the `h2` package (HTTP/2, which Apple requires). `plugin.yaml` declares it,
+so Hermes installs it when the plugin is enabled. On a host where the plugin was enabled
+before it declared `h2`, run `hermes plugins disable phone-push`, then
+`hermes plugins enable phone-push`: the enable installs the package.
 
 ## Check it
 

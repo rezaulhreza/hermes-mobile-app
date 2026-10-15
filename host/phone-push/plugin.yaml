@@ -1,8 +1,12 @@
-manifest_version: 1
+manifest_version: 2
 name: phone-push
-version: 0.1.0
+version: 0.2.0
 description: "Push notifications for the Hermes phone app: a notification when the agent waits for the user (an approval, a question, a password) or a bot addresses the user, sent through Apple with your own key. An approval can be answered from the notification."
 author: hermes-native
 kind: backend
 provides_hooks:
   - on_session_start
+# Apple's push service speaks HTTP/2 only: httpx needs h2 for http2=True. The package manager
+# installs it when the plugin is enabled and keeps it through `hermes update`.
+python_dependencies:
+  - "h2>=4.1,<5"

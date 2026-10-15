@@ -1,8 +1,9 @@
 """Sign an APNs provider token and POST one alert to Apple's HTTP/2 push endpoint.
 
 Apple's endpoint speaks HTTP/2 only — Python's ``requests`` cannot — so the live transport is
-``httpx`` with ``http2=True`` (the h2 stack is part of the runtime). The transport is a plain
-callable so tests inject a fake and never touch the network.
+``httpx`` with ``http2=True``. That needs the ``h2`` package, which ``plugin.yaml`` declares in
+``python_dependencies``. The transport is a plain callable so tests inject a fake and never
+touch the network.
 
 The provider token is an ES256 JWT signed with the ``.p8`` auth key: PyJWT signs it when
 installed, else the ``cryptography`` library does (both are project dependencies; the fallback

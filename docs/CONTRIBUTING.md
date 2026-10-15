@@ -31,7 +31,7 @@ suffix from their relative imports.
 
 ```bash
 npm run verify        # type check, lint, tests
-npm run host:check    # the host folder is in step with your Hermes checkout
+HERMES_REPO=/path/to/hermes npm run host:check   # the host patch applies to that checkout
 ```
 
 Then run the change in the iOS Simulator. `scripts/drive.mjs` presses and types in a
@@ -74,9 +74,11 @@ release come from the environment (`app.config.js`, `scripts/release-ios.sh`).
 
 Prefer a Hermes plugin to a change in Hermes itself. A plugin lives in `host/<name>` with
 an `install.sh`, uses public gateway methods where it can, and is listed in the README.
-A change that only Hermes itself can carry goes into `host/patches` through
-`npm run host:sync`, from a checkout of Hermes that has the change. Keep both portable:
-a host may be macOS, Linux or Windows.
+A change that only Hermes itself can carry goes into `host/patches/hermes-backend.patch`:
+written by hand on stock Hermes, as small as the fix, with a comment block on each hunk
+(`LOCAL PATCH`, `UPSTREAM CHECK`, `ON CONFLICT`) and a row in `host/patches/LEDGER.md`.
+`npm run host:sync` writes the patch again from a checkout that has it applied. Keep both
+portable: a host may be macOS, Linux or Windows.
 
 ## Commits
 
