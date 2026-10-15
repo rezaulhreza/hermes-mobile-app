@@ -42,7 +42,9 @@ export const DEEPGRAM_VOICES: readonly VoiceChoice[] = [
   { id: 'aura-2-arcas-en', name: 'Arcas', tone: 'Natural and smooth' },
   { id: 'aura-2-aries-en', name: 'Aries', tone: 'Warm and lively' },
   { id: 'aura-2-orion-en', name: 'Orion', tone: 'Calm and polite' },
-  { id: 'aura-2-zeus-en', name: 'Zeus', tone: 'Deep and steady' }
+  { id: 'aura-2-zeus-en', name: 'Zeus', tone: 'Deep and steady' },
+  { id: 'aura-2-pandora-en', name: 'Pandora', tone: 'British, smooth and calm' },
+  { id: 'aura-2-draco-en', name: 'Draco', tone: 'British, warm and deep' }
 ]
 
 /** The name of a voice for a person: "Thalia" for `aura-2-thalia-en`. A voice the list does not have shows its own middle word. */
