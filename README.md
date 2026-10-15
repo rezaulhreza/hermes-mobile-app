@@ -109,5 +109,19 @@ More: [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
 
 ## Status
 
-- iOS works. Android is not built yet.
+- iOS works.
+- Android is not fully built and may need more work. The screens and the
+  logic are shared, but the app was never built or run on Android.
 - The app needs the Hermes backend; it does not run an agent itself.
+
+What Android still needs:
+
+1. The Android project (`npx expo prebuild -p android`) and a first build.
+2. Plain `http` to a host on your Wi-Fi: Android blocks it until a setting
+   allows it.
+3. Voice calls: the call audio is a Swift module. It needs an Android side
+   in Kotlin.
+4. Push notifications: the host sends through Apple only. Android needs
+   Firebase on the host and in the app.
+5. A check of every screen on an Android phone, in light and dark.
+6. A signed release build for the Play Store.
