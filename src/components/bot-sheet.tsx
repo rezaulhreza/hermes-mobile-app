@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { type Bot, botInitials, type BotSection, botSlug, knownSections } from '@/core/bots'
+import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSectionId } from '@/core/bots'
 import { faultWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, chooseBotPicture, setBotSection, deleteBot, fileBot, describeBot, loadBotSoul, renameBot, saveBotSoul, setBotModel } from '@/store/bots'
+import { $botAvatars, $bots, $filing, chooseBotPicture, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection } from '@/store/bots'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -62,7 +62,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   const [busy, setBusy] = useState<string | null>(null)
   const [choosingModel, setChoosingModel] = useState(false)
   const [filing, setFiling] = useState(false)
-  const sections = knownSections(useStore($bots) ?? [])
+  const sections = knownSections(useStore($bots) ?? [], useStore($filing).sections)
 
   useEffect(() => {
     loadBotSoul(bot.name).then(
@@ -153,7 +153,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
 
       <Pressable
         accessibilityHint="Opens the list of sections"
-        accessibilityLabel={`Section: ${bot.section?.name ?? 'No section'}`}
+        accessibilityLabel={`Section: ${bot.section?.name ?? 'Unassigned'}`}
         accessibilityRole="button"
         onPress={() => setFiling(true)}
         style={({ pressed }) => [styles.setting, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
@@ -162,7 +162,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
         <View style={styles.fill}>
           <Text style={[type.small, { color: t.muted }]}>Section of the Bots list</Text>
           <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
-            {bot.section?.name ?? 'No section'}
+            {bot.section?.name ?? 'Unassigned'}
           </Text>
         </View>
         {busy === 'section' ? <ActivityIndicator color={t.muted} /> : <Feather color={t.muted} name="chevron-right" size={18} />}
@@ -254,8 +254,8 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   )
 }
 
-/** The sections the user made on the Bots list, to file one bot. A new name makes a new section. */
-function SectionSheet({ sections, current, onPick, onClose }: { sections: readonly BotSection[]; current: string | null; onPick: (section: BotSection | null) => void; onClose: () => void }) {
+/** The sections the user made on the Bots list, to file one bot or one group chat. A new name makes a new section. */
+export function SectionSheet({ sections, current, onPick, onClose }: { sections: readonly BotSection[]; current: string | null; onPick: (section: BotSection | null) => void; onClose: () => void }) {
   const t = useTheme()
   const [name, setName] = useState('')
   const typed = name.trim()
@@ -277,7 +277,7 @@ function SectionSheet({ sections, current, onPick, onClose }: { sections: readon
                 disabled={!typed || sections.some(section => section.name.toLowerCase() === typed.toLowerCase())}
                 icon="plus"
                 label={typed ? `File under “${typed}”` : 'File under a new section'}
-                onPress={() => onPick({ id: `sec-${Date.now().toString(36)}`, name: typed })}
+                onPress={() => onPick({ id: newSectionId(), name: typed })}
               />
             </View>
           }
@@ -286,14 +286,14 @@ function SectionSheet({ sections, current, onPick, onClose }: { sections: readon
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <Pressable
-              accessibilityLabel={`Section: ${item?.name ?? 'No section'}`}
+              accessibilityLabel={`Section: ${item?.name ?? 'Unassigned'}`}
               accessibilityRole="button"
               accessibilityState={{ selected: (item?.id ?? null) === current }}
               onPress={() => onPick(item)}
               style={({ pressed }) => [styles.modelRow, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
             >
               <Feather color={t.muted} name={item ? 'folder' : 'minus'} size={18} />
-              <Text style={[type.label, styles.fill, { color: t.ink }]}>{item?.name ?? 'No section'}</Text>
+              <Text style={[type.label, styles.fill, { color: t.ink }]}>{item?.name ?? 'Unassigned'}</Text>
               {(item?.id ?? null) === current ? <Feather color={t.accent} name="check" size={18} /> : null}
             </Pressable>
           )}

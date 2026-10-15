@@ -3,14 +3,15 @@ import { useStore } from '@nanostores/react'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { type Bot, type Room, roomMembersProblem } from '@/core/bots'
+import { type Bot, knownSections, type Room, roomMembersProblem } from '@/core/bots'
 import { faultWords } from '@/core/format'
-import { $bots } from '@/store/bots'
+import { $bots, $filing, setRoomSection } from '@/store/bots'
 import { changeRoom, closeRoom, makeRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
-import { BotAvatar, SheetFrame } from './bot-sheet'
+import { BotAvatar, SectionSheet, SheetFrame } from './bot-sheet'
+import { ChoiceRow } from './choice'
 import { Button, Field } from './ui'
 
 /** The bots of the host as a list with a mark on each member. A tap puts a bot in or takes it out. */
@@ -96,6 +97,10 @@ export function RoomSettingsSheet({ room, onClose, onClosed }: { room: Room; onC
   const [busy, setBusy] = useState<string | null>(null)
   const [fault, setFault] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
+  const [filing, setFiling] = useState(false)
+  const filed = useStore($filing)
+  const sections = knownSections(all, filed.sections)
+  const section = sections.find(known => known.id === filed.rooms[room.id])
   const problem = roomMembersProblem(members.length)
   const membersChanged = members.length !== room.members.length || members.some(member => !room.members.includes(member))
 
@@ -112,6 +117,19 @@ export function RoomSettingsSheet({ room, onClose, onClosed }: { room: Room; onC
       {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
       <Field autoCapitalize="sentences" label="Name" onChangeText={setName} value={name} />
       <Button busy={busy === 'name'} disabled={!name.trim() || name.trim() === room.name} label="Save the name" onPress={() => run('name', () => changeRoom(room.id, { name }))} />
+
+      <ChoiceRow disabled={busy === 'section'} icon="folder" label="Section of the Bots list" onPress={() => setFiling(true)} value={section?.name ?? 'Unassigned'} />
+      {filing ? (
+        <SectionSheet
+          current={section?.id ?? null}
+          onClose={() => setFiling(false)}
+          onPick={picked => {
+            setFiling(false)
+            run('section', () => setRoomSection(room.id, picked))
+          }}
+          sections={sections}
+        />
+      ) : null}
 
       <Text style={[type.small, styles.heading, { color: t.muted }]}>Bots in it · {members.length}</Text>
       <MemberList bots={bots} chosen={members} onToggle={bot => setMembers(toggled(members, bot))} />

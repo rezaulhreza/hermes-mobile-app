@@ -4,7 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { atom, map } from 'nanostores'
 
-import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, groupRooms, type Room } from '@/core/bots'
+import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type Room } from '@/core/bots'
 import type { ProfilesCreateResult, ProfilesGetAssetResult, ProfilesListResult } from '@/core/gateway/gateway-contract.generated'
 
 import { readCached, writeCached } from './cache'
@@ -15,6 +15,11 @@ export const $bots = atom<Bot[] | null>(null)
 /** The group chats of the bots, as the desktop app keeps them on the host. Not kept on the phone: they hold message text. */
 export const $rooms = atom<Room[]>([])
 
+/** The sections with no bot in them and the section of each group chat. The desktop app keeps its own on its machine; the phone keeps this on the host. */
+export const $filing = atom<Filing>(NO_FILING)
+
+// The profile that holds `$filing`, and the revision of that record.
+let main: { name: string; revision: number | undefined } | null = null
 // What the desktop app set for each bot. A change of one field must keep the others.
 const metas = new Map<string, { meta: Record<string, unknown>; revision: number | undefined }>()
 /** The picture of each bot as a `data:` address. An empty text means none is there (yet). */
@@ -41,7 +46,12 @@ export async function loadBots(): Promise<void> {
 
   $bots.set(bots)
   $rooms.set(groupRooms(result.profiles ?? []))
+  $filing.set(filingOf(result.profiles ?? []))
   metas.clear()
+
+  const mainRow = (result.profiles ?? []).find(row => row.is_default)
+
+  main = mainRow ? { name: mainRow.name, revision: mainRow.ui_meta_revisions?.[FILING_META_KEY] } : null
 
   for (const row of result.profiles ?? []) {
     const meta = (row.ui_meta as Record<string, unknown> | null | undefined)?.[BOT_META_KEY]
@@ -140,8 +150,7 @@ export interface BotFiling {
   hidden?: boolean
 }
 
-/** Change how the Bots list files a bot. The other fields of the desktop's record stay as they are. */
-export async function fileBot(name: string, change: BotFiling): Promise<void> {
+async function writeBotFiling(name: string, change: BotFiling): Promise<void> {
   const known = metas.get(name)
 
   await rpc('profiles.configure', {
@@ -150,7 +159,76 @@ export async function fileBot(name: string, change: BotFiling): Promise<void> {
     // The host refuses the write when another client changed the record in the meantime.
     ...(known?.revision !== undefined ? { ui_meta_expected_revisions: { [BOT_META_KEY]: known.revision } } : {})
   })
+}
+
+/** Change how the Bots list files a bot. The other fields of the desktop's record stay as they are. */
+export async function fileBot(name: string, change: BotFiling): Promise<void> {
+  await writeBotFiling(name, change)
   await loadBots()
+}
+
+async function saveFiling(next: Filing): Promise<void> {
+  if (!main) {
+    throw new Error('The host has no main profile to keep the sections on.')
+  }
+
+  await rpc('profiles.configure', {
+    name: main.name,
+    ui_meta: { [FILING_META_KEY]: next },
+    ...(main.revision !== undefined ? { ui_meta_expected_revisions: { [FILING_META_KEY]: main.revision } } : {})
+  })
+  await loadBots()
+}
+
+/** The sections of the record with one of them added, or with its new name. */
+function withSection(sections: readonly BotSection[], section: BotSection): BotSection[] {
+  return [...sections.filter(known => known.id !== section.id), section]
+}
+
+/** Make a section with nothing in it. */
+export async function makeSection(name: string): Promise<void> {
+  const filing = $filing.get()
+
+  await saveFiling({ ...filing, sections: withSection(filing.sections, { id: newSectionId(), name: name.trim() }) })
+}
+
+/** File a group chat under a section of the Bots list, or under none with null. */
+export async function setRoomSection(roomId: string, section: BotSection | null): Promise<void> {
+  const filing = $filing.get()
+  const { [roomId]: _before, ...others } = filing.rooms
+
+  await saveFiling({
+    // The record keeps the name: no bot carries it when the section holds only group chats.
+    sections: section ? withSection(filing.sections, section) : filing.sections,
+    rooms: section ? { ...others, [roomId]: section.id } : others
+  })
+}
+
+const botsOf = (section: BotSection) => ($bots.get() ?? []).filter(bot => bot.section?.id === section.id)
+
+/** Give a section a new name. Each bot in it carries the name: the desktop app reads it there. */
+export async function renameSection(section: BotSection, name: string): Promise<void> {
+  const renamed = { id: section.id, name: name.trim() }
+
+  for (const bot of botsOf(section)) {
+    await writeBotFiling(bot.name, { sectionId: renamed.id, sectionName: renamed.name })
+  }
+
+  await saveFiling({ ...$filing.get(), sections: withSection($filing.get().sections, renamed) })
+}
+
+/** Remove a section. Its bots and its group chats stay: they are in no section then. */
+export async function removeSection(section: BotSection): Promise<void> {
+  for (const bot of botsOf(section)) {
+    await writeBotFiling(bot.name, { sectionId: null, sectionName: null })
+  }
+
+  const filing = $filing.get()
+
+  await saveFiling({
+    sections: filing.sections.filter(known => known.id !== section.id),
+    rooms: Object.fromEntries(Object.entries(filing.rooms).filter(([, id]) => id !== section.id))
+  })
 }
 
 /** File a bot under a section of the Bots list, or under none with null. */
@@ -211,7 +289,9 @@ export async function deleteBot(name: string): Promise<void> {
 export function clearBots(): void {
   asked.clear()
   metas.clear()
+  main = null
   $rooms.set([])
+  $filing.set(NO_FILING)
   $bots.set(null)
   $botAvatars.set({})
 }

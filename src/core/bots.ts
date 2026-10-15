@@ -112,43 +112,91 @@ function filing(meta: Record<string, unknown>): Pick<Bot, 'section' | 'pinned' |
   }
 }
 
+/** A row of the Bots list: a bot, or a group chat of bots. */
+export type ListRow = { kind: 'bot'; bot: Bot } | { kind: 'room'; room: Room }
+
 export interface BotGroup {
   key: string
-  /** Empty for the bots with no section when no section exists: the list then has no headings. */
+  /** Empty for the bots when the list has no other heading. */
   title: string
-  bots: Bot[]
+  rows: ListRow[]
+  /** The section of the user that this group is. Absent for the headings the list makes itself. */
+  section?: BotSection
 }
 
 /**
- * The bots under the headings of the Bots list, as the desktop app files
- * them: pinned bots first, then each section of the user, then the bots in
- * no section, then the bots the user put away. The order inside a group is
- * the order of `bots`.
+ * What the desktop app keeps on its own machine only, so the phone keeps its
+ * own copy on the main profile: the sections that hold no bot, and the section
+ * of each group chat (by the id of the room).
  */
-export function botGroups(bots: readonly Bot[]): BotGroup[] {
+export interface Filing {
+  sections: BotSection[]
+  rooms: Record<string, string>
+}
+
+export const NO_FILING: Filing = { sections: [], rooms: {} }
+/** Where the phone keeps its `Filing`: a record of its own in the `ui_meta` of the main profile. */
+export const FILING_META_KEY = 'hermes-native-filing'
+
+export function filingOf(profiles: readonly ProfileRow[]): Filing {
+  const stored = (profiles.find(row => row.is_default)?.ui_meta as Record<string, unknown> | null | undefined)?.[FILING_META_KEY] as { sections?: unknown; rooms?: unknown } | undefined
+  const seen = new Set<string>()
+
+  return {
+    sections: (Array.isArray(stored?.sections) ? stored.sections : []).flatMap((entry): BotSection[] => {
+      const { id, name } = (entry ?? {}) as { id?: unknown; name?: unknown }
+
+      if (typeof id !== 'string' || !id || typeof name !== 'string' || !name.trim() || seen.has(id)) {
+        return []
+      }
+
+      seen.add(id)
+
+      return [{ id, name: name.trim() }]
+    }),
+    rooms: Object.fromEntries(Object.entries(stored?.rooms && typeof stored.rooms === 'object' ? stored.rooms : {}).filter((pair): pair is [string, string] => typeof pair[1] === 'string' && Boolean(pair[1])))
+  }
+}
+
+/**
+ * The Bots list under its headings, as the desktop app files it: pinned bots
+ * first, then each section of the user with its group chats and its bots, then
+ * "Unassigned" for what is in no section, then the bots the user put away.
+ * With no section at all, the group chats and the bots each have their own
+ * heading. The order inside a group is the order of `rooms`, then of `bots`.
+ */
+export function botGroups(bots: readonly Bot[], rooms: readonly Room[] = [], filing: Filing = NO_FILING): BotGroup[] {
   const shown = bots.filter(bot => !bot.hidden)
   const pinned = shown.filter(bot => bot.pinned)
   const rest = shown.filter(bot => !bot.pinned)
-  const sections = new Map<string, BotGroup>()
-
-  for (const bot of rest) {
-    if (bot.section) {
-      const group = sections.get(bot.section.id) ?? { key: `section:${bot.section.id}`, title: bot.section.name, bots: [] }
-
-      group.bots.push(bot)
-      sections.set(bot.section.id, group)
-    }
-  }
-
-  const filed = [...sections.values()].sort((a, b) => a.title.localeCompare(b.title))
-  const loose = rest.filter(bot => !bot.section)
   const hidden = bots.filter(bot => bot.hidden)
+  const sections = knownSections(bots, filing.sections)
+  const known = new Set(sections.map(section => section.id))
+  // A room filed under a section that is gone is in no section: it must not vanish.
+  const sectionOf = (room: Room) => (known.has(filing.rooms[room.id]) ? filing.rooms[room.id] : null)
+  const botRow = (bot: Bot): ListRow => ({ kind: 'bot', bot })
+  const roomRow = (room: Room): ListRow => ({ kind: 'room', room })
+  const looseRooms = rooms.filter(room => !sectionOf(room)).map(roomRow)
+  const looseBots = rest.filter(bot => !bot.section).map(botRow)
+
+  const loose: BotGroup[] = sections.length
+    ? [{ key: 'loose', title: 'Unassigned', rows: [...looseRooms, ...looseBots] }]
+    : [
+        { key: 'rooms', title: 'Group chats', rows: looseRooms },
+        { key: 'loose', title: pinned.length || looseRooms.length ? 'Bots' : '', rows: looseBots }
+      ]
 
   return [
-    ...(pinned.length ? [{ key: 'pinned', title: 'Pinned', bots: pinned }] : []),
-    ...filed,
-    ...(loose.length ? [{ key: 'loose', title: filed.length || pinned.length ? 'No section' : '', bots: loose }] : []),
-    ...(hidden.length ? [{ key: 'hidden', title: 'Put away', bots: hidden }] : [])
+    ...(pinned.length ? [{ key: 'pinned', title: 'Pinned', rows: pinned.map(botRow) }] : []),
+    // A section with nothing in it shows too: the user made it to file something there.
+    ...sections.map(section => ({
+      key: `section:${section.id}`,
+      title: section.name,
+      section,
+      rows: [...rooms.filter(room => sectionOf(room) === section.id).map(roomRow), ...rest.filter(bot => bot.section?.id === section.id).map(botRow)]
+    })),
+    ...loose.filter(group => group.rows.length),
+    ...(hidden.length ? [{ key: 'hidden', title: 'Put away', rows: hidden.map(botRow) }] : [])
   ]
 }
 
@@ -170,8 +218,12 @@ export function botsByAnyName(bots: readonly Bot[]): Map<string, Bot> {
   return found
 }
 
-/** Every section the user made, by name. */
-export function knownSections(bots: readonly Bot[]): BotSection[] {
+/**
+ * Every section the user made, by name: the sections the bots name, and the
+ * sections in `made` that no bot names. The name on the bots wins: a rename
+ * on the desktop app reaches the phone on them.
+ */
+export function knownSections(bots: readonly Bot[], made: readonly BotSection[] = []): BotSection[] {
   const seen = new Map<string, BotSection>()
 
   for (const bot of bots) {
@@ -180,7 +232,18 @@ export function knownSections(bots: readonly Bot[]): BotSection[] {
     }
   }
 
+  for (const section of made) {
+    if (!seen.has(section.id)) {
+      seen.set(section.id, section)
+    }
+  }
+
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** An id for a new section, in the form the desktop app gives its own. */
+export function newSectionId(): string {
+  return `sec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 export interface RoomMessage {

@@ -5,13 +5,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { BotAvatar as Avatar, BotSheet, SheetFrame } from '@/components/bot-sheet'
+import { BotAvatar as Avatar, BotSheet, SectionSheet, SheetFrame } from '@/components/bot-sheet'
 import { ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { NewRoomSheet } from '@/components/room-sheets'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Bot, botGroups, botNameProblem, filterBots } from '@/core/bots'
+import { type Bot, botGroups, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
-import { $bots, $rooms, createBot, loadBots } from '@/store/bots'
+import { $bots, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
@@ -39,8 +39,21 @@ export default function Bots() {
   const rooms = useStore($rooms)
   const roomsWritable = useStore($roomsWritable)
   const [grouping, setGrouping] = useState(false)
-  // The headings of the desktop app's Bots list: pinned, the user's sections, no section, put away.
-  const groups = useMemo(() => botGroups(filterBots(bots ?? [], query)).map(group => ({ ...group, data: group.bots })), [bots, query])
+  const filing = useStore($filing)
+  const searching = Boolean(query.trim())
+  // The headings of the desktop app's Bots list: pinned, the user's sections, unassigned, put away.
+  // A search shows the bots it finds only: no group chat, and no section with nothing found in it.
+  const groups = useMemo(
+    () =>
+      botGroups(filterBots(bots ?? [], query), searching ? [] : rooms, filing)
+        .filter(group => group.rows.length || !searching)
+        .map(group => ({ ...group, data: group.rows })),
+    [bots, query, searching, rooms, filing]
+  )
+  const sections = useMemo(() => knownSections(bots ?? [], filing.sections), [bots, filing])
+  // The section sheet: a new section, or one to rename or remove.
+  const [editing, setEditing] = useState<BotSection | 'new' | null>(null)
+  const [movingRoom, setMovingRoom] = useState<Room | null>(null)
   const open = bots?.find(bot => bot.name === detail)
 
   const pull = usePull(loadBots)
@@ -96,85 +109,118 @@ export default function Bots() {
           contentContainerStyle={styles.content}
           initialNumToRender={14}
           keyboardShouldPersistTaps="handled"
-          keyExtractor={bot => bot.name}
+          keyExtractor={row => (row.kind === 'bot' ? `bot:${row.bot.name}` : `room:${row.room.id}`)}
+          ListFooterComponent={searching ? null : <Button icon="folder-plus" label="Add a section" onPress={() => setEditing('new')} style={styles.addSection} />}
           ListHeaderComponent={
-            <>
-              {bots.length > 6 ? (
-                <TextInput
-                  accessibilityLabel="Find a bot"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  clearButtonMode="while-editing"
-                  onChangeText={setQuery}
-                  placeholder="Find a bot: a name or a role"
-                  placeholderTextColor={t.muted}
-                  style={[type.body, styles.search, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
-                  value={query}
-                />
-              ) : null}
-              {rooms.length && !query.trim() ? (
-                <View style={styles.rooms}>
-                  <Text style={[type.small, styles.heading, { color: t.muted }]}>Group chats</Text>
-                  {rooms.map(room => (
-                    <Pressable
-                      accessibilityHint="Opens the group chat"
-                      accessibilityLabel={`Group chat: ${room.name}`}
-                      accessibilityRole="button"
-                      key={room.id}
-                      onPress={() => router.push({ pathname: '/room', params: { id: room.id } })}
-                      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
-                    >
-                      <View style={[styles.roomIcon, { backgroundColor: t.accentBg }]}>
-                        <Feather color={t.accent} name="users" size={20} />
-                      </View>
-                      <View style={styles.fill}>
-                        <View style={styles.nameRow}>
-                          <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
-                            {room.name}
-                          </Text>
-                          <View style={styles.fill} />
-                          {room.messages.length ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(room.messages[room.messages.length - 1].at / 1000)}</Text> : null}
-                        </View>
-                        <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
-                          {room.messages.length ? previewLine(room.messages[room.messages.length - 1].text) : `${room.members.length} bots`}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </>
+            bots.length > 6 ? (
+              <TextInput
+                accessibilityLabel="Find a bot"
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+                onChangeText={setQuery}
+                placeholder="Find a bot: a name or a role"
+                placeholderTextColor={t.muted}
+                style={[type.body, styles.search, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
+                value={query}
+              />
+            ) : null
           }
           refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
-          renderSectionHeader={({ section }) => (section.title ? <Text style={[type.small, styles.heading, { color: t.muted }]}>{section.title}</Text> : null)}
+          renderSectionFooter={({ section }) =>
+            section.section && !section.data.length ? (
+              <Text style={[type.small, styles.empty, { color: t.muted, borderColor: t.line }]}>Nothing here yet. Hold a bot or a group chat, then choose this section.</Text>
+            ) : null
+          }
+          renderSectionHeader={({ section }) => {
+            const own = section.section
+
+            if (!section.title) {
+              return null
+            }
+
+            return own ? (
+              <Pressable
+                accessibilityHint="Opens the name of this section, and the way to remove it"
+                accessibilityLabel={`Section: ${section.title}`}
+                accessibilityRole="button"
+                hitSlop={space.sm}
+                onPress={() => setEditing(own)}
+                style={styles.headingRow}
+              >
+                <Text numberOfLines={1} style={[type.small, styles.headingText, { color: t.muted }]}>
+                  {section.title}
+                </Text>
+                <Feather color={t.muted} name="more-horizontal" size={18} />
+              </Pressable>
+            ) : (
+              <Text style={[type.small, styles.heading, { color: t.muted }]}>{section.title}</Text>
+            )
+          }}
           sections={groups}
           stickySectionHeadersEnabled={false}
-          renderItem={({ item }) => (
-            <Pressable
-              accessibilityHint="Opens the conversation with this bot. Hold for its details."
-              accessibilityLabel={item.title}
-              accessibilityRole="button"
-              onLongPress={() => setDetail(item.name)}
-              onPress={() => void talk(item)}
-              style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
-            >
-              <Avatar bot={item} size={46} t={t} />
-              <View style={styles.fill}>
-                <View style={styles.nameRow}>
-                  <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
-                    {item.title}
+          renderItem={({ item: row }) => {
+            if (row.kind === 'room') {
+              const { room } = row
+              const last = room.messages[room.messages.length - 1]
+
+              return (
+                <Pressable
+                  accessibilityHint="Opens the group chat. Hold to move it to a section."
+                  accessibilityLabel={`Group chat: ${room.name}`}
+                  accessibilityRole="button"
+                  onLongPress={() => setMovingRoom(room)}
+                  onPress={() => router.push({ pathname: '/room', params: { id: room.id } })}
+                  style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+                >
+                  <View style={[styles.roomIcon, { backgroundColor: t.accentBg }]}>
+                    <Feather color={t.accent} name="users" size={20} />
+                  </View>
+                  <View style={styles.fill}>
+                    <View style={styles.nameRow}>
+                      <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                        {room.name}
+                      </Text>
+                      <View style={styles.fill} />
+                      {last ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(last.at / 1000)}</Text> : null}
+                    </View>
+                    <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
+                      {last ? previewLine(last.text) : `${room.members.length} bots`}
+                    </Text>
+                  </View>
+                </Pressable>
+              )
+            }
+
+            const item = row.bot
+
+            return (
+              <Pressable
+                accessibilityHint="Opens the conversation with this bot. Hold for its details and its section."
+                accessibilityLabel={item.title}
+                accessibilityRole="button"
+                onLongPress={() => setDetail(item.name)}
+                onPress={() => void talk(item)}
+                style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+              >
+                <Avatar bot={item} size={46} t={t} />
+                <View style={styles.fill}>
+                  <View style={styles.nameRow}>
+                    <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                      {item.title}
+                    </Text>
+                    {item.working ? <Text style={[type.small, styles.badge, { color: t.accent, backgroundColor: t.accentBg }]}>Working</Text> : null}
+                    <View style={styles.fill} />
+                    {item.lastActive ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text> : null}
+                  </View>
+                  <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
+                    {item.preview || item.description || 'No role written yet.'}
                   </Text>
-                  {item.working ? <Text style={[type.small, styles.badge, { color: t.accent, backgroundColor: t.accentBg }]}>Working</Text> : null}
-                  <View style={styles.fill} />
-                  {item.lastActive ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text> : null}
                 </View>
-                <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
-                  {item.preview || item.description || 'No role written yet.'}
-                </Text>
-              </View>
-              {opening === item.name ? <ActivityIndicator color={t.muted} /> : null}
-            </Pressable>
-          )}
+                {opening === item.name ? <ActivityIndicator color={t.muted} /> : null}
+              </Pressable>
+            )
+          }}
           windowSize={7}
         />
       )}
@@ -190,7 +236,51 @@ export default function Bots() {
         />
       ) : null}
       {adding && bots ? <NewBotSheet bots={bots} onClose={() => setAdding(false)} /> : null}
+      {editing ? <SectionEditSheet onClose={() => setEditing(null)} section={editing === 'new' ? null : editing} taken={sections} /> : null}
+      {movingRoom ? (
+        <SectionSheet
+          current={sections.find(section => section.id === filing.rooms[movingRoom.id])?.id ?? null}
+          onClose={() => setMovingRoom(null)}
+          onPick={section => {
+            setMovingRoom(null)
+            setRoomSection(movingRoom.id, section).catch(say)
+          }}
+          sections={sections}
+        />
+      ) : null}
     </SafeAreaView>
+  )
+}
+
+/** A new section with nothing in it, or the name of a section and the way to remove it. */
+function SectionEditSheet({ section, taken, onClose }: { section: BotSection | null; taken: readonly BotSection[]; onClose: () => void }) {
+  const t = useTheme()
+  const [name, setName] = useState(section?.name ?? '')
+  const [busy, setBusy] = useState<string | null>(null)
+  const typed = name.trim()
+  const problem = typed && taken.some(known => known.id !== section?.id && known.name.toLowerCase() === typed.toLowerCase()) ? `A section named “${typed}” exists already.` : null
+
+  const run = (what: string, work: () => Promise<void>) => {
+    setBusy(what)
+    work()
+      .then(onClose, say)
+      .finally(() => setBusy(null))
+  }
+
+  return (
+    <SheetFrame onClose={onClose} title={section ? 'Section' : 'Add a section'}>
+      {section ? null : <Text style={[type.small, { color: t.muted }]}>A section is a heading of the Bots list. File bots and group chats under it.</Text>}
+      <Field autoCapitalize="sentences" autoFocus={!section} error={problem} label="Name" onChangeText={setName} placeholder="Clients" value={name} />
+      {section ? (
+        <>
+          <Button busy={busy === 'name'} disabled={!typed || typed === section.name || Boolean(problem)} label="Save the name" onPress={() => run('name', () => renameSection(section, typed))} />
+          <Text style={[type.small, { color: t.muted }]}>When you remove the section, its bots and its group chats stay. They go under “Unassigned”.</Text>
+          <Button busy={busy === 'remove'} icon="trash-2" label="Remove this section" onPress={() => run('remove', () => removeSection(section))} tone="danger" />
+        </>
+      ) : (
+        <Button busy={busy === 'add'} disabled={!typed || Boolean(problem)} icon="plus" label="Add the section" onPress={() => run('add', () => makeSection(typed))} tone="primary" />
+      )}
+    </SheetFrame>
   )
 }
 
@@ -234,9 +324,12 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  rooms: { gap: space.sm, marginBottom: space.sm },
   roomIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   heading: { fontWeight: '700', marginTop: space.sm },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
+  headingText: { fontWeight: '700', flex: 1 },
+  empty: { padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', textAlign: 'center' },
+  addSection: { marginTop: space.md },
   shrink: { flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },

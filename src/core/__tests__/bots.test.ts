@@ -54,7 +54,7 @@ describe('a new bot', () => {
 })
 
 describe('sections and group chats of the Bots list', () => {
-  const { botGroups, botRows, groupRooms, knownSections } = jest.requireActual('../bots') as typeof import('../bots')
+  const { botGroups, botRows, filingOf, groupRooms, knownSections } = jest.requireActual('../bots') as typeof import('../bots')
   const meta = (value: Record<string, unknown>) => ({ 'hermes-bots': value })
   const profiles = [
     { name: 'default', is_default: true, ui_meta: { ...meta({ title: 'Manager', pinned: true, sectionId: 's1', sectionName: 'Front' }), 'hermes-bots-groups': { rooms: { 'id:r1': { name: 'Launch', roomId: 'r1', omitted: 4, members: [{ name: 'default' }, { name: 'qa' }], log: [{ id: 'a', from: { kind: 'user', name: 'me' }, text: 'Go', at: 10 }, { id: 'b', from: { kind: 'member', name: 'qa' }, text: 'Done', at: 20 }, { from: { kind: 'member', name: 'qa' }, text: '  ' }] } } } } },
@@ -70,12 +70,15 @@ describe('sections and group chats of the Bots list', () => {
     expect(bots.find(bot => bot.name === 'writer')?.title).toBe('Writer')
   })
 
-  it('files the bots: pinned, each section, no section, put away', () => {
-    expect(botGroups(bots).map(group => [group.title, group.bots.map(bot => bot.name)])).toEqual([
+  const titles = (groups: ReturnType<typeof botGroups>) => groups.map(group => [group.title, group.rows.map(row => (row.kind === 'bot' ? row.bot.name : `room ${row.room.name}`))])
+  const rooms = groupRooms(profiles)
+
+  it('files the bots: pinned, each section, unassigned, put away', () => {
+    expect(titles(botGroups(bots))).toEqual([
       ['Pinned', ['default']],
       ['Check', ['qa']],
       ['Front', ['writer']],
-      ['No section', ['loose']],
+      ['Unassigned', ['loose']],
       ['Put away', ['old']]
     ])
   })
@@ -84,8 +87,44 @@ describe('sections and group chats of the Bots list', () => {
     expect(botGroups(botRows([{ name: 'a' }, { name: 'b' }] as never[], 0)).map(group => group.title)).toEqual([''])
   })
 
-  it('lists the sections the user made', () => {
+  it('gives the group chats and the bots a heading each when no section exists', () => {
+    expect(titles(botGroups(botRows([{ name: 'a' }] as never[], 0), rooms))).toEqual([
+      ['Group chats', ['room Launch']],
+      ['Bots', ['a']]
+    ])
+  })
+
+  it('leaves a group chat in no section under Unassigned, before the bots', () => {
+    expect(titles(botGroups(bots, rooms)).find(([title]) => title === 'Unassigned')).toEqual(['Unassigned', ['room Launch', 'loose']])
+  })
+
+  it('files a group chat under its section, and shows a section with nothing in it', () => {
+    const filing = { sections: [{ id: 's9', name: 'Later' }], rooms: { r1: 's1' } }
+
+    expect(titles(botGroups(bots, rooms, filing))).toEqual([
+      ['Pinned', ['default']],
+      ['Check', ['qa']],
+      ['Front', ['room Launch', 'writer']],
+      ['Later', []],
+      ['Unassigned', ['loose']],
+      ['Put away', ['old']]
+    ])
+  })
+
+  it('puts a group chat of a section that is gone under Unassigned', () => {
+    expect(titles(botGroups(bots, rooms, { sections: [], rooms: { r1: 'gone' } })).find(([title]) => title === 'Unassigned')?.[1]).toContain('room Launch')
+  })
+
+  it('lists the sections the user made, with the name the bots carry', () => {
     expect(knownSections(bots)).toEqual([{ id: 's2', name: 'Check' }, { id: 's1', name: 'Front' }])
+    expect(knownSections(bots, [{ id: 's1', name: 'Old name' }, { id: 's9', name: 'Later' }])).toEqual([{ id: 's2', name: 'Check' }, { id: 's1', name: 'Front' }, { id: 's9', name: 'Later' }])
+  })
+
+  it('reads what the phone filed from the main profile, and drops what is broken', () => {
+    const stored = { sections: [{ id: 's9', name: ' Later ' }, { id: 's9', name: 'Twice' }, { id: '', name: 'No id' }, 'text'], rooms: { r1: 's9', r2: 4, r3: '' } }
+
+    expect(filingOf([{ name: 'default', is_default: true, ui_meta: { 'hermes-native-filing': stored } }] as never[])).toEqual({ sections: [{ id: 's9', name: 'Later' }], rooms: { r1: 's9' } })
+    expect(filingOf(profiles)).toEqual({ sections: [], rooms: {} })
   })
 
   it('reads the group chats from the main profile', () => {
