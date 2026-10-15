@@ -125,3 +125,9 @@ export async function closeRoom(id: string): Promise<void> {
   await api().request({ path: at(id), method: 'DELETE', timeoutMs: 60_000 })
   $rooms.set($rooms.get().filter(room => room.id !== id))
 }
+
+/** Remove a group that has no room on the host: the bots stop naming it. */
+export async function forgetGroup(id: string, name: string): Promise<void> {
+  await api().request({ path: `${ROUTE}/groups?name=${encodeURIComponent(name)}`, method: 'DELETE', timeoutMs: 60_000 })
+  $rooms.set($rooms.get().filter(room => room.id !== id))
+}

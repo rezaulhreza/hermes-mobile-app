@@ -8,12 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
 import { RoomSettingsSheet } from '@/components/room-sheets'
-import { IconButton, Notice } from '@/components/ui'
+import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomsWritable, $roomWorking, checkRoomsWritable, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -40,6 +40,20 @@ export default function RoomScreen() {
   const [sending, setSending] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
   const [settings, setSettings] = useState(false)
+  const [removing, setRemoving] = useState(false)
+
+  const forget = () => {
+    if (!room) {
+      return
+    }
+
+    setSending(true)
+    setFault(null)
+    forgetGroup(room.id, room.name)
+      .then(() => router.back())
+      .catch(error => setFault(faultWords(error)))
+      .finally(() => setSending(false))
+  }
 
   useEffect(() => {
     if (linkState === 'open') {
@@ -91,7 +105,22 @@ export default function RoomScreen() {
           ListEmptyComponent={
             room.unmade ? (
               <Notice
-                detail="The desktop app has this group, and the host has no message of it yet. Write the first message in the desktop app. After that you can read and write here."
+                action={
+                  writable ? (
+                    removing ? (
+                      <View style={styles.confirm}>
+                        <Text style={[type.small, { color: t.ink }]}>Remove “{room.name}” on every device? Its bots stay.</Text>
+                        <View style={styles.sendRow}>
+                          <Button label="Keep it" onPress={() => setRemoving(false)} style={styles.fill} />
+                          <Button busy={sending} label="Remove it" onPress={forget} style={styles.fill} tone="danger" />
+                        </View>
+                      </View>
+                    ) : (
+                      <Button icon="trash-2" label="Remove this group" onPress={() => setRemoving(true)} tone="danger" />
+                    )
+                  ) : undefined
+                }
+                detail={fault ?? 'The desktop app has this group, and the host has no message of it yet. Write the first message in the desktop app. After that you can read and write here.'}
                 icon="users"
                 title="Nothing of this group is on the host yet"
               />
@@ -189,6 +218,7 @@ const styles = StyleSheet.create({
   composer: { gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.sm, borderTopWidth: StyleSheet.hairlineWidth, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  confirm: { gap: space.sm, alignSelf: 'stretch' },
   mine: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
   theirs: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   unknown: { width: 30, height: 30, borderRadius: 15 }
