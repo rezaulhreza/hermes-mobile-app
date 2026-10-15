@@ -6,10 +6,12 @@ import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSectionId } from '@/core/bots'
+import { type Capability, capabilityCount } from '@/core/capabilities'
 import { faultWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
 import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection, setDefaultBot } from '@/store/bots'
+import { readSkills } from '@/store/capabilities'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -62,8 +64,14 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   const [busy, setBusy] = useState<string | null>(null)
   const [choosingModel, setChoosingModel] = useState(false)
   const [filing, setFiling] = useState(false)
+  // The host counts the skills a bot has, not the skills that are on: the row reads the list for that.
+  const [skills, setSkills] = useState<Capability[]>()
   const sections = knownSections(useStore($bots) ?? [], useStore($filing).sections)
   const isStart = useStore($defaultBot) === bot.name
+
+  useEffect(() => {
+    readSkills(bot.name).then(setSkills, () => undefined)
+  }, [bot.name])
 
   useEffect(() => {
     loadBotSoul(bot.name).then(
@@ -196,7 +204,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
         <View style={styles.fill}>
           <Text style={[type.small, { color: t.muted }]}>Skills and tools</Text>
           <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
-            {bot.skillCount} skills on
+            {capabilityCount(skills) || `${bot.skillCount} skills`}
           </Text>
         </View>
         <Feather color={t.muted} name="chevron-right" size={18} />

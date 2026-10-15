@@ -36,6 +36,11 @@ const WRITE: Record<CapabilityKind, (profile: string, id: string, on: boolean) =
   plugins: (profile, id, on) => rpc('plugins.manage', { action: 'toggle', key: id, enable: on, profile }, 60_000)
 }
 
+/** The skills of one bot, for a count outside the Capabilities screen. The lists of the screen stay as they are. */
+export function readSkills(profile: string): Promise<Capability[]> {
+  return READ.skills(profile)
+}
+
 /** Show the capabilities of this bot. The lists of the bot before are dropped. */
 export function showCapabilitiesOf(profile: string): void {
   if (profile !== $capabilityProfile.get()) {
