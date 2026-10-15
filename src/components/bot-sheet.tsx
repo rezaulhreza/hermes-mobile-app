@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   },
   sheet: { padding: space.lg, gap: space.md },
   who: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  talk: { marginTop: space.sm },
+  talk: { marginTop: space.sm, alignSelf: 'flex-start', minHeight: 40, paddingHorizontal: space.md },
   camera: {
     position: 'absolute',
     right: -2,
