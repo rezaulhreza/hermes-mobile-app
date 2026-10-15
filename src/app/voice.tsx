@@ -42,7 +42,7 @@ export default function Voice() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[type.small, styles.section, { color: t.muted }]}>Speech engine of a call</Text>
+        <Text style={[type.small, styles.section, { color: t.muted }]}>Speech engine of Live voice</Text>
         <Card style={styles.card}>
           <EngineChoices />
         </Card>
@@ -64,7 +64,7 @@ export default function Voice() {
             <View style={styles.fill}>
               <Text style={[type.label, { color: t.ink }]}>{chosen ? voiceName(chosen) : ofHost ? `${voiceName(ofHost)}, the voice of the host` : 'The voice of the host'}</Text>
               <Text style={[type.small, { color: t.muted }]}>
-                {deepgram ? 'For calls on the Deepgram live engine, from this phone.' : 'The other engines speak with the voice set on your Hermes host.'}
+                {deepgram ? 'For Live voice on the Deepgram engine, from this phone.' : 'The other engines speak with the voice set on your Hermes host.'}
               </Text>
             </View>
             {deepgram ? <Feather color={t.muted} name="chevron-right" size={18} /> : null}
@@ -77,7 +77,7 @@ export default function Voice() {
             <View style={styles.fill}>
               <Text style={[type.label, { color: t.ink }]}>Listen for “{wake.phrase}”</Text>
               <Text style={[type.small, { color: t.muted }]}>
-                {wake.notice || (wake.listening ? 'Listening. Say the phrase to start a call.' : 'Say the phrase and a call starts, with no tap.')}
+                {wake.notice || (wake.listening ? 'Listening. Say the phrase to start Live voice.' : 'Say the phrase and Live voice starts, with no tap.')}
               </Text>
             </View>
             <Switch

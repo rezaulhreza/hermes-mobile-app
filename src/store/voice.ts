@@ -114,7 +114,7 @@ function patch(change: Partial<Call>): void {
 }
 
 /** The sound of the call is gone and the phone could not get it back. */
-const AUDIO_LOST = 'The sound of this call stopped. End the call and start it again.'
+const AUDIO_LOST = 'The sound of Live voice stopped. End Live voice and start it again.'
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -583,7 +583,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
   const api = currentApi()
 
   if (!audio) {
-    throw new Error('This build of the app has no call audio. Install the newest build.')
+    throw new Error('This build of the app has no Live voice audio. Install the newest build.')
   }
 
   if (!api) {
@@ -804,7 +804,7 @@ export async function dictate(): Promise<string> {
   const api = currentApi()
 
   if (!audio) {
-    throw new Error('This build of the app has no call audio. Install the newest build.')
+    throw new Error('This build of the app has no Live voice audio. Install the newest build.')
   }
 
   if (!api) {

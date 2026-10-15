@@ -63,7 +63,7 @@ export class GptLiveEngine implements VoiceEngine {
     this.peer = peer
     on(peer, 'connectionstatechange', () => {
       if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
-        this.finish('The call lost its connection to the voice model.')
+        this.finish('Live voice lost its connection to the voice model.')
       }
     })
 
@@ -79,7 +79,7 @@ export class GptLiveEngine implements VoiceEngine {
 
     this.channel = channel
     on(channel, 'message', event => this.onEvent(String(event.data)))
-    on(channel, 'close', () => this.finish('The call lost its connection to the voice model.'))
+    on(channel, 'close', () => this.finish('Live voice lost its connection to the voice model.'))
 
     await peer.setLocalDescription(await peer.createOffer({}))
     await gathered(peer)

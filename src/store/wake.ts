@@ -137,7 +137,7 @@ export async function setWake(on: boolean): Promise<void> {
     }
 
     if (!duplexAudio) {
-      return patch({ pending: false, notice: 'This build of the app has no call audio. Install the newest build.' })
+      return patch({ pending: false, notice: 'This build of the app has no Live voice audio. Install the newest build.' })
     }
 
     if (!(await requestRecordingPermissionsAsync()).granted) {

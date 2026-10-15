@@ -384,7 +384,7 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, is
   return { turn: NEW_TURN, hush: false, hearing: false, partial: '', utterance: real ? transcript : null }
 }
 
-const STOP_PHRASES = new Set(['stop', 'stop listening', 'goodbye', 'bye', 'end voice chat', 'end the call', 'end call', 'hang up'])
+const STOP_PHRASES = new Set(['stop', 'stop listening', 'goodbye', 'bye', 'end voice chat', 'end the call', 'end call', 'end live voice', 'end live', 'hang up'])
 
 /** Words that end the call when they are all the user said. */
 export function isStopPhrase(transcript: string): boolean {

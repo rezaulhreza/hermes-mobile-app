@@ -17,7 +17,7 @@ what it does, and answer when it needs you, from anywhere.
   attach files, queue messages, and steer a running answer.
 - **Hermes needs you**: approvals, questions and passwords show in the chat
   and as push notifications. You can approve or deny from the notification.
-- **Voice**: a live call with the agent, dictation, read aloud, a wake word.
+- **Voice**: Live voice with the agent, dictation, read aloud, a wake word.
 - **Bots**: each bot is its own agent. Talk to one, edit one, add one. Group
   chats of bots.
 - **Background work**: see the commands a chat left running, and stop them.

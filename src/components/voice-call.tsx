@@ -118,7 +118,7 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
       <View style={[styles.fill, { backgroundColor: t.bg, paddingTop: insets.top + space.sm, paddingBottom: Math.max(insets.bottom, space.md) }]}>
         <View style={styles.head}>
           <Text style={[type.heading, styles.fill, { color: t.ink }]}>Talk to Hermes</Text>
-          <IconButton icon="chevron-down" label="Hide the call view" onPress={hide} />
+          <IconButton icon="chevron-down" label="Hide the Live voice view" onPress={hide} />
         </View>
         <View style={styles.sub}>
           <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
@@ -128,7 +128,7 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
         </View>
 
         <Pressable
-          accessibilityHint="Choose another speech engine for this call"
+          accessibilityHint="Choose another speech engine for Live voice"
           accessibilityLabel="Speech engine"
           accessibilityRole="button"
           hitSlop={8}
@@ -215,7 +215,7 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
             onPress={() => setCallSpeaker(!speaker)}
           />
           <IconButton icon="message-circle" label="Show the chat" onPress={hide} />
-          <Pressable accessibilityLabel="End the call" accessibilityRole="button" onPress={endCall} style={[styles.end, { backgroundColor: t.redBg }]}>
+          <Pressable accessibilityLabel="End Live voice" accessibilityRole="button" onPress={endCall} style={[styles.end, { backgroundColor: t.redBg }]}>
             <Feather color={t.red} name="phone-off" size={22} />
           </Pressable>
         </View>
@@ -242,7 +242,7 @@ function Strip({ call, t }: { call: Call; t: Palette }) {
 
   return (
     <View style={[styles.strip, { backgroundColor: colours.soft }]}>
-      <Pressable accessibilityLabel="Show the call" accessibilityRole="button" onPress={() => showCallFull(true)} style={styles.stripMain}>
+      <Pressable accessibilityLabel="Show Live voice" accessibilityRole="button" onPress={() => showCallFull(true)} style={styles.stripMain}>
         {!call.muted && call.phase !== 'connecting' ? <LiveBars colour={colours.strong} floor={0.15} height={18} /> : <Bars colour={colours.strong} height={18} level={0.3} />}
         <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.ink, fontWeight: '700' }]}>
           {call.muted ? 'Muted' : PHASE_HEADING[call.phase].replace(/\.$/, '')}
@@ -252,10 +252,10 @@ function Strip({ call, t }: { call: Call; t: Palette }) {
       <Pressable accessibilityLabel={call.muted ? 'Turn the microphone on' : 'Mute'} accessibilityRole="button" hitSlop={10} onPress={() => setCallMuted(!call.muted)}>
         <Feather color={t.ink} name={call.muted ? 'mic-off' : 'mic'} size={18} />
       </Pressable>
-      <Pressable accessibilityLabel="Show the call" accessibilityRole="button" hitSlop={10} onPress={() => showCallFull(true)}>
+      <Pressable accessibilityLabel="Show Live voice" accessibilityRole="button" hitSlop={10} onPress={() => showCallFull(true)}>
         <Feather color={t.ink} name="maximize-2" size={18} />
       </Pressable>
-      <Pressable accessibilityLabel="End the call" accessibilityRole="button" hitSlop={10} onPress={endCall}>
+      <Pressable accessibilityLabel="End Live voice" accessibilityRole="button" hitSlop={10} onPress={endCall}>
         <Feather color={t.red} name="phone-off" size={18} />
       </Pressable>
     </View>

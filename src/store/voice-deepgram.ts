@@ -244,7 +244,7 @@ export class DeepgramEngine implements VoiceEngine {
 
   private async reopenListen(): Promise<void> {
     if (this.listenRetries >= LISTEN_RETRIES) {
-      this.events.lost('The call lost its connection to Deepgram.')
+      this.events.lost('Live voice lost its connection to Deepgram.')
 
       return
     }
@@ -269,7 +269,7 @@ export class DeepgramEngine implements VoiceEngine {
         if (!this.active) {
           socket.close()
 
-          throw new Error('The call ended')
+          throw new Error('Live voice ended')
         }
 
         socket.onmessage = event => this.onSpeakMessage(event.data)

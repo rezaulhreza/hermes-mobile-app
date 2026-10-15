@@ -205,7 +205,7 @@ export default function Settings() {
             </View>
           </View>
           <Pressable
-            accessibilityHint="The speech engine of a call and the wake word"
+            accessibilityHint="The speech engine of Live voice and the wake word"
             accessibilityLabel="Voice"
             accessibilityRole="button"
             onPress={() => router.push('/voice')}

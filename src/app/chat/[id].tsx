@@ -129,7 +129,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   useEffect(() => {
     if (callEnded) {
       $callEnded.set(null)
-      Alert.alert('The call ended', callEnded)
+      Alert.alert('Live voice ended', callEnded)
     }
   }, [callEnded])
 
@@ -548,7 +548,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                   label={dictation === 'off' ? 'Dictate a message' : dictation === 'listening' ? 'Done talking' : 'Writing it down'}
                   onPress={speakDraft}
                 />
-                {call ? null : <IconButton icon="phone" label="Start a voice call" onPress={() => startCall(sessionId).catch(say)} />}
+                {call ? null : <IconButton icon="phone" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />}
               </>
             ) : null}
             {running && !hasContent ? (
