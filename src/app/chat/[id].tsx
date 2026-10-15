@@ -28,6 +28,7 @@ import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
 import { ModelSheet } from '@/components/model-sheet'
 import { PreviewPane, PreviewPill } from '@/components/preview-pane'
+import { BackgroundPanel } from '@/components/background-panel'
 import { QueuePanel } from '@/components/queue-panel'
 import { RequestCard } from '@/components/request-card'
 import { ScreenPill, ScreenView } from '@/components/screen-view'
@@ -65,6 +66,7 @@ import {
 import { $bots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { hostFilesThatExist } from '@/store/preview'
+import { unwatchBackground, watchBackground } from '@/store/background'
 import { $linkState } from '@/store/link'
 import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
@@ -152,6 +154,17 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const list = useRef<FlatList<TranscriptItem>>(null)
 
   const opened = Boolean(conversation)
+
+  // The commands this chat left running are read while the chat is on screen, and only then.
+  useEffect(() => {
+    if (!sessionId || linkState !== 'open') {
+      return
+    }
+
+    watchBackground(sessionId)
+
+    return () => unwatchBackground(sessionId)
+  }, [sessionId, linkState])
 
   useFocusEffect(
     useCallback(() => {
@@ -419,6 +432,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           </View>
         ))}
 
+        {sessionId ? <BackgroundPanel sessionId={sessionId} /> : null}
         {sessionId ? <QueuePanel onEdit={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n${text}` : text))} sessionId={sessionId} /> : null}
         {sessionId ? <WorkStrip sessionId={sessionId} storedId={conversation?.storedId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
