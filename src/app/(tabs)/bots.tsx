@@ -92,6 +92,7 @@ export default function Bots() {
         )
       ) : (
         <SectionList
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={styles.content}
           initialNumToRender={14}
           keyboardShouldPersistTaps="handled"

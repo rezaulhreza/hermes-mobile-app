@@ -73,6 +73,7 @@ export function CommandsSheet({ sessionId, visible, onClose, onPick }: Props) {
           <Notice detail="Close this sheet and open it again." icon="alert-triangle" title="Could not load the commands" />
         ) : (
           <SectionList
+            automaticallyAdjustKeyboardInsets
             ListEmptyComponent={<Notice icon="search" title="No matching commands" />}
             contentContainerStyle={styles.list}
             keyExtractor={row => row.command}

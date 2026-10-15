@@ -44,7 +44,7 @@ export function SheetFrame({ title, onClose, children }: { title: string; onClos
           </Text>
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
-        <ScrollView contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
       </View>
@@ -269,6 +269,7 @@ function SectionSheet({ sections, current, onPick, onClose }: { sections: readon
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
         <FlatList
+          automaticallyAdjustKeyboardInsets
           ListFooterComponent={
             <View style={styles.newSection}>
               <Field label="A new section" onChangeText={setName} placeholder="Clients" value={name} />
@@ -358,6 +359,7 @@ export function BotModelSheet({
           value={query}
         />
         <FlatList
+          automaticallyAdjustKeyboardInsets
           ListHeaderComponent={
             auto && !query.trim() ? (
               <Pressable

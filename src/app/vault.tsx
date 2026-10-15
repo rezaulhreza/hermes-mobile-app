@@ -74,7 +74,7 @@ export default function Vault() {
           </View>
         )
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content}>
           <Text style={[type.small, { color: t.muted }]}>
             Hermes uses these when it signs in or pays in its own browser. They are stored encrypted on your Hermes host. The phone never
             shows a saved password.

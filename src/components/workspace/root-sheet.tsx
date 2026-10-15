@@ -85,6 +85,7 @@ export function RootSheet({
           />
         ) : (
           <ScrollView
+            automaticallyAdjustKeyboardInsets
             contentContainerStyle={[
               styles.content,
               { paddingBottom: insets.bottom + space.lg },
@@ -201,6 +202,7 @@ function Browser({
         </Text>
       </View>
       <FlatList
+        automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
           <View style={styles.note}>
             {folders || problem ? (

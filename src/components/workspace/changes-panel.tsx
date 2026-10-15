@@ -103,6 +103,7 @@ export function ChangesPanel({ bottom }: { bottom: number }) {
   return (
     <View style={styles.fill}>
       <SectionList
+        automaticallyAdjustKeyboardInsets
         ListEmptyComponent={loading ? null : <Notice detail="Every change is committed." icon="check-circle" title="The folder is clean" />}
         ListHeaderComponent={
           <View style={styles.top}>

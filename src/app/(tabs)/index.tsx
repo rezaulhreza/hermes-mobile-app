@@ -232,6 +232,7 @@ export default function Chats() {
     <View style={[styles.split, { backgroundColor: t.bg }]}>
     <SafeAreaView edges={wide ? ['top', 'left'] : ['top']} style={[wide ? { width: listPaneWidth(width) } : styles.fill, { backgroundColor: t.bg }]}>
       <SectionList
+        automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
           linkState === 'open' && !loading ? (
             <Notice

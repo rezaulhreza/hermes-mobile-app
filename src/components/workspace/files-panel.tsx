@@ -249,6 +249,7 @@ function SearchSheet({ root, onClose }: { root: string; onClose: () => void }) {
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
         </View>
         <FlatList
+          automaticallyAdjustKeyboardInsets
           ListEmptyComponent={hits && !busy ? <Text style={[type.body, styles.none, { color: t.muted }]}>No file of this folder has that text.</Text> : null}
           data={hits ?? []}
           initialNumToRender={14}

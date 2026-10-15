@@ -159,7 +159,7 @@ function SheetFrame({ title, onClose, children }: { title: string; onClose: () =
           </Text>
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
-        <ScrollView contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
       </View>

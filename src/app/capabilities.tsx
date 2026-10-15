@@ -74,6 +74,7 @@ export default function Capabilities() {
       </View>
 
       <FlatList
+        automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
           !items ? (
             fault ? (

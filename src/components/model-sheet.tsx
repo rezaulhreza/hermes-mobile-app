@@ -156,6 +156,7 @@ export function ModelSheet({ sessionId, reasoning, visible, initialQuery = '', o
           </View>
         ) : (
           <SectionList
+            automaticallyAdjustKeyboardInsets
             ListEmptyComponent={sections ? <Notice icon="search" title="No matching models" /> : null}
             contentContainerStyle={styles.list}
             keyExtractor={choice => `${choice.provider}/${choice.model}`}

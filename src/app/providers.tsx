@@ -52,6 +52,7 @@ export default function Providers() {
         )
       ) : (
         <FlatList
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={styles.content}
           data={shown}
           keyboardShouldPersistTaps="handled"
@@ -123,7 +124,7 @@ function ProviderSheet({ row, currentModel, onClose }: { row: ProviderRow; curre
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
 
-        <ScrollView contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
           {row.warning ? <Text style={[type.small, styles.warning, { color: t.red, backgroundColor: t.redBg }]}>{row.warning}</Text> : null}
 
           {row.connected ? (

@@ -286,7 +286,7 @@ function HelperDetail({ sessionId, helper }: { sessionId: string; helper: Helper
 
   return (
     <View style={[styles.fill, { paddingBottom: insets.bottom + space.md }]}>
-      <ScrollView contentContainerStyle={styles.body} style={styles.fill}>
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.body} style={styles.fill}>
         <Text style={[type.body, { color: t.ink }]}>{helper.goal}</Text>
         <Text style={[type.small, { color: helperColour(helper, t) }]}>
           {[helperLine(helper), helper.model, helper.durationS ? `${Math.round(helper.durationS)} s` : ''].filter(Boolean).join(' · ')}
