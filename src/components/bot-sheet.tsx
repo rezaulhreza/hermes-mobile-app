@@ -111,16 +111,19 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
             {[bot.isDefault ? 'The main bot' : bot.name, bot.model ? modelLabel(bot.model) : '', `${bot.skillCount} skills`].filter(Boolean).join(' · ')}
           </Text>
           {onTalk ? (
-            <Button
-              icon="message-circle"
-              label="Talk to this bot"
+            <Pressable
+              accessibilityLabel="Talk to this bot"
+              accessibilityRole="button"
+              hitSlop={8}
               onPress={() => {
                 onClose()
                 onTalk()
               }}
-              style={styles.talk}
-              tone="primary"
-            />
+              style={({ pressed }) => [styles.talk, { backgroundColor: t.ink }, pressed && styles.pressed]}
+            >
+              <Feather color={t.bg} name="message-circle" size={14} />
+              <Text style={[type.small, styles.talkLabel, { color: t.bg }]}>Talk</Text>
+            </Pressable>
           ) : null}
         </View>
       </View>
@@ -433,7 +436,9 @@ const styles = StyleSheet.create({
   },
   sheet: { padding: space.lg, gap: space.md },
   who: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  talk: { marginTop: space.sm, alignSelf: 'flex-start', minHeight: 40, paddingHorizontal: space.md },
+  talk: { marginTop: space.sm, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: space.xs, height: 30, paddingHorizontal: space.md, borderRadius: radius.pill },
+  talkLabel: { fontWeight: '600' },
+  pressed: { opacity: 0.6 },
   camera: {
     position: 'absolute',
     right: -2,
