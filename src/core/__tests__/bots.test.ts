@@ -1,4 +1,4 @@
-import { botInitials, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom } from '../bots'
+import { botInitials, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
 
 const NOW = 10_000
 
@@ -119,5 +119,28 @@ describe('a room read again', () => {
     expect(roomMembersProblem(1)).toMatch(/at least 2/)
     expect(roomMembersProblem(7)).toMatch(/at most 6/)
     expect(roomMembersProblem(3)).toBeNull()
+  })
+})
+
+describe('a group that only the bots name', () => {
+  const bot = (name: string, groups: string[], extra: Record<string, unknown> = {}) => ({ name, ui_meta: { 'hermes-bots': { groups }, ...extra } })
+
+  it('shows beside the rooms of the record, with the bots that name it', () => {
+    const rooms = groupRooms([
+      { ...bot('default', ['Launch', 'Plans'], { 'hermes-bots-groups': { rooms: { 'id:r1': { name: 'Launch', roomId: 'r1', members: [{ name: 'default' }], log: [] } } } }), is_default: true },
+      bot('qa', ['Plans']),
+      bot('ops', [])
+    ] as never)
+
+    expect(rooms.map(room => [room.id, room.name, room.members, Boolean(room.unmade)])).toEqual([
+      ['r1', 'Launch', ['default'], false],
+      ['name:Plans', 'Plans', ['default', 'qa'], true]
+    ])
+  })
+
+  it('stays away when the group was closed', () => {
+    const rooms = groupRooms([{ ...bot('default', ['Old'], { 'hermes-bots-groups': { rooms: {}, deleted: { 'name:Old': 4 } } }), is_default: true }] as never)
+
+    expect(rooms).toEqual([])
   })
 })

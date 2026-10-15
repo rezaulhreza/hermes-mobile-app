@@ -9,7 +9,7 @@ import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
 import { RoomSettingsSheet } from '@/components/room-sheets'
 import { IconButton, Notice } from '@/components/ui'
-import { type Bot, botsByAnyName, type RoomMessage } from '@/core/bots'
+import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
@@ -44,7 +44,8 @@ export default function RoomScreen() {
   useEffect(() => {
     if (linkState === 'open') {
       void loadBots().catch(() => undefined)
-      void checkRoomsWritable().then(() => $roomsWritable.get() && watchRoom(id))
+      // A group with no record on the host has nothing to read there.
+      void checkRoomsWritable().then(() => $roomsWritable.get() && !id.startsWith(UNMADE_ROOM) && watchRoom(id))
     }
 
     // No timer reads the room after the screen closed.
@@ -79,7 +80,7 @@ export default function RoomScreen() {
             </Text>
           ) : null}
         </View>
-        {room && writable ? <IconButton icon="sliders" label="Group chat settings" onPress={() => setSettings(true)} /> : null}
+        {room && writable && !room.unmade ? <IconButton icon="sliders" label="Group chat settings" onPress={() => setSettings(true)} /> : null}
       </View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
 
@@ -87,7 +88,17 @@ export default function RoomScreen() {
         <Notice detail="It may be closed on the desktop app." icon="users" title="This group chat is not on the host" />
       ) : (
         <FlatList
-          ListEmptyComponent={<Notice icon="message-circle" title="Nothing was said here yet" />}
+          ListEmptyComponent={
+            room.unmade ? (
+              <Notice
+                detail="The desktop app has this group, and the host has no message of it yet. Write the first message in the desktop app. After that you can read and write here."
+                icon="users"
+                title="Nothing of this group is on the host yet"
+              />
+            ) : (
+              <Notice icon="message-circle" title="Nothing was said here yet" />
+            )
+          }
           ListFooterComponent={
             room.omitted ? <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are not kept on the host.</Text> : null
           }
@@ -116,7 +127,7 @@ export default function RoomScreen() {
         />
       )}
 
-      {room && writable ? (
+      {room && writable && !room.unmade ? (
         <View style={[styles.composer, { borderTopColor: t.line }]}>
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           <View style={styles.sendRow}>

@@ -202,7 +202,15 @@ export interface Room {
   messages: RoomMessage[]
   /** Earlier messages that only the desktop app has. */
   omitted: number
+  /**
+   * The desktop app knows this group (its bots name it) and the host has no
+   * record of it yet: nothing was said in it, or the desktop did not publish it.
+   */
+  unmade?: boolean
 }
+
+/** The id of a group that has no record on the host yet: its name is all there is. */
+export const UNMADE_ROOM = 'name:'
 
 interface StoredRoom {
   name?: unknown
@@ -240,14 +248,38 @@ export function roomRow(key: string, value: unknown): Room | null {
 
 const newestAt = (room: Room) => room.messages[room.messages.length - 1]?.at ?? 0
 
-/** The group chats of the host, from the record on the main profile. The newest room first. */
+/**
+ * The group chats of the host. A group is in two places: the record on the
+ * main profile (rooms with their newest messages) and the list of groups each
+ * bot names in its own record. A group that only the bots name has no
+ * messages on the host yet; it shows too, with the bots that name it, or the
+ * phone would hide a group the desktop app shows. The newest room first, a
+ * group with nothing said last.
+ */
 export function groupRooms(profiles: readonly ProfileRow[]): Room[] {
   const main = profiles.find(row => row.is_default)
-  const stored = (main?.ui_meta as Record<string, unknown> | null | undefined)?.[GROUP_META_KEY] as { rooms?: Record<string, unknown> } | undefined
+  const stored = (main?.ui_meta as Record<string, unknown> | null | undefined)?.[GROUP_META_KEY] as { rooms?: Record<string, unknown>; deleted?: Record<string, unknown> } | undefined
+  const made = Object.entries(stored?.rooms ?? {}).flatMap(([key, value]) => roomRow(key, value) ?? [])
+  const known = new Set(made.map(room => room.name.toLowerCase()))
+  const closed = new Set(Object.keys(stored?.deleted ?? {}).map(key => key.toLowerCase()))
+  const named = new Map<string, string[]>()
 
-  return Object.entries(stored?.rooms ?? {})
-    .flatMap(([key, value]) => roomRow(key, value) ?? [])
-    .sort((a, b) => newestAt(b) - newestAt(a))
+  for (const row of profiles) {
+    const groups = ((row.ui_meta as Record<string, unknown> | null | undefined)?.[BOT_META_KEY] as { groups?: unknown } | undefined)?.groups
+
+    for (const group of Array.isArray(groups) ? groups : []) {
+      const name = typeof group === 'string' ? group.trim() : ''
+
+      if (name && !known.has(name.toLowerCase()) && !closed.has(`${UNMADE_ROOM}${name}`.toLowerCase())) {
+        named.set(name, [...(named.get(name) ?? []), row.name])
+      }
+    }
+  }
+
+  return [
+    ...made.sort((a, b) => newestAt(b) - newestAt(a)),
+    ...[...named].sort(([a], [b]) => a.localeCompare(b)).map(([name, members]): Room => ({ id: `${UNMADE_ROOM}${name}`, name, members, messages: [], omitted: 0, unmade: true }))
+  ]
 }
 
 /** The rooms with one of them read again: it takes the place of its older copy, or goes first. */
