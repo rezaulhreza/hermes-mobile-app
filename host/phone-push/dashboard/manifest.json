@@ -1,0 +1,8 @@
+{
+  "name": "phone-push",
+  "label": "Phone Push",
+  "description": "Backend routes for the phone app's notifications: register a phone, forget it, and answer an approval from a notification.",
+  "version": "0.1.0",
+  "tab": { "path": "/phone-push", "hidden": true },
+  "api": "plugin_api.py"
+}

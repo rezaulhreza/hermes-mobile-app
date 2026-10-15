@@ -1,0 +1,8 @@
+manifest_version: 1
+name: phone-push
+version: 0.1.0
+description: "Push notifications for the Hermes phone app: a notification when the agent waits for the user (an approval, a question, a password) or a bot addresses the user, sent through Apple with your own key. An approval can be answered from the notification."
+author: hermes-native
+kind: backend
+provides_hooks:
+  - on_session_start

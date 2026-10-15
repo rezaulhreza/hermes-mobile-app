@@ -75,7 +75,8 @@ of them are in [`host/`](host):
 |---|---|
 | Screen view | `host/screen-remote/install.sh` |
 | Write into group chats | `host/group-rooms/install.sh` |
-| Push notifications, page preview | `host/patches/apply.sh /path/to/hermes` |
+| Push notifications | `host/phone-push/install.sh` |
+| Page preview | `host/patches/apply.sh /path/to/hermes` |
 
 Restart Hermes after each one. Without an add-on the app still works; the
 feature says what is missing. Details: [`host/patches/README.md`](host/patches/README.md).

@@ -21,6 +21,7 @@ import {
   isDeviceToken,
   isStoredSessionId,
   pushAnswer,
+  PUSH_ROUTE,
   type PushChoice,
   type PushPayload,
   pushEnvironment,
@@ -137,7 +138,7 @@ export async function answerFromPush(sessionId: string, choice: PushChoice, payl
     const backend = currentApi()
 
     if (backend) {
-      await backend.request({ path: '/api/push/answer', method: 'POST', body: { session_id: sessionId, choice }, timeoutMs: 15_000 })
+      await backend.request({ path: `${PUSH_ROUTE}/answer`, method: 'POST', body: { session_id: sessionId, choice }, timeoutMs: 15_000 })
       // The card of this approval must not wait in the app for an answer the host has.
       dropApprovalsOf(sessionId)
 
@@ -258,7 +259,7 @@ export async function registerPush(): Promise<void> {
       return
     }
 
-    await backend.request({ path: '/api/push/register', method: 'POST', body: registrationBody(token, pushEnvironment(__DEV__), deviceLabel()), timeoutMs: 10_000 })
+    await backend.request({ path: `${PUSH_ROUTE}/register`, method: 'POST', body: registrationBody(token, pushEnvironment(__DEV__), deviceLabel()), timeoutMs: 10_000 })
     registeredKey = key
     patch({ registered: true, error: null })
   } catch (error) {
@@ -274,7 +275,7 @@ export async function unregisterPush(backend: HermesApi, workspaceId: string): P
   }
 
   try {
-    await backend.request({ path: '/api/push/register', method: 'POST', body: { ...registrationBody(token, pushEnvironment(__DEV__), deviceLabel()), unregister: true }, timeoutMs: 8000 })
+    await backend.request({ path: `${PUSH_ROUTE}/register`, method: 'POST', body: { ...registrationBody(token, pushEnvironment(__DEV__), deviceLabel()), unregister: true }, timeoutMs: 8000 })
   } catch {
     // The backend drops a token that Apple refuses.
   }

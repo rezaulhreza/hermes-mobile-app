@@ -3,11 +3,14 @@
  * notification says. The backend sends through APNs when the agent waits for
  * the user (a question, an approval) or a bot addresses them.
  *
- *   POST /api/push/register {token, environment, platform, profile, label}
+ *   POST /api/plugins/phone-push/register {token, environment, platform, profile, label}
  *   the same route with {token, unregister: true} forgets the phone.
  *
  * The payload has `session_id`, `profile` and `kind` beside `aps`.
  */
+
+/** The routes of the host's `phone-push` plugin (`host/phone-push`). A host without it sends no notification. */
+export const PUSH_ROUTE = '/api/plugins/phone-push'
 
 export type PushEnvironment = 'production' | 'sandbox'
 
