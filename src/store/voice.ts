@@ -30,6 +30,9 @@ import {
   pcmBytes,
   spokenVerdict,
   TOOL_LINE_QUIET_MS,
+  afterSentence,
+  stillWorkingLine,
+  stillWorkingWait,
   toolLine,
   type UserTurn,
   withVoice
@@ -214,6 +217,18 @@ interface AgentTurn {
   spoke: boolean
   /** Only text that streams after the start of this turn is spoken: late text of a stopped answer stays silent. */
   started: boolean
+  /** The voice stopped for words over it, and those words are not known yet. */
+  barged?: boolean
+  /** The voice was stopped by mistake in the middle of a sentence: the rest of that sentence stays silent. */
+  skipSentence?: boolean
+  /** Unix milliseconds of the start, for the lines of a long silence. */
+  since: number
+  /** How many lines of a long silence this turn has had. */
+  stillWorking: number
+}
+
+function newTurn(started: boolean): AgentTurn {
+  return { done: false, muted: false, spoke: false, started, since: Date.now(), stillWorking: 0 }
 }
 
 let engine: VoiceEngine | null = null
@@ -285,8 +300,9 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
     },
     hearing: () => alive() && $call.get()?.phase !== 'hearing' && patch({ phase: 'hearing' }),
     barge: () => {
-      if (alive() && turn) {
+      if (alive() && turn && !turn.muted) {
         turn.muted = true
+        turn.barged = true
       }
 
       tap()
@@ -300,6 +316,13 @@ function engineEvents(sessionId: string, mine: number): EngineEvents {
       trace(`utterance "${text.slice(0, 40)}"`)
       patch({ partial: '' })
       refreshPhase()
+
+      if (!text && turn?.barged) {
+        // The words that stopped the voice were the voice itself, or no words. The answer goes on.
+        turn.muted = false
+        turn.barged = false
+        turn.skipSentence = true
+      }
 
       if (text) {
         void onUtterance(sessionId, text, userTurn, alive, context).catch(error => patch({ error: message(error) }))
@@ -353,7 +376,7 @@ async function onUtterance(sessionId: string, text: string, userTurn: UserTurn, 
     return
   }
 
-  turn = { done: false, muted: false, spoke: false, started: false }
+  turn = newTurn(false)
   tap()
   refreshPhase()
   await sendDraft(sessionId, text, 'queue', context)
@@ -426,6 +449,35 @@ $requests.listen(requests => {
   }
 })
 
+const STILL_WORKING_TICK_MS = 1000
+let quietMs = 0
+
+/**
+ * A long silence while the agent works: the voice says that it still works,
+ * so the person does not think the call is dead. A tool that starts has its
+ * own line; this is for the model that thinks and the tool that runs long.
+ */
+function keepCompany(): void {
+  const call = $call.get()
+  const running = call ? ($conversations.get()[call.sessionId]?.transcript.running ?? false) : false
+  // A turn that was sent and did not start yet has no answer on its way for some seconds.
+  const works = turn && !turn.done && !turn.muted && (running || Date.now() - turn.since < 15_000)
+
+  if (!call || !engine || !works || approval || call.phase === 'hearing' || call.phase === 'transcribing' || engine.speaking() || engine.audible()) {
+    quietMs = 0
+
+    return
+  }
+
+  quietMs += STILL_WORKING_TICK_MS
+
+  if (quietMs >= stillWorkingWait(turn!.stillWorking)) {
+    engine.say(stillWorkingLine(turn!.stillWorking))
+    turn!.stillWorking += 1
+    quietMs = 0
+  }
+}
+
 function speaks(): boolean {
   return Boolean(turn?.started && !turn.muted)
 }
@@ -447,7 +499,7 @@ onGatewayEvent(event => {
   switch (event.type) {
     case 'message.start':
       // A typed message during a call is spoken too.
-      turn = turn && !turn.done ? { ...turn, started: true } : { done: false, muted: false, spoke: false, started: true }
+      turn = turn && !turn.done ? { ...turn, started: true } : newTurn(true)
       break
 
     case 'message.delta':
@@ -456,14 +508,21 @@ onGatewayEvent(event => {
           trace('answer-text')
         }
 
-        turn!.spoke = true
-        engine.feed(payloadText(event))
+        const text = turn!.skipSentence ? afterSentence(payloadText(event)) : payloadText(event)
+
+        if (text !== null) {
+          turn!.skipSentence = false
+          turn!.spoke = true
+          engine.feed(text)
+        }
       }
 
       break
 
     case 'message.interim':
       if (speaks()) {
+        turn!.skipSentence = false
+
         if (!(event.payload as { already_streamed?: boolean } | undefined)?.already_streamed && payloadText(event)) {
           turn!.spoke = true
           engine.feed(payloadText(event))
@@ -477,6 +536,7 @@ onGatewayEvent(event => {
 
     case 'tool.start':
       if (speaks()) {
+        turn!.skipSentence = false
         engine.feed('', true)
 
         if (Date.now() - engine.lastSayAt() > TOOL_LINE_QUIET_MS && !engine.audible()) {
@@ -610,6 +670,10 @@ export async function startCall(sessionId: string, options: { greeting?: string 
         }
       })
     ]
+    const company = setInterval(keepCompany, STILL_WORKING_TICK_MS)
+
+    quietMs = 0
+    subscriptions.push({ remove: () => clearInterval(company) })
     await next.start()
 
     if (!alive()) {
@@ -696,6 +760,7 @@ export function interruptCall(): void {
   } else if (call.phase === 'thinking' || call.phase === 'speaking') {
     if (turn) {
       turn.muted = true
+      turn.barged = false
     }
 
     engine.hush()

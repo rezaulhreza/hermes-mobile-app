@@ -82,6 +82,26 @@ describe('EchoMemory', () => {
     expect(echo.isEcho('the moon', 30_000)).toBe(false)
   })
 
+  it('knows the voice when the listening model writes it another way', () => {
+    const echo = new EchoMemory()
+
+    echo.remember("I'm checking which of those driver copies are still attached to a live session, so I only stop the orphans.", 1000)
+    // A word that is still in the air, a contraction written out, one wrong word in a long stretch.
+    expect(echo.isEcho("I'm check", 2000)).toBe(true)
+    expect(echo.isEcho('I am checking', 2000)).toBe(true)
+    expect(echo.isEcho('I am checking which of those drive copies are still attached', 2000)).toBe(true)
+    expect(echo.isEcho('checking which of those river copies', 2000)).toBe(true)
+  })
+
+  it('takes the words of the user as the user, with common words of the voice in them', () => {
+    const echo = new EchoMemory()
+
+    echo.remember("I'm checking which of those driver copies are still attached to a live session, so I only stop the orphans.", 1000)
+    expect(echo.isEcho('no I only want to stop the session', 2000)).toBe(false)
+    expect(echo.isEcho('wait', 2000)).toBe(false)
+    expect(echo.isEcho('which copies do you mean', 2000)).toBe(false)
+  })
+
   it('takes an empty transcript as an echo', () => {
     expect(new EchoMemory().isEcho(' ... ', 0)).toBe(true)
   })
@@ -115,6 +135,45 @@ describe('advanceTurn', () => {
 
     expect(start).toMatchObject({ hush: false, partial: '' })
     expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'the moon is slowly' }, false, always).utterance).toBeNull()
+  })
+})
+
+describe('a turn that broke through the voice by mistake', () => {
+  it('sends nothing when its last words are the words of the voice', () => {
+    const echo = new EchoMemory()
+
+    echo.remember("I'm checking which of those driver copies are still attached.", 0)
+
+    const isEcho = (transcript: string) => echo.isEcho(transcript, 1000)
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Hmm jacking' }, true, isEcho)
+
+    expect(start.hush).toBe(true)
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: "I'm checking." }, true, isEcho).utterance).toBeNull()
+  })
+
+  it('still sends the words of the user that are also words of the voice, when the voice was quiet', () => {
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'yes' }, false, () => true)
+
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'yes go ahead' }, false, () => true).utterance).toBe('yes go ahead')
+  })
+})
+
+describe('a long silence while the agent works', () => {
+  const { stillWorkingLine, stillWorkingWait, afterSentence } = jest.requireActual('../live-voice') as typeof import('../live-voice')
+
+  it('waits longer for each line, up to a limit', () => {
+    expect([0, 1, 2, 3, 9].map(stillWorkingWait)).toEqual([5000, 9000, 14_000, 20_000, 20_000])
+  })
+
+  it('does not say the same line twice in a row', () => {
+    for (let count = 0; count < 10; count++) {
+      expect(stillWorkingLine(count + 1)).not.toBe(stillWorkingLine(count))
+    }
+  })
+
+  it('goes on after the end of a sentence that was cut', () => {
+    expect(afterSentence('still attached to a live')).toBeNull()
+    expect(afterSentence('session. All seven are detached.')).toBe('All seven are detached.')
   })
 })
 

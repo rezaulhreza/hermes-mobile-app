@@ -202,36 +202,117 @@ export class SentenceFeed {
   }
 }
 
+// The listening model writes "I am" where the voice was given "I'm", and the other way round.
+const CONTRACTIONS: readonly (readonly [RegExp, string])[] = [
+  [/\b(can)[’']t\b/g, '$1 not'],
+  [/\b(won)[’']t\b/g, 'will not'],
+  [/n[’']t\b/g, ' not'],
+  [/[’']m\b/g, ' am'],
+  [/[’']re\b/g, ' are'],
+  [/[’']ve\b/g, ' have'],
+  [/[’']ll\b/g, ' will'],
+  [/\b(it|that|there|what|he|she|here|let)[’']s\b/g, '$1 is']
+]
+// A number comes back as digits or as a word, and a sound of doubt is not a word of the user.
+const NOT_COUNTED = /^(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|uh|um|er|hm|hmm|mm)$/
+/** This share of a transcript, in the order the voice said it, makes the transcript an echo. */
+const ECHO_SHARE = 0.7
+
+function echoWords(text: string): string[] {
+  const whole = CONTRACTIONS.reduce((words, [pattern, long]) => words.replace(pattern, long), text.toLowerCase())
+
+  return normalise(whole)
+    .split(' ')
+    .filter(word => word && !NOT_COUNTED.test(word))
+}
+
+/**
+ * One spoken word as the listening model can write it: the same, cut short
+ * ("check" for "checking", while the word is still in the air), or one letter
+ * different.
+ */
+function sameWord(heard: string, said: string): boolean {
+  if (heard === said) {
+    return true
+  }
+
+  const [short, long] = heard.length <= said.length ? [heard, said] : [said, heard]
+
+  if (short.length < 3) {
+    return false
+  }
+
+  if (long.startsWith(short)) {
+    return true
+  }
+
+  if (short.length < 4 || long.length - short.length > 1) {
+    return false
+  }
+
+  let at = 0
+
+  while (at < short.length && short[at] === long[at]) {
+    at++
+  }
+
+  return short.slice(at + (short.length === long.length ? 1 : 0)) === long.slice(at + 1)
+}
+
+/** How many of the heard words are in this stretch of spoken words, in the same order. */
+function inOrder(heard: readonly string[], said: readonly string[]): number {
+  let row = new Array<number>(said.length + 1).fill(0)
+
+  for (const word of heard) {
+    const next = [0]
+
+    for (let index = 0; index < said.length; index++) {
+      next.push(sameWord(word, said[index]) ? row[index] + 1 : Math.max(row[index + 1], next[index]))
+    }
+
+    row = next
+  }
+
+  return row[said.length]
+}
+
 /**
  * What the voice said in the last seconds. The microphone can hear the
  * speaker; a transcript that is only those words is an echo, not the user.
+ * The listening model does not write the echo as the voice was given it: a
+ * word comes cut short or a little wrong, so the match is loose.
  */
 export class EchoMemory {
-  private spoken: { at: number; text: string }[] = []
+  private spoken: { at: number; words: string[] }[] = []
 
   remember(line: string, now: number): void {
-    this.spoken = [...this.recent(now), { at: now, text: normalise(line) }]
+    this.spoken = [...this.recent(now), { at: now, words: echoWords(line) }]
   }
 
   isEcho(transcript: string, now: number): boolean {
-    const heard = normalise(transcript)
+    const heard = echoWords(transcript)
 
-    if (!heard) {
+    if (!heard.length) {
       return true
     }
 
-    const recent = this.recent(now)
-      .map(entry => entry.text)
-      .join(' ')
-    const words = heard.split(' ')
+    const said = this.recent(now).flatMap(entry => entry.words)
 
-    if (words.length > 3) {
-      return recent.includes(heard)
+    if (heard.length <= 3) {
+      return heard.every(word => said.some(spoken => sameWord(word, spoken)))
     }
 
-    const said = new Set(recent.split(' '))
+    // The same words in the same place: a long transcript of the user has common words of the voice, but not in its order.
+    const needed = Math.ceil(heard.length * ECHO_SHARE)
+    const stretch = heard.length + 2
 
-    return words.every(word => said.has(word))
+    for (let start = 0; start + needed <= said.length; start++) {
+      if (inOrder(heard, said.slice(start, start + stretch)) >= needed) {
+        return true
+      }
+    }
+
+    return false
   }
 
   private recent(now: number) {
@@ -296,8 +377,9 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, is
     return { turn: next, hush: false, hearing: false, partial: '', utterance: null }
   }
 
-  // A turn that began under the voice and never broke through it is the voice itself.
-  const real = Boolean(transcript) && !(next.duringPlayback && !next.barged)
+  // A turn that began under the voice is the voice itself when it never broke through, or when
+  // its last words are still the words of the voice: one wrong word in the middle can break through.
+  const real = Boolean(transcript) && !(next.duringPlayback && (!next.barged || isEcho(transcript)))
 
   return { turn: NEW_TURN, hush: false, hearing: false, partial: '', utterance: real ? transcript : null }
 }
@@ -371,6 +453,30 @@ export function toolLine(name: unknown): string {
   }
 
   return tool ? `Using ${tool.replace(/[_-]+/g, ' ')}.` : 'Working on it.'
+}
+
+// The waits grow: a long job is not silent, and the voice does not talk the whole time.
+const STILL_WORKING_WAITS_MS = [5000, 9000, 14_000, 20_000]
+const STILL_WORKING_LINES = ['One moment.', 'Still working on it.', 'Still on it. This one takes a little longer.', 'Still working.', 'Still checking.']
+
+/** How long the call may be silent, while the agent works, before the voice says line number `count`. */
+export function stillWorkingWait(count: number): number {
+  return STILL_WORKING_WAITS_MS[Math.min(count, STILL_WORKING_WAITS_MS.length - 1)]
+}
+
+/** Line number `count` of a long silence. The last two take turns after the first three. */
+export function stillWorkingLine(count: number): string {
+  return count < 3 ? STILL_WORKING_LINES[count] : STILL_WORKING_LINES[3 + ((count - 3) % 2)]
+}
+
+/**
+ * Text of an answer after the voice was stopped by mistake: what comes after
+ * the end of the sentence that was cut, or null while that sentence goes on.
+ */
+export function afterSentence(text: string): string | null {
+  const end = /[.!?…]["')\]]*\s+|\n+/.exec(text)
+
+  return end ? text.slice(end.index + end[0].length) : null
 }
 
 /** An approval as words. The question never has an accepting word in it, so the microphone cannot approve by hearing the voice ask. */
