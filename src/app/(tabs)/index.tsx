@@ -27,7 +27,7 @@ import {
 } from '@/core/sessions'
 import { listPaneWidth } from '@/core/layout'
 import { tap } from '@/native/haptics'
-import { $botAvatars, $bots } from '@/store/bots'
+import { $botAvatars, $bots, $defaultBot } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
@@ -135,7 +135,9 @@ export default function Chats() {
 
     try {
       // With one bot shown, a new chat is a chat with that bot.
-      const owner = shownBot && !shownBot.isDefault ? shownBot.name : undefined
+      // With every bot shown, it is a chat with the default bot of the host.
+      const start = shownBot ?? bots?.find(bot => bot.name === $defaultBot.get())
+      const owner = start && !start.isDefault ? start.name : undefined
       const { storedId } = await createConversation(owner, project?.path ?? undefined)
 
       openChat({ id: storedId, live: true, profile: owner })

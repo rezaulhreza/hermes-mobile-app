@@ -9,7 +9,7 @@ import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSect
 import { faultWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, $filing, chooseBotPicture, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection } from '@/store/bots'
+import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection, setDefaultBot } from '@/store/bots'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -63,6 +63,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   const [choosingModel, setChoosingModel] = useState(false)
   const [filing, setFiling] = useState(false)
   const sections = knownSections(useStore($bots) ?? [], useStore($filing).sections)
+  const isStart = useStore($defaultBot) === bot.name
 
   useEffect(() => {
     loadBotSoul(bot.name).then(
@@ -237,6 +238,15 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
         label="Save the instructions"
         onPress={() => run('soul', () => saveBotSoul(bot.name, soul ?? '').then(() => setSavedSoul(soul ?? '')))}
       />
+
+      {isStart ? (
+        <Text style={[type.small, { color: t.muted }]}>This is the default bot. A new chat starts with it, and so does Hermes on the host when no bot is named.</Text>
+      ) : (
+        <>
+          <Button busy={busy === 'default'} icon="star" label="Make this the default bot" onPress={() => run('default', () => setDefaultBot(bot.name))} />
+          <Text style={[type.small, { color: t.muted }]}>A new chat starts with the default bot, and so does Hermes on the host when no bot is named.</Text>
+        </>
+      )}
 
       {bot.isDefault ? null : (
         <>

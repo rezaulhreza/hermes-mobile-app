@@ -17,6 +17,11 @@ export const $rooms = atom<Room[]>([])
 
 /** The sections with no bot in them and the section of each group chat. The desktop app keeps its own on its machine; the phone keeps this on the host. */
 export const $filing = atom<Filing>(NO_FILING)
+/**
+ * The bot that Hermes starts with when nobody names one: `hermes profile use`
+ * on the host. A new chat of the phone starts with it too.
+ */
+export const $defaultBot = atom<string>('default')
 
 // The profile that holds `$filing`, and the revision of that record.
 let main: { name: string; revision: number | undefined } | null = null
@@ -52,6 +57,7 @@ export async function loadBots(): Promise<void> {
   const mainRow = (result.profiles ?? []).find(row => row.is_default)
 
   main = mainRow ? { name: mainRow.name, revision: mainRow.ui_meta_revisions?.[FILING_META_KEY] } : null
+  void loadDefaultBot()
 
   for (const row of result.profiles ?? []) {
     const meta = (row.ui_meta as Record<string, unknown> | null | undefined)?.[BOT_META_KEY]
@@ -231,6 +237,20 @@ export async function removeSection(section: BotSection): Promise<void> {
   })
 }
 
+async function loadDefaultBot(): Promise<void> {
+  try {
+    $defaultBot.set((await api().request<{ active?: string }>({ path: '/api/profiles/active' })).active || 'default')
+  } catch {
+    // An older host has no such route: the main profile is the default then.
+  }
+}
+
+/** Make a bot the one Hermes starts with: the same as `hermes profile use` on the host. */
+export async function setDefaultBot(name: string): Promise<void> {
+  await api().request({ path: '/api/profiles/active', method: 'POST', body: { name } })
+  $defaultBot.set(name)
+}
+
 /** File a bot under a section of the Bots list, or under none with null. */
 export function setBotSection(name: string, section: BotSection | null): Promise<void> {
   return fileBot(name, { sectionId: section?.id ?? null, sectionName: section?.name ?? null })
@@ -292,6 +312,7 @@ export function clearBots(): void {
   main = null
   $rooms.set([])
   $filing.set(NO_FILING)
+  $defaultBot.set('default')
   $bots.set(null)
   $botAvatars.set({})
 }

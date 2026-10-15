@@ -11,7 +11,7 @@ import { NewRoomSheet } from '@/components/room-sheets'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { type Bot, botGroups, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
-import { $bots, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
+import { $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
@@ -40,6 +40,7 @@ export default function Bots() {
   const roomsWritable = useStore($roomsWritable)
   const [grouping, setGrouping] = useState(false)
   const filing = useStore($filing)
+  const defaultBot = useStore($defaultBot)
   const searching = Boolean(query.trim())
   // The headings of the desktop app's Bots list: pinned, the user's sections, unassigned, put away.
   // A search shows the bots it finds only: no group chat, and no section with nothing found in it.
@@ -209,6 +210,7 @@ export default function Bots() {
                     <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
                       {item.title}
                     </Text>
+                    {item.name === defaultBot ? <Text style={[type.small, styles.badge, { color: t.muted, backgroundColor: t.soft }]}>Default</Text> : null}
                     {item.working ? <Text style={[type.small, styles.badge, { color: t.accent, backgroundColor: t.accentBg }]}>Working</Text> : null}
                     <View style={styles.fill} />
                     {item.lastActive ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text> : null}
