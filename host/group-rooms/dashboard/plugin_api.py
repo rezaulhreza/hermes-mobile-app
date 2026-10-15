@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 META_KEY = "hermes-bots-groups"
+# Each bot also names its groups in its own record. The desktop app draws a group from those names.
+BOT_META_KEY = "hermes-bots"
 MAIN_PROFILE = "default"
 # The limits of the desktop app for the record: it rides on every list of the bots.
 MAX_MESSAGES = 16
@@ -161,6 +163,32 @@ def _title(row: dict) -> str:
 def _handle(name: str, row: dict) -> str:
     words = re.sub(r"[^A-Za-z0-9]+", "-", _title(row)).strip("-").lower()
     return words or re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-").lower() or "bot"
+
+
+def _name_in_bots(name: str, members: Optional[list[str]], old_name: Optional[str] = None) -> None:
+    """Make the bots' own records agree with a room: the bots in ``members`` name the group, no
+    other bot does, and nobody names ``old_name``. ``members=None`` takes the group out of every
+    record (the room is closed). The desktop app keeps the same field in step on every change of
+    a room; without this a closed or renamed room comes back as a group with no messages."""
+    profiles = [row for row in _rpc("profiles.list", {"include_sessions": False}).get("profiles") or [] if isinstance(row, dict)]
+    gone = {value.casefold() for value in (name, old_name) if value}
+    for row in profiles:
+        record = (row.get("ui_meta") or {}).get(BOT_META_KEY)
+        record = dict(record) if isinstance(record, dict) else {}
+        before = [group for group in record.get("groups") or [] if isinstance(group, str)]
+        after = [group for group in before if group.casefold() not in gone]
+        if members is not None and row.get("name") in members:
+            after.append(name)
+        if after == before:
+            continue
+        current = record.get("group")
+        record["groups"] = after
+        record["group"] = current if current in after else (after[0] if after else None)
+        revision = int((row.get("ui_meta_revisions") or {}).get(BOT_META_KEY) or 0)
+        try:
+            _rpc("profiles.configure", {"name": row.get("name"), "ui_meta": {BOT_META_KEY: record}, "ui_meta_expected_revisions": {BOT_META_KEY: revision}})
+        except Refused:
+            logger.warning("group-rooms: could not update the groups of %s", row.get("name"))
 
 
 # --- the engine -----------------------------------------------------------------------------
@@ -324,16 +352,24 @@ def make_room(body: NewRoom) -> dict:
             raise HTTPException(status_code=409, detail="A room has this name already.")
         record["rooms"][f"id:{room_id}"] = {"name": name, "roomId": room_id, "members": _members(body.members, profiles), "log": [], "holdDetection": True, "revision": revision}
         return _shown(f"id:{room_id}", record["rooms"][f"id:{room_id}"])
-    return _guard(lambda: _write(change))
+
+    def work():
+        shown = _write(change)
+        _name_in_bots(name, [str(row.get("name")) for row in shown["members"]])
+        return shown
+    return _guard(work)
 
 
 @router.patch("/rooms/{room_id}")
 def change_room(room_id: str, body: RoomChange) -> dict:
     """Rename a room or set its members. The engine starts a new room for new members; the
     messages stay in the record."""
+    old: dict = {}
+
     def change(record, revision, profiles):
         key = _key(record, room_id)
         room = record["rooms"][key]
+        old.setdefault("name", str(room.get("name") or ""))
         if body.name is not None:
             name = body.name.strip()[:64]
             if not name:
@@ -343,25 +379,49 @@ def change_room(room_id: str, body: RoomChange) -> dict:
             room["members"] = _members(body.members, profiles, room.get("members"))
         room["revision"] = revision
         return _shown(key, room)
-    return _guard(lambda: _write(change))
+
+    def work():
+        shown = _write(change)
+        _name_in_bots(shown["name"], [str(row.get("name")) for row in shown["members"]], old.get("name"))
+        return shown
+    return _guard(work)
 
 
 @router.delete("/rooms/{room_id}")
 def close_room(room_id: str) -> dict:
     engine_ids: list[str] = []
+    names: list[str] = []
 
     def change(record, revision, _profiles):
         key = _key(record, room_id)
-        engine_ids.append(_engine_id(record["rooms"].pop(key)))
+        room = record["rooms"].pop(key)
+        engine_ids.append(_engine_id(room))
+        names.append(str(room.get("name") or ""))
         record["deleted"][key] = revision
         return {"ok": True}
-    answer = _guard(lambda: _write(change))
+
+    def work():
+        answer = _write(change)
+        for name in names:
+            _name_in_bots(name, None)
+        return answer
+    answer = _guard(work)
     for engine_id in engine_ids:
         try:
             _rpc("groups.disband", {"room_id": engine_id, "cancel_id": "room-closed"})
         except Refused:
             pass  # No round was ever run for these members.
     return answer
+
+
+@router.delete("/groups")
+def forget_group(name: str) -> dict:
+    """Remove a group that has no room record: only the bots' own records name it. That is all
+    the desktop app does for such a group too."""
+    wanted = name.strip()
+    if not wanted:
+        raise HTTPException(status_code=400, detail="A group needs a name.")
+    return _guard(lambda: (_name_in_bots(wanted, None), {"ok": True})[1])
 
 
 @router.post("/rooms/{room_id}/messages")
