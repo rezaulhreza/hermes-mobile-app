@@ -125,7 +125,24 @@ public final class HermesDuplexAudioModule: Module {
     }
 
     try session.setActive(true)
-    try buildEngine()
+
+    // A phone can report no input format for a moment after the session opens. One short wait,
+    // then a try without voice processing, before the call is refused.
+    do {
+      try buildEngine()
+    } catch {
+      tearDownEngine()
+      Thread.sleep(forTimeInterval: 0.25)
+
+      do {
+        try buildEngine()
+      } catch {
+        tearDownEngine()
+        self.options.voiceProcessing = false
+        try buildEngine()
+      }
+    }
+
     running = true
     observe()
   }
@@ -276,7 +293,14 @@ public final class HermesDuplexAudioModule: Module {
     targetFormat = nil
   }
 
-  private func rebuild() {
+  /// Waits before each new try to build the engine after the hardware changed.
+  private static let rebuildWaits: [TimeInterval] = [0.15, 0.4, 1.0]
+
+  /// Build the engine again on the hardware of this moment. Right after a change the phone often
+  /// reports no input format yet (0 Hz), above all when voice processing has just switched the
+  /// route, so one failed try is not the end: try again after a short wait, and at last without
+  /// voice processing. Only when every try fails is the call told that its sound is gone.
+  private func rebuild(attempt: Int = 0) {
     guard running else {
       return
     }
@@ -288,8 +312,31 @@ public final class HermesDuplexAudioModule: Module {
       try AVAudioSession.sharedInstance().setActive(true)
       try buildEngine()
     } catch {
-      sendEvent("onInterruption", ["reason": "failed", "message": error.localizedDescription])
+      if attempt < Self.rebuildWaits.count {
+        if attempt == Self.rebuildWaits.count - 1 {
+          options.voiceProcessing = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rebuildWaits[attempt]) { [weak self] in
+          self?.rebuild(attempt: attempt + 1)
+        }
+
+        return
+      }
+
+      sendEvent("onInterruption", ["reason": "failed", "message": Self.words(of: error)])
     }
+  }
+
+  /// What went wrong, with the name of the fault. An Expo exception says nothing useful as a plain Error.
+  private static func words(of error: Error) -> String {
+    if let known = error as? Exception {
+      return "\(known.name): \(known.reason)"
+    }
+
+    let system = error as NSError
+
+    return "\(system.domain) \(system.code): \(system.localizedDescription)"
   }
 
   private func observe() {

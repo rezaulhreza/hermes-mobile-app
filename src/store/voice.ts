@@ -110,6 +110,9 @@ function patch(change: Partial<Call>): void {
   }
 }
 
+/** The sound of the call is gone and the phone could not get it back. */
+const AUDIO_LOST = 'The sound of this call stopped. End the call and start it again.'
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -599,7 +602,13 @@ export async function startCall(sessionId: string, options: { greeting?: string 
       }),
       // While Hermes speaks the bars show its voice, not the quiet microphone.
       audio.addListener('onOutputLevel', state => alive() && voicePlays && showLevel(state.level)),
-      audio.addListener('onInterruption', state => alive() && state.reason === 'failed' && patch({ error: state.message ?? 'The audio stopped.' }))
+      audio.addListener('onInterruption', state => {
+        if (alive() && state.reason === 'failed') {
+          // The fault of the phone's audio goes to the trace. The person gets what to do.
+          trace(`audio lost: ${state.message ?? ''}`)
+          patch({ error: AUDIO_LOST })
+        }
+      })
     ]
     await next.start()
 
