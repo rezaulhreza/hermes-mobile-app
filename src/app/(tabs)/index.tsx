@@ -10,12 +10,14 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { Button, IconButton, Notice } from '@/components/ui'
+import { WorkingMark } from '@/components/working-mark'
 import { botInitials } from '@/core/bots'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import {
   channel,
   filterSessions,
+  type LiveState,
   rowProfile,
   type SearchHit,
   sessionPreview,
@@ -34,6 +36,7 @@ import { $linkError, $linkState, type LinkState } from '@/store/link'
 import { $pane, closePane, openChat, useWide } from '@/store/pane'
 import { $requests } from '@/store/requests'
 import {
+  $liveSessions,
   $sessionHits,
   $selectedSessions,
   deleteSelected,
@@ -128,6 +131,7 @@ export default function Chats() {
   const [choosingProject, setChoosingProject] = useState(false)
   const crowded = Boolean(project)
   const hits = useStore($sessionHits)
+  const live = useStore($liveSessions)
   const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource)), hits), [sessions, query, activeSource, hits])
 
   const startChat = async () => {
@@ -259,6 +263,7 @@ export default function Chats() {
             onActions={() => setActing(item)}
             // In the list of every profile, each row shows whose conversation it is.
             owner={profile ? undefined : (item.profile ?? undefined)}
+            live={live[item.id]}
             row={item}
             selected={selected ? selected.includes(item.id) : undefined}
           />
@@ -324,8 +329,11 @@ export default function Chats() {
   )
 }
 
-/** `bot` names the owner of a row that is not the host's own profile, in the list of all profiles. */
-function SessionRow({ row, bot, owner, onActions, selected }: { row: Row; bot?: string; owner?: string; onActions: () => void; selected?: boolean }) {
+/**
+ * `bot` names the owner of a row that is not the host's own profile, in the list of all profiles.
+ * `live` says that Hermes works in the conversation now, or that it waits for the user.
+ */
+function SessionRow({ row, bot, owner, live, onActions, selected }: { row: Row; bot?: string; owner?: string; live?: LiveState; onActions: () => void; selected?: boolean }) {
   const t = useTheme()
   // The picture of the bot that owns the conversation: the same one the Bots tab shows.
   const picture = useStore($botAvatars)[owner ?? '']
@@ -373,7 +381,7 @@ function SessionRow({ row, bot, owner, onActions, selected }: { row: Row; bot?: 
     >
     <Pressable
       accessibilityHint="Hold or swipe left for more actions"
-      accessibilityLabel={title}
+      accessibilityLabel={live ? `${title}, ${live === 'waiting' ? 'needs you' : 'Hermes works'}` : title}
       accessibilityRole="button"
       delayLongPress={350}
       onLongPress={() => (tap(), selected === undefined ? onActions() : toggleSelected(row.id))}
@@ -421,7 +429,12 @@ function SessionRow({ row, bot, owner, onActions, selected }: { row: Row; bot?: 
       {row.source ? (
         <Feather accessibilityLabel={channel(row.source).label} color={t.muted} name={channel(row.source).icon} size={14} />
       ) : null}
-      <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>
+      {live === 'working' ? (
+        // A turn runs now: the mark of the chat screen stands where the time was.
+        <WorkingMark />
+      ) : (
+        <Text style={[type.small, live ? { color: t.accent, fontWeight: '600' } : { color: t.muted }]}>{live ? 'Needs you' : at ? relativeTime(at) : ''}</Text>
+      )}
     </Pressable>
     </Swipeable>
   )

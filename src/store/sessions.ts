@@ -1,15 +1,18 @@
 import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
-import type { ProjectsTreeResult, SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
+import type { ProjectsTreeResult, SessionActiveListResult, SessionBranchStoredResult } from '@/core/gateway/gateway-contract.generated'
 import { PROJECT_ROWS, type ProjectChoice, projectChoices, projectRows } from '@/core/projects'
 import { slimSessionRow } from '@/core/cache'
 import { type HistoryPage, pageMessages, type StoredMessage } from '@/core/history-page'
 import {
   deleteGroups,
   exportFileName,
+  type LiveState,
+  liveStates,
   rowProfile,
   rowsInView,
+  sameLiveStates,
   SEARCH_MIN_CHARS,
   type SearchHit,
   SESSION_PAGE,
@@ -151,7 +154,43 @@ export async function loadSessionSources(): Promise<void> {
   $sessionSources.set(withSources($sessionSources.get(), counts))
 }
 
+/** The conversations in which Hermes works now, or which wait for the user, by stored id. */
+export const $liveSessions = atom<Record<string, LiveState>>({})
+
+const LIVE_POLL_MS = 5000
+let liveTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Ask the host which conversations work now: one small answer for all of them.
+ * The host says when a list changed, but not when a turn ended. So this asks
+ * again after a moment for as long as a conversation works, and then stops.
+ */
+export async function refreshLiveSessions(): Promise<void> {
+  if (liveTimer) {
+    clearTimeout(liveTimer)
+    liveTimer = null
+  }
+
+  let states: Record<string, LiveState> = {}
+
+  try {
+    states = liveStates((await rpc<SessionActiveListResult>('session.active_list')).sessions ?? [])
+  } catch {
+    // No answer: no row shows a state it cannot prove. The next refresh of the list asks again.
+  }
+
+  if (!sameLiveStates(states, $liveSessions.get())) {
+    $liveSessions.set(states)
+  }
+
+  if (Object.keys(states).length && !liveTimer) {
+    liveTimer = setTimeout(() => void refreshLiveSessions(), LIVE_POLL_MS)
+  }
+}
+
 export async function refreshSessions(): Promise<void> {
+  void refreshLiveSessions()
+
   const view = $sessionView.get()
   const source = $sessionSource.get()
   const profile = $sessionProfile.get()
@@ -399,7 +438,7 @@ export async function deleteSelected(): Promise<number> {
   return kept.length
 }
 
-// The backend says when the list changed, so the list never polls.
+// The backend says when the list changed, so the list never polls. Only the marks of working chats ask again.
 onGatewayEvent(event => {
   if (event.type === 'sessions.changed' || event.type === 'session.title') {
     void refreshSessions()

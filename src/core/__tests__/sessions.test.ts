@@ -4,6 +4,8 @@ import {
   rowProfile,
   rowsInView,
   filterSessions,
+  liveStates,
+  sameLiveStates,
   sessionActions,
   sessionSearchPath,
   snippetParts,
@@ -175,5 +177,27 @@ describe('a conversation as Markdown', () => {
       ['default', ['a', 'd']],
       ['writer', ['b', 'c']]
     ])
+  })
+})
+
+describe('live states', () => {
+  const items = [
+    { session_key: 'a', status: 'working' as const },
+    { session_key: 'b', status: 'idle' as const },
+    { session_key: 'c', status: 'waiting' as const },
+    { session_key: 'd', status: 'streaming' as const },
+    { session_key: '', status: 'working' as const }
+  ]
+
+  it('names the conversations that work or wait, by stored id', () => {
+    expect(liveStates(items)).toEqual({ a: 'working', c: 'waiting', d: 'working' })
+    expect(liveStates([])).toEqual({})
+  })
+
+  it('tells an unchanged answer from a changed one', () => {
+    expect(sameLiveStates({ a: 'working' }, { a: 'working' })).toBe(true)
+    expect(sameLiveStates({ a: 'working' }, { a: 'waiting' })).toBe(false)
+    expect(sameLiveStates({ a: 'working' }, {})).toBe(false)
+    expect(sameLiveStates({}, { a: 'working' })).toBe(false)
   })
 })

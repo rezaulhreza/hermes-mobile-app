@@ -7,6 +7,7 @@
  */
 
 import { previewLine } from './format'
+import type { SessionActiveItem } from './gateway/gateway-contract.generated'
 
 /**
  * The source the app gives a session it opens. The backend adds the tools
@@ -116,6 +117,33 @@ export function sessionPreview(row: SessionRow): string {
 
 export function sessionTitle(row: SessionRow): string {
   return row.title?.trim() || sessionPreview(row) || 'Untitled conversation'
+}
+
+/** What a conversation does now: Hermes works in it, or it waits for an answer of the user. */
+export type LiveState = 'working' | 'waiting'
+
+/**
+ * The state of each conversation that is live on the host, by its stored id.
+ * A conversation that is idle has no entry. `session.active_list` knows only
+ * the conversations of the process the app talks to: a turn that a Telegram
+ * message or a schedule started runs in another process and has no state here.
+ */
+export function liveStates(items: readonly Pick<SessionActiveItem, 'session_key' | 'status'>[]): Record<string, LiveState> {
+  const states: Record<string, LiveState> = {}
+
+  for (const item of items) {
+    if (item.session_key && item.status !== 'idle') {
+      states[item.session_key] = item.status === 'waiting' ? 'waiting' : 'working'
+    }
+  }
+
+  return states
+}
+
+export function sameLiveStates(a: Record<string, LiveState>, b: Record<string, LiveState>): boolean {
+  const keys = Object.keys(a)
+
+  return keys.length === Object.keys(b).length && keys.every(key => a[key] === b[key])
 }
 
 /** The icon of a channel, as a Feather icon name. */
