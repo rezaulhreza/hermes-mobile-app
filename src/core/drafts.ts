@@ -175,13 +175,24 @@ export function sendWays(draft: Draft): SendWay[] {
   }
 }
 
-/** What the user says to Hermes to send a draft: the draft as it is, or with the changes made on the phone. */
+const CHANGED_FIELDS = [
+  ['to', 'To'],
+  ['cc', 'Cc'],
+  ['bcc', 'Bcc'],
+  ['subject', 'Subject']
+] as const
+
+/**
+ * What the user says to Hermes to send a draft: the draft as it is, or with
+ * the changes made on the phone. A field the user changed is named with its
+ * new value; a field the user cleared is named as removed.
+ */
 export function sendRequest(draft: Draft, changed: Draft | null): string {
   if (!changed) {
     return 'Send it.'
   }
 
-  const subject = changed.subject && changed.subject !== draft.subject ? `Subject: ${changed.subject}\n\n` : ''
+  const fields = CHANGED_FIELDS.filter(([field]) => (changed[field] ?? '') !== (draft[field] ?? '')).map(([field, label]) => `${label}: ${changed[field] ?? '(none)'}`)
 
-  return `Send it with my changes. Use this text and change nothing else.\n\n${subject}${changed.body}`
+  return `Send it with my changes. Use this text and change nothing else.\n\n${fields.length ? `${fields.join('\n')}\n\n` : ''}${changed.body}`
 }

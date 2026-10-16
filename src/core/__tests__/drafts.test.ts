@@ -76,5 +76,9 @@ describe('the ways to send a draft', () => {
   it('asks Hermes to send the draft as it is, or with the changes of the user', () => {
     expect(sendRequest(draft, null)).toBe('Send it.')
     expect(sendRequest(draft, { ...draft, body: 'Hi Alex,\nThank you.' })).toBe('Send it with my changes. Use this text and change nothing else.\n\nHi Alex,\nThank you.')
+    // A new recipient, and the copy taken away.
+    expect(sendRequest(draft, { channel: 'email', to: 'alex@agents.example, sam@agents.example', subject: 'Rent & dates', body: 'Hi both.' })).toBe(
+      'Send it with my changes. Use this text and change nothing else.\n\nTo: alex@agents.example, sam@agents.example\nCc: (none)\n\nHi both.'
+    )
   })
 })

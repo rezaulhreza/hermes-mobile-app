@@ -1,15 +1,13 @@
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { createContext, useContext, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { CHANNEL_LABEL, type Draft, sendRequest, sendWays } from '@/core/drafts'
 import { fade, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { ChoiceSheet } from './choice'
-import { IconButton } from './ui'
 
 /** Says a line to the agent of this chat, as a message of the user. Null where no chat can take it. */
 export const SayToAgent = createContext<((text: string) => void) | null>(null)
@@ -18,8 +16,8 @@ const HERMES = 'hermes'
 
 /**
  * A message Hermes wrote for the user to send, as a card: who it goes to,
- * the subject, the words. The user can copy it, change it on the phone, and
- * send it: with Hermes, which knows the thread and the account, or in an app
+ * the subject, the words. The user can copy it, change every field in the
+ * card itself, and send it: with Hermes, which knows the thread and the account, or in an app
  * of the phone.
  */
 export function DraftCard({ draft }: { draft: Draft }) {
@@ -27,10 +25,11 @@ export function DraftCard({ draft }: { draft: Draft }) {
   const say = useContext(SayToAgent)
   // The draft with the changes made on the phone. Null: as Hermes wrote it.
   const [changed, setChanged] = useState<Draft | null>(null)
-  const [editing, setEditing] = useState(false)
+  // The fields as the user types in them, while the card is open for a change. Null: the card is closed.
+  const [form, setForm] = useState<Draft | null>(null)
   const [sending, setSending] = useState(false)
   const [copied, setCopied] = useState(false)
-  const shown = changed ?? draft
+  const shown = form ?? changed ?? draft
   const email = shown.channel === 'email'
   const line = { backgroundColor: fade(t.ink, 0.12) }
   const ways = sendWays(shown)
@@ -40,6 +39,15 @@ export function DraftCard({ draft }: { draft: Draft }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
+  }
+
+  const keep = () => {
+    if (form) {
+      const next = tidy(form)
+
+      setChanged(FIELDS.every(field => (next[field] ?? '') === (draft[field] ?? '')) ? null : next)
+      setForm(null)
+    }
   }
 
   const send = (id: string) => {
@@ -60,8 +68,8 @@ export function DraftCard({ draft }: { draft: Draft }) {
     <View style={[styles.card, { backgroundColor: t.paper, borderColor: fade(t.ink, 0.15) }]}>
       <View style={styles.head}>
         <Text style={[styles.kind, styles.fill, { color: t.muted }]}>{CHANNEL_LABEL[shown.channel]}</Text>
-        <Pressable accessibilityLabel="Change the draft" accessibilityRole="button" hitSlop={10} onPress={() => setEditing(true)}>
-          <Feather color={t.ink} name="edit-2" size={19} />
+        <Pressable accessibilityLabel={form ? 'Keep the changes' : 'Change the draft'} accessibilityRole="button" hitSlop={10} onPress={() => (form ? keep() : setForm(shown))}>
+          <Feather color={form ? t.green : t.ink} name={form ? 'check' : 'edit-2'} size={19} />
         </Pressable>
         <Pressable accessibilityLabel={copied ? 'Copied' : 'Copy the draft'} accessibilityRole="button" hitSlop={10} onPress={copy}>
           <Feather color={copied ? t.green : t.ink} name={copied ? 'check' : 'copy'} size={19} />
@@ -77,37 +85,69 @@ export function DraftCard({ draft }: { draft: Draft }) {
         </Pressable>
       </View>
 
-      {email || shown.to ? (
+      {form ? (
         <>
-          <Text selectable style={[type.body, { color: shown.to ? t.ink : t.muted }]}>
-            {shown.to ? <Text style={{ color: t.muted }}>To </Text> : null}
-            {shown.to || 'Recipients'}
-          </Text>
-          {shown.cc ? <Party label="Cc" value={shown.cc} /> : null}
-          {shown.bcc ? <Party label="Bcc" value={shown.bcc} /> : null}
-          {shown.thread ? (
-            <View style={styles.thread}>
-              <Feather color={t.muted} name="corner-up-left" size={13} />
-              <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
-                {shown.thread}
-              </Text>
-            </View>
+          <Field label="To" onChange={to => setForm({ ...form, to })} placeholder={email ? 'Name <address>' : 'Name or number'} value={form.to} />
+          {email ? <Field label="Cc" onChange={cc => setForm({ ...form, cc })} value={form.cc} /> : null}
+          {email ? <Field label="Bcc" onChange={bcc => setForm({ ...form, bcc })} value={form.bcc} /> : null}
+          <View style={[styles.line, line]} />
+          {email ? (
+            <>
+              <TextInput
+                accessibilityLabel="Subject"
+                onChangeText={subject => setForm({ ...form, subject })}
+                placeholder="Subject"
+                placeholderTextColor={t.muted}
+                style={[type.body, styles.input, { color: t.ink }]}
+                value={form.subject ?? ''}
+              />
+              <View style={[styles.line, line]} />
+            </>
           ) : null}
-          <View style={[styles.line, line]} />
+          <TextInput
+            accessibilityLabel="The words of the draft"
+            multiline
+            onChangeText={body => setForm({ ...form, body })}
+            scrollEnabled={false}
+            style={[type.body, styles.input, styles.words, { color: t.ink }]}
+            value={form.body}
+          />
         </>
-      ) : null}
-      {shown.subject ? (
-        <>
+      ) : (
+        <Pressable accessibilityHint="Opens the fields for a change" accessibilityLabel="The draft" onPress={() => setForm(shown)} style={styles.rows}>
+      {email || shown.to ? (
+            <>
+              <Text selectable style={[type.body, { color: shown.to ? t.ink : t.muted }]}>
+                {shown.to ? <Text style={{ color: t.muted }}>To </Text> : null}
+                {shown.to || 'Recipients'}
+              </Text>
+              {shown.cc ? <Party label="Cc" value={shown.cc} /> : null}
+              {shown.bcc ? <Party label="Bcc" value={shown.bcc} /> : null}
+              {shown.thread ? (
+                <View style={styles.thread}>
+                  <Feather color={t.muted} name="corner-up-left" size={13} />
+                  <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+                    {shown.thread}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={[styles.line, line]} />
+            </>
+          ) : null}
+          {shown.subject ? (
+            <>
+              <Text selectable style={[type.body, { color: t.ink }]}>
+                {shown.subject}
+              </Text>
+              <View style={[styles.line, line]} />
+            </>
+          ) : null}
           <Text selectable style={[type.body, { color: t.ink }]}>
-            {shown.subject}
+            {shown.body}
           </Text>
-          <View style={[styles.line, line]} />
-        </>
-      ) : null}
-      <Text selectable style={[type.body, { color: t.ink }]}>
-        {shown.body}
-      </Text>
-      {changed ? <Text style={[type.small, { color: t.muted }]}>Changed on this phone. Hermes has the first version until you send.</Text> : null}
+        </Pressable>
+      )}
+      {changed && !form ? <Text style={[type.small, { color: t.muted }]}>Changed on this phone. Hermes has the first version until you send.</Text> : null}
 
       {sending ? (
         <ChoiceSheet
@@ -120,7 +160,6 @@ export function DraftCard({ draft }: { draft: Draft }) {
           title="Send the draft"
         />
       ) : null}
-      {editing ? <DraftEditor draft={shown} onClose={() => setEditing(false)} onSave={next => (setChanged(next.body === draft.body && next.subject === draft.subject ? null : next), setEditing(false))} /> : null}
     </View>
   )
 }
@@ -136,36 +175,42 @@ function Party({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** The words of a draft in fields the user can type in. The change stays on the phone until the draft is sent. */
-function DraftEditor({ draft, onSave, onClose }: { draft: Draft; onSave: (draft: Draft) => void; onClose: () => void }) {
+const FIELDS = ['to', 'cc', 'bcc', 'subject', 'body'] as const
+
+/** A draft with no empty field: a field the user cleared is a field the draft does not have. */
+function tidy(draft: Draft): Draft {
+  const next: Draft = { channel: draft.channel, body: draft.body.trim(), ...(draft.thread ? { thread: draft.thread } : {}) }
+
+  for (const field of ['to', 'cc', 'bcc', 'subject'] as const) {
+    const value = draft[field]?.trim()
+
+    if (value) {
+      next[field] = value
+    }
+  }
+
+  return next
+}
+
+/** One line of the card to type in: who the draft goes to. */
+function Field({ label, value, placeholder, onChange }: { label: string; value?: string; placeholder?: string; onChange: (value: string) => void }) {
   const t = useTheme()
-  const insets = useSafeAreaInsets()
-  const [subject, setSubject] = useState(draft.subject ?? '')
-  const [body, setBody] = useState(draft.body)
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.fill, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
-        <View style={[styles.sheetHead, { borderBottomColor: t.line }]}>
-          <IconButton icon="x" label="Close without the changes" onPress={onClose} />
-          <Text style={[type.heading, styles.fill, { color: t.ink }]}>{CHANNEL_LABEL[draft.channel]}</Text>
-          <IconButton filled icon="check" label="Keep the changes" onPress={() => onSave({ ...draft, body: body.trim(), ...(draft.subject === undefined ? {} : { subject: subject.trim() }) })} />
-        </View>
-        <ScrollView contentContainerStyle={styles.editor} keyboardShouldPersistTaps="handled">
-          {draft.subject === undefined ? null : (
-            <TextInput
-              accessibilityLabel="Subject"
-              onChangeText={setSubject}
-              placeholder="Subject"
-              placeholderTextColor={t.muted}
-              style={[type.body, styles.subject, { borderBottomColor: t.line, color: t.ink }]}
-              value={subject}
-            />
-          )}
-          <TextInput accessibilityLabel="The words of the draft" autoFocus multiline onChangeText={setBody} scrollEnabled={false} style={[type.body, styles.body, { color: t.ink }]} value={body} />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </Modal>
+    <View style={styles.field}>
+      <Text style={[type.body, styles.fieldLabel, { color: t.muted }]}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="email-address"
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={fade(t.muted, 0.6)}
+        style={[type.body, styles.input, styles.fill, { color: t.ink }]}
+        value={value ?? ''}
+      />
+    </View>
   )
 }
 
@@ -178,8 +223,10 @@ const styles = StyleSheet.create({
   send: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   thread: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   line: { height: 1 },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
-  editor: { padding: space.lg, gap: space.md },
-  subject: { paddingVertical: space.md, borderBottomWidth: StyleSheet.hairlineWidth, fontWeight: '600' },
-  body: { minHeight: 240, textAlignVertical: 'top' }
+  rows: { gap: space.md },
+  field: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  fieldLabel: { width: 34 },
+  // A field in the card looks like the text it takes the place of: no box, the same line height.
+  input: { padding: 0, margin: 0 },
+  words: { minHeight: 96, textAlignVertical: 'top' }
 })
