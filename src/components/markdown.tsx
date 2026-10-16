@@ -7,6 +7,7 @@ import { answerSources, cardLines } from '@/core/sources'
 import { fade, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
+import { DraftCard } from './draft-card'
 import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
@@ -94,6 +95,9 @@ function BlockView({ block, muted, after }: { block: Block; muted: boolean; /** 
 
     case 'image':
       return <Image accessibilityLabel={block.picture.alt} resizeMode="cover" source={{ uri: block.picture.url }} style={[styles.picture, { backgroundColor: t.soft }]} />
+
+    case 'draft':
+      return <DraftCard draft={block.draft} />
 
     case 'card':
       return <Card card={block} colour={colour} first={after !== 'card'} />

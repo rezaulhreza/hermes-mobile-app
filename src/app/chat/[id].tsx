@@ -25,6 +25,7 @@ import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-vie
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
 import { CommandsSheet } from '@/components/commands-sheet'
+import { SayToAgent } from '@/components/draft-card'
 import { Markdown } from '@/components/markdown'
 import { SourcesButton, SourcesSheet } from '@/components/sources'
 import { ModelSheet } from '@/components/model-sheet'
@@ -337,6 +338,17 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     void sendDraft(sessionId, text, mode).then(apply)
   }
 
+  // A card in an answer sends a line for the user: "Send it." under a draft.
+  const sayToAgent = useCallback(
+    (text: string) => {
+      if (sessionId) {
+        setAwayFromEnd(false)
+        void sendDraft(sessionId, text, 'queue')
+      }
+    },
+    [sessionId]
+  )
+
   // During a turn a plain message can wait for the turn (send) or join it (steer).
   const canSteer = running && canSend && !staged.length && !draft.trimStart().startsWith('/')
 
@@ -398,6 +410,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           </View>
         ) : (
           <View style={styles.fill}>
+            <SayToAgent.Provider value={sayToAgent}>
             <FlatList
               ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
               // The list is upside down: its header is under the newest message. That is where the answer will come.
@@ -422,6 +435,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               renderItem={({ item }) => <Row final={finals.has(item.key)} item={item} onOpen={setViewing} onTool={setTool} />}
               windowSize={7}
             />
+            </SayToAgent.Provider>
             {awayFromEnd ? (
               <View style={styles.toEnd}>
                 <IconButton icon="arrow-down" label="Go to the newest message" onPress={toEnd} />

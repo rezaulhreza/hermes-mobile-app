@@ -9,6 +9,8 @@
  * unclosed fence or mark must read as text and never throw.
  */
 
+import { type Draft, draftFrom } from "./drafts";
+
 export type Span =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "strong"; readonly text: string }
@@ -51,6 +53,8 @@ export type Block =
     }
   | { readonly kind: "rule" }
   | { readonly kind: "image"; readonly picture: Picture }
+  // A message Hermes wrote for the user to send.
+  | { readonly kind: "draft"; readonly draft: Draft }
   // A result with a picture: the picture, then the lines that came with it.
   | { readonly kind: "card"; readonly picture: Picture; readonly lines: readonly (readonly Span[])[] };
 
@@ -213,7 +217,48 @@ export function parseMarkdown(source: string): Block[] {
   }
 
   flush();
-  return withPictures(blocks);
+  return withPictures(withDrafts(blocks));
+}
+
+/**
+ * A quote that is a draft becomes one block. Each line of a quote is a block
+ * of its own, so the lines that follow each other are read as one quote.
+ */
+function withDrafts(blocks: readonly Block[]): Block[] {
+  const out: Block[] = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (block === undefined) {
+      continue;
+    }
+    if (block.kind !== "quote") {
+      out.push(block);
+      continue;
+    }
+
+    let end = index;
+    while (blocks[end + 1]?.kind === "quote") {
+      end += 1;
+    }
+
+    const run = blocks.slice(index, end + 1);
+    const before = out[out.length - 1];
+    const lead = before?.kind === "paragraph" ? spansText(before.spans) : "";
+    const draft = draftFrom(
+      lead,
+      run.map((quote) => (quote.kind === "quote" ? quote.spans : [])),
+    );
+
+    if (draft) {
+      out.push({ kind: "draft", draft });
+    } else {
+      out.push(...run);
+    }
+    index = end;
+  }
+
+  return out;
 }
 
 function splitLines(spans: readonly Span[]): Span[][] {
