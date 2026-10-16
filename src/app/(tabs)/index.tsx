@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: space.lg,
     right: space.lg,
-    bottom: TAB_BAR_CLEARANCE + space.sm,
+    bottom: TAB_BAR_CLEARANCE - space.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,

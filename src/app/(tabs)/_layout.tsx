@@ -100,8 +100,13 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
   )
 }
 
-/** Space a scrolling screen must leave at its end so the last row clears the bar. */
-export const TAB_BAR_CLEARANCE = 96
+/**
+ * Space a scrolling screen must leave at its end so the last row clears the
+ * bar. On a phone with a home indicator the bar is 66 points high and 34
+ * points above the edge: its top is at 100, and the last row stays 20 points
+ * clear of it.
+ */
+export const TAB_BAR_CLEARANCE = 120
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md, alignItems: 'center' },
