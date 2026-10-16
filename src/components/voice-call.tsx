@@ -216,7 +216,7 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
           />
           <IconButton icon="message-circle" label="Show the chat" onPress={hide} />
           <Pressable accessibilityLabel="End Live voice" accessibilityRole="button" onPress={endCall} style={[styles.end, { backgroundColor: t.redBg }]}>
-            <Feather color={t.red} name="phone-off" size={22} />
+            <Feather color={t.red} name="x" size={22} />
           </Pressable>
         </View>
       </View>
@@ -256,7 +256,7 @@ function Strip({ call, t }: { call: Call; t: Palette }) {
         <Feather color={t.ink} name="maximize-2" size={18} />
       </Pressable>
       <Pressable accessibilityLabel="End Live voice" accessibilityRole="button" hitSlop={10} onPress={endCall}>
-        <Feather color={t.red} name="phone-off" size={18} />
+        <Feather color={t.red} name="x" size={18} />
       </Pressable>
     </View>
   )
