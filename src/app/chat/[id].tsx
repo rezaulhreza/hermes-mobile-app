@@ -554,7 +554,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                     onPress={speakDraft}
                   />
                 )}
-                {call ? null : <IconButton icon="phone" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />}
+                {call ? null : <IconButton icon="waveform" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />}
               </>
             ) : null}
             {running && !hasContent ? (

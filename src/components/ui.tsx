@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import type { ComponentProps, ReactNode } from 'react'
 import {
   ActivityIndicator,
@@ -52,7 +52,8 @@ export function Button({ label, onPress, icon, tone = 'plain', busy, disabled, s
 }
 
 interface IconButtonProps {
-  icon: IconName
+  /** `waveform` is the sign of Live voice. The line icons have no waveform, so it comes from another set. */
+  icon: IconName | 'waveform'
   label: string
   onPress: () => void
   filled?: boolean
@@ -75,7 +76,11 @@ export function IconButton({ icon, label, onPress, filled, disabled }: IconButto
         (pressed || disabled) && styles.dim
       ]}
     >
-      <Feather color={filled ? t.bg : t.ink} name={icon} size={20} />
+      {icon === 'waveform' ? (
+        <MaterialCommunityIcons color={filled ? t.bg : t.ink} name="waveform" size={22} />
+      ) : (
+        <Feather color={filled ? t.bg : t.ink} name={icon} size={20} />
+      )}
     </Pressable>
   )
 }
