@@ -33,6 +33,12 @@ const END_QUIET_SENTENCE_MS = 550
 // A sound that never became speech is dropped after this much quiet.
 const NOISE_QUIET_MS = 700
 const PREROLL_FRAMES = 6
+/**
+ * A dictation keeps three seconds: the person tapped to talk, so all of it is
+ * theirs. A first word said softly is under the level that starts a turn, and
+ * the turn then starts at the second or third word.
+ */
+export const DICTATION_PREROLL_FRAMES = 38
 // The host cuts a sentence when white space follows it. A sentence with nothing after it for this long is said now.
 const SENTENCE_FLUSH_MS = 150
 /** After text goes to the voice, sound is expected for this long. */
@@ -95,7 +101,9 @@ export class RelayEngine implements VoiceEngine {
   constructor(
     private readonly api: HermesApi,
     private liveStt: boolean,
-    private readonly events: EngineEvents
+    private readonly events: EngineEvents,
+    /** How many frames from before the start of a turn go with it. */
+    private readonly prerollFrames = PREROLL_FRAMES
   ) {}
 
   async start(): Promise<void> {
@@ -169,7 +177,7 @@ export class RelayEngine implements VoiceEngine {
     if (!this.frames) {
       this.preroll.push(pcm)
 
-      if (this.preroll.length > PREROLL_FRAMES) {
+      if (this.preroll.length > this.prerollFrames) {
         this.preroll.shift()
       }
 

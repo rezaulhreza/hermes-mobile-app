@@ -49,7 +49,7 @@ import { $requests, answerRequest } from './requests'
 import { announceSpokenTurn, DeepgramEngine, deepgramStatus } from './voice-deepgram'
 import { type EngineEvents, type EngineName, trace, type VoiceEngine } from './voice-engine'
 import { GptLiveEngine } from './voice-gpt-live'
-import { RelayEngine } from './voice-relay'
+import { DICTATION_PREROLL_FRAMES, RelayEngine } from './voice-relay'
 
 export interface Call {
   sessionId: string
@@ -884,7 +884,7 @@ export async function dictate(): Promise<string> {
         stopWord: () => undefined,
         changed: () => undefined,
         lost: text => reject(new Error(text))
-      })
+      }, DICTATION_PREROLL_FRAMES)
 
       dictationEngine = ears
       void ears.start()
