@@ -160,6 +160,17 @@ describe('advanceTurn', () => {
     expect(advanceTurn(start.turn, { event: 'Update', transcript: 'Call her now' }, true, never).hush).toBe(true)
   })
 
+  it('sends a turn that began as the voice ended', () => {
+    // One word under the last word of the voice does not stop it. The rest comes in the quiet.
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Go' }, true, never)
+    const update = advanceTurn(start.turn, { event: 'Update', transcript: 'Go to the hardware' }, false, never)
+
+    expect(start.hush).toBe(false)
+    expect(advanceTurn(update.turn, { event: 'EndOfTurn', transcript: 'Go to the hardware pros thing.' }, false, never).utterance).toBe('Go to the hardware pros thing.')
+    // A short answer given a moment after the voice ended.
+    expect(advanceTurn(advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Tuesday' }, true, never).turn, { event: 'EndOfTurn', transcript: 'Tuesday.' }, false, never).utterance).toBe('Tuesday.')
+  })
+
   it('drops a turn that is only the voice itself', () => {
     const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'the moon' }, true, always)
 

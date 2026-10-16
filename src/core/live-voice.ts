@@ -421,9 +421,11 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, vo
     return { turn: next, hush: false, hearing: false, partial: '', utterance: null }
   }
 
-  // A turn that began under the voice is the voice itself when it never broke through, or when
-  // its last words are not enough to break through: one wrong word in the middle can do that.
-  const mine = !next.duringPlayback || (next.barged && !voice.isEcho(transcript) && breaksThrough(transcript, voice.unsaid(transcript)))
+  // A turn that began under the voice is judged by its last words, not by whether it stopped the
+  // voice: a person who starts to talk as the voice ends says one word under it and the rest in
+  // the quiet, and all of it is theirs. While the voice still plays, the words must be enough to
+  // stop it. In the quiet, one word the voice did not say is enough.
+  const mine = !next.duringPlayback || (!voice.isEcho(transcript) && (!audible || breaksThrough(transcript, voice.unsaid(transcript))))
   const real = Boolean(transcript) && mine
 
   return { turn: NEW_TURN, hush: false, hearing: false, partial: '', utterance: real ? transcript : null }
