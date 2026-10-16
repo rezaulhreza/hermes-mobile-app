@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import type { ApprovalChoice } from '@/core/gateway/gateway-contract.generated'
 import type { AgentAnswer, AgentRequest } from '@/core/requests'
-import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
+import { fade, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Button } from './ui'
@@ -25,6 +25,15 @@ interface Props {
 export function RequestCard({ request, onAnswer }: Props) {
   const t = useTheme()
 
+  // A question is a form to fill in, not an alarm: a plain box, with no colour of its own.
+  if (request.kind === 'clarify') {
+    return (
+      <View style={[styles.form, { backgroundColor: t.paper, borderColor: fade(t.ink, 0.15) }]}>
+        <Clarify onAnswer={onAnswer} request={request} />
+      </View>
+    )
+  }
+
   return (
     <View style={[styles.card, { backgroundColor: t.accentBg, borderColor: t.accent }]}>
       <View style={styles.head}>
@@ -32,7 +41,6 @@ export function RequestCard({ request, onAnswer }: Props) {
         <Text style={[type.small, { color: t.accent, fontWeight: '700' }]}>Hermes needs you</Text>
       </View>
       {request.kind === 'approval' ? <Approval onAnswer={onAnswer} request={request} /> : null}
-      {request.kind === 'clarify' ? <Clarify onAnswer={onAnswer} request={request} /> : null}
       {request.kind === 'value' ? <Value onAnswer={onAnswer} request={request} /> : null}
       {request.kind === 'login' ? <Login onAnswer={onAnswer} request={request} /> : null}
     </View>
@@ -91,9 +99,9 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
     <>
       {request.questions.map(question => (
         <View key={question.qid} style={styles.block}>
-          <Text style={[type.body, { color: t.ink, fontWeight: '600' }]}>{question.question}</Text>
+          <Text style={[styles.question, { color: t.muted }]}>{question.question}</Text>
           {question.choices.length ? (
-            <View style={styles.actions}>
+            <View style={styles.choices}>
               {question.choices.map(choice => {
                 const on = (answers[question.qid] ?? '').split(', ').includes(choice)
 
@@ -102,10 +110,14 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
                     accessibilityRole={question.multiSelect ? 'checkbox' : 'radio'}
                     accessibilityState={{ checked: on }}
                     key={choice}
+                    hitSlop={8}
                     onPress={() => toggle(question.qid, choice, question.multiSelect)}
-                    style={[styles.chip, { backgroundColor: on ? t.ink : t.paper, borderColor: on ? t.ink : t.line }]}
+                    style={styles.choice}
                   >
-                    <Text style={[type.label, { color: on ? t.bg : t.ink }]}>{choice}</Text>
+                    <View style={[styles.circle, question.multiSelect && styles.square, { borderColor: on ? t.ink : t.muted }]}>
+                      {on ? <View style={[styles.dot, question.multiSelect && styles.squareDot, { backgroundColor: t.ink }]} /> : null}
+                    </View>
+                    <Text style={[type.body, styles.choiceWords, { color: t.ink }]}>{choice}</Text>
                   </Pressable>
                 )
               })}
@@ -119,7 +131,15 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
           )}
         </View>
       ))}
-      <Button disabled={!complete} label="Send answer" onPress={() => onAnswer({ kind: 'clarify', answers })} tone="primary" />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !complete }}
+        disabled={!complete}
+        onPress={() => onAnswer({ kind: 'clarify', answers })}
+        style={({ pressed }) => [styles.send, { backgroundColor: t.ink }, (pressed || !complete) && styles.dim]}
+      >
+        <Text style={[type.label, { color: t.bg }]}>Send answer</Text>
+      </Pressable>
     </>
   )
 }
@@ -196,12 +216,16 @@ const styles = StyleSheet.create({
   code: { fontFamily: MONO, fontSize: 13, padding: space.md, borderRadius: radius.sm, overflow: 'hidden' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   action: { flexGrow: 1 },
-  chip: {
-    minHeight: TOUCH,
-    justifyContent: 'center',
-    paddingHorizontal: space.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1
-  },
+  form: { gap: space.lg, padding: 20, borderRadius: 18, borderWidth: 1 },
+  question: { fontSize: 15 },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', columnGap: space.xl, rowGap: space.md },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
+  choiceWords: { flexShrink: 1 },
+  circle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  square: { borderRadius: 6 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  squareDot: { borderRadius: 2 },
+  send: { height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
+  dim: { opacity: 0.5 },
   input: { minHeight: TOUCH + 4, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1 }
 })
