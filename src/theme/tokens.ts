@@ -58,6 +58,13 @@ export const dark: Palette = {
   redBg: '#4a2a2d'
 }
 
+/** A colour of the palette, part of the way to clear: for a fill or a line that must work on any ground. */
+export function fade(hex: string, alpha: number): string {
+  const value = parseInt(hex.slice(1), 16)
+
+  return `rgba(${value >> 16}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`
+}
+
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const
 
 export const radius = { sm: 10, md: 14, lg: 22, pill: 999 } as const

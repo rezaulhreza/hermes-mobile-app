@@ -26,6 +26,7 @@ import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { Markdown } from '@/components/markdown'
+import { SourcesButton, SourcesSheet } from '@/components/sources'
 import { ModelSheet } from '@/components/model-sheet'
 import { PreviewPane, PreviewPill } from '@/components/preview-pane'
 import { BackgroundPanel } from '@/components/background-panel'
@@ -38,6 +39,8 @@ import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
 import { WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
+import { parseMarkdown } from '@/core/markdown'
+import { answerSources } from '@/core/sources'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
 import { BOT_CHAT_TITLE } from '@/core/bots'
 import { activeTrigger, applyCompletion } from '@/core/composer'
@@ -831,6 +834,8 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
   const reading = useStore($reading) === id
   const [copied, setCopied] = useState(false)
+  const sources = useMemo(() => answerSources(parseMarkdown(text)), [text])
+  const [showSources, setShowSources] = useState(false)
 
   const copy = () => {
     void Clipboard.setStringAsync(text).then(() => {
@@ -856,6 +861,8 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       >
         <Feather color={reading ? t.accent : t.muted} name={reading ? 'square' : 'volume-2'} size={15} />
       </Pressable>
+      {sources.length ? <SourcesButton onPress={() => setShowSources(true)} sources={sources} /> : null}
+      {showSources ? <SourcesSheet onClose={() => setShowSources(false)} sources={sources} /> : null}
     </View>
   )
 }

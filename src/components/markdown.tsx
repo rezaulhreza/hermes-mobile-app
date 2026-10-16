@@ -1,10 +1,13 @@
-import { memo, useMemo } from 'react'
-import { Linking, ScrollView, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native'
+import { memo, useMemo, useState } from 'react'
+import { Image, Linking, ScrollView, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native'
 
 import { type CodeTokenKind, highlightCode } from '@/core/highlight'
 import { type Block, columnWidths, parseMarkdown, type Span } from '@/core/markdown'
-import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
+import { answerSources, cardLines } from '@/core/sources'
+import { fade, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
+
+import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
 
@@ -15,17 +18,22 @@ const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
  */
 export const Markdown = memo(function Markdown({ text, muted = false }: { text: string; muted?: boolean }) {
   const blocks = useMemo(() => parseMarkdown(text), [text])
+  // The address of the source that was tapped, while the list of sources is up.
+  const [source, setSource] = useState<string | null>(null)
 
   return (
-    <View style={styles.blocks}>
-      {blocks.map((block, index) => (
-        <BlockView block={block} key={index} muted={muted} />
-      ))}
-    </View>
+    <OpenSource.Provider value={setSource}>
+      <View style={styles.blocks}>
+        {blocks.map((block, index) => (
+          <BlockView after={blocks[index - 1]?.kind} block={block} key={index} muted={muted} />
+        ))}
+      </View>
+      {source ? <SourcesSheet at={source} onClose={() => setSource(null)} sources={answerSources(blocks)} /> : null}
+    </OpenSource.Provider>
   )
 })
 
-function BlockView({ block, muted }: { block: Block; muted: boolean }) {
+function BlockView({ block, muted, after }: { block: Block; muted: boolean; /** The kind of the block before this one. */ after?: Block['kind'] }) {
   const t = useTheme()
   const colour = muted ? t.muted : t.ink
 
@@ -83,7 +91,38 @@ function BlockView({ block, muted }: { block: Block; muted: boolean }) {
 
     case 'rule':
       return <View style={[styles.rule, { backgroundColor: t.line }]} />
+
+    case 'image':
+      return <Image accessibilityLabel={block.picture.alt} resizeMode="cover" source={{ uri: block.picture.url }} style={[styles.picture, { backgroundColor: t.soft }]} />
+
+    case 'card':
+      return <Card card={block} colour={colour} first={after !== 'card'} />
   }
+}
+
+/** One result: its picture at the left, its words at the right. Results that follow each other have a line between them and no box. */
+function Card({ card, colour, first }: { card: Extract<Block, { kind: 'card' }>; colour: string; first: boolean }) {
+  const t = useTheme()
+  const lines = useMemo(() => cardLines(card.lines), [card.lines])
+
+  return (
+    <View style={[styles.card, !first && { borderTopColor: fade(t.ink, 0.08), borderTopWidth: 1 }]}>
+      <Image accessibilityLabel={card.picture.alt} resizeMode="cover" source={{ uri: card.picture.url }} style={styles.cardPicture} />
+      <View style={styles.cardWords}>
+        {lines.map((line, index) =>
+          line.role === 'label' ? (
+            <View key={index} style={[styles.status, { backgroundColor: fade(t.green, 0.15) }]}>
+              <Text style={[type.small, styles.strong, { color: t.green }]}>{line.spans.map(span => span.text).join('')}</Text>
+            </View>
+          ) : (
+            <Text key={index} selectable style={[type.body, { color: colour }, line.role === 'title' && styles.strong, line.role === 'price' && styles.price]}>
+              <Spans spans={line.spans} />
+            </Text>
+          )
+        )}
+      </View>
+    </View>
+  )
 }
 
 /** A table scrolls sideways: a phone is narrower than most tables, and a squeezed column cannot be read. */
@@ -143,16 +182,18 @@ function Spans({ spans }: { spans: readonly Span[] }) {
               </Text>
             )
           case 'link':
+            // The colour of the words around it: the dotted line and the arrow say "link".
             return (
-              <Text
-                accessibilityRole="link"
-                key={index}
-                onPress={() => void Linking.openURL(span.url)}
-                style={{ color: t.accent, textDecorationLine: 'underline' }}
-              >
-                {span.text}
+              <Text accessibilityRole="link" key={index} onPress={() => void Linking.openURL(span.url)}>
+                <Text style={styles.link}>{span.text}</Text>
+                <Text style={styles.arrow}>{'\u2009\u2197'}</Text>
               </Text>
             )
+          case 'source':
+            return <SourcePill key={index} links={span.links} />
+          case 'image':
+            // A picture in the middle of a sentence has no place in a line of text. Its words stand for it.
+            return span.text
         }
       })}
     </>
@@ -171,7 +212,15 @@ const styles = StyleSheet.create({
   inlineCode: { fontFamily: MONO, fontSize: 14 },
   strong: { fontWeight: '700' },
   em: { fontStyle: 'italic' },
+  link: { textDecorationLine: 'underline', textDecorationStyle: 'dotted' },
+  arrow: { fontSize: 11 },
   rule: { height: StyleSheet.hairlineWidth },
+  picture: { width: '100%', aspectRatio: 4 / 3, borderRadius: 14 },
+  card: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingVertical: space.md },
+  cardPicture: { width: '36%', aspectRatio: 4 / 3, borderRadius: 14, backgroundColor: '#ffffff' },
+  cardWords: { flex: 1, gap: space.xs },
+  price: { fontSize: 18, fontWeight: '700' },
+  status: { alignSelf: 'flex-start', paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },
   table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexGrow: 0 },
   tableRow: { flexDirection: 'row' },
   tableLine: { borderTopWidth: StyleSheet.hairlineWidth },

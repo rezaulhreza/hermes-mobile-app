@@ -14,7 +14,21 @@ export type Span =
   | { readonly kind: "strong"; readonly text: string }
   | { readonly kind: "em"; readonly text: string }
   | { readonly kind: "code"; readonly text: string }
-  | { readonly kind: "link"; readonly text: string; readonly url: string };
+  | { readonly kind: "link"; readonly text: string; readonly url: string }
+  // A mark for the page a sentence comes from: a link with no words of its
+  // own, a bare address, or links alone in brackets. `text` is the name shown.
+  | { readonly kind: "source"; readonly text: string; readonly links: readonly SourceLink[] }
+  | { readonly kind: "image"; readonly text: string; readonly url: string };
+
+export interface SourceLink {
+  readonly text: string;
+  readonly url: string;
+}
+
+export interface Picture {
+  readonly alt: string;
+  readonly url: string;
+}
 
 export type Block =
   | { readonly kind: "heading"; readonly level: 1 | 2 | 3; readonly spans: readonly Span[] }
@@ -35,7 +49,10 @@ export type Block =
       /** Every row has as many cells as the header. */
       readonly rows: readonly (readonly (readonly Span[])[])[];
     }
-  | { readonly kind: "rule" };
+  | { readonly kind: "rule" }
+  | { readonly kind: "image"; readonly picture: Picture }
+  // A result with a picture: the picture, then the lines that came with it.
+  | { readonly kind: "card"; readonly picture: Picture; readonly lines: readonly (readonly Span[])[] };
 
 export type Align = "left" | "center" | "right";
 
@@ -196,7 +213,55 @@ export function parseMarkdown(source: string): Block[] {
   }
 
   flush();
-  return blocks;
+  return withPictures(blocks);
+}
+
+function splitLines(spans: readonly Span[]): Span[][] {
+  const lines: Span[][] = [[]];
+
+  for (const span of spans) {
+    if (span.kind !== "text") {
+      lines[lines.length - 1]?.push(span);
+      continue;
+    }
+
+    span.text.split("\n").forEach((part, index) => {
+      if (index > 0) {
+        lines.push([]);
+      }
+      if (part.length > 0) {
+        lines[lines.length - 1]?.push({ kind: "text", text: part });
+      }
+    });
+  }
+
+  return lines.filter((line) => line.some((span) => span.text.trim().length > 0));
+}
+
+/**
+ * A picture with words is one result: the picture goes to the side of its
+ * words. The words are in the same paragraph, or in the paragraph right
+ * under a picture that stands alone.
+ */
+function withPictures(blocks: readonly Block[]): Block[] {
+  const out: Block[] = [];
+
+  for (const block of blocks) {
+    const first = block.kind === "paragraph" || block.kind === "item" ? block.spans.find((span) => span.text.trim().length > 0) : undefined;
+    const last = out[out.length - 1];
+
+    if ((block.kind === "paragraph" || block.kind === "item") && first?.kind === "image") {
+      const picture = { alt: first.text, url: first.url };
+      const lines = splitLines(block.spans.filter((span) => span !== first));
+      out.push(lines.length > 0 ? { kind: "card", picture, lines } : { kind: "image", picture });
+    } else if (block.kind === "paragraph" && last?.kind === "image") {
+      out[out.length - 1] = { kind: "card", picture: last.picture, lines: splitLines(block.spans) };
+    } else {
+      out.push(block);
+    }
+  }
+
+  return out;
 }
 
 function depthOf(indent: string): number {
@@ -205,8 +270,29 @@ function depthOf(indent: string): number {
 
 // One pass, leftmost match first. Code is first in the alternation so a mark
 // inside backticks stays code.
+// After the old marks: a picture, links alone in brackets, and a bare address.
 const INLINE =
-  /`([^`\n]+)`|\*\*([^*\n]+?)\*\*|__([^_\n]+?)__|\*([^*\s][^*\n]*?)\*|\b_([^_\n]+?)_\b|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+  /`([^`\n]+)`|\*\*([^*\n]+?)\*\*|__([^_\n]+?)__|\*([^*\s][^*\n]*?)\*|\b_([^_\n]+?)_\b|\[([^\]\n]+)\]\(([^)\s]+)\)|!\[([^\]\n]*)\]\(([^)\s]+)\)|\(((?:\s*\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)\s*[,;]?)+)\)|(https?:\/\/[^\s<>()[\]]+)/g;
+const LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+
+function siteOf(url: string): string {
+  return (/^https?:\/\/([^/?#:@\s]+)/i.exec(url)?.[1] ?? "").toLowerCase().replace(/^www\./, "");
+}
+
+/** The words of a link say nothing of their own: a number, the address, or the name of the site. */
+function isMark(text: string, url: string): boolean {
+  const words = text.trim().toLowerCase();
+  const site = siteOf(url);
+
+  return /^\[?\d{1,3}\]?$/.test(words) || /^https?:\/\//.test(words) || words.replace(/^www\./, "") === site || words === site.split(".")[0];
+}
+
+function sourceOf(links: readonly SourceLink[]): Span {
+  // A number or an address is no name: the site is. "Reuters" for reuters.com stays as it was written.
+  const named = links.map((link) => (/^\s*(\[?\d|https?:\/\/)/i.test(link.text) ? { text: siteOf(link.url), url: link.url } : link));
+
+  return { kind: "source", text: named[0]?.text ?? "", links: named };
+}
 
 export function parseSpans(source: string): Span[] {
   return parseMarks(source);
@@ -231,13 +317,26 @@ function parseMarks(source: string): Span[] {
     } else if (match[6] !== undefined && match[7] !== undefined) {
       // Only a web address opens. Any other scheme reads as the text it was.
       if (/^https?:\/\//i.test(match[7])) {
-        spans.push({ kind: "link", text: match[6], url: match[7] });
+        spans.push(isMark(match[6], match[7]) ? sourceOf([{ text: match[6], url: match[7] }]) : { kind: "link", text: match[6], url: match[7] });
       } else {
         spans.push({ kind: "text", text: match[0] });
       }
     }
 
-    last = at + match[0].length;
+    let end = at + match[0].length;
+
+    if (match[8] !== undefined && match[9] !== undefined) {
+      spans.push(/^https?:\/\//i.test(match[9]) ? { kind: "image", text: match[8], url: match[9] } : { kind: "text", text: match[0] });
+    } else if (match[10] !== undefined) {
+      spans.push(sourceOf([...match[10].matchAll(LINK)].map((link) => ({ text: link[1] ?? "", url: link[2] ?? "" }))));
+    } else if (match[11] !== undefined) {
+      // The full stop or the comma after an address is of the sentence.
+      const url = match[11].replace(/[.,;:!?'"]+$/, "");
+      spans.push(sourceOf([{ text: url, url }]));
+      end = at + url.length;
+    }
+
+    last = end;
   }
 
   if (last < source.length) {
