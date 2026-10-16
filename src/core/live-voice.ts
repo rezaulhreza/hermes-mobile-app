@@ -297,6 +297,13 @@ export class EchoMemory {
     this.spoken = [...kept, { until: from + (line.length / SPOKEN_CHARS_PER_SECOND) * 1000, words: echoWords(line) }]
   }
 
+  /** The words of a transcript that the voice did not say: the words that can only be the user, or a noise. */
+  unsaid(transcript: string, now: number): string[] {
+    const said = this.recent(now).flatMap(entry => entry.words)
+
+    return echoWords(transcript).filter(word => !said.some(spoken => sameWord(word, spoken)))
+  }
+
   /** The speaker is quiet now: all that waited has sounded, or was dropped. */
   quiet(now: number): void {
     this.spoken = this.spoken.map(entry => ({ ...entry, until: Math.min(entry.until, now) }))
@@ -360,15 +367,28 @@ export interface TurnStep {
   utterance: string | null
 }
 
-// One word over the voice stops it only when it is a word a person says to stop a voice.
-// The listening model writes a piece of the echo as one wrong word ("caller") now and then.
+// One new word over the voice stops it only when it is a word a person says to stop a voice.
+// The listening model writes a piece of the echo, or a tap on the phone, as one wrong word
+// ("caller", "hi") now and then, alone or among words of the voice.
 const BREAK_IN_WORDS = new Set(['stop', 'wait', 'hey', 'hermes', 'no', 'yes', 'yeah', 'okay', 'ok', 'sorry', 'hello', 'pause', 'quiet', 'enough', 'thanks', 'goodbye', 'bye'])
 
-/** Words over the voice that are enough to stop it: two words, or one word that asks for it. */
-export function breaksThrough(transcript: string): boolean {
+/**
+ * Words over the voice that are enough to stop it: two words the voice did
+ * not say, or a short call to stop. `unsaid` are the words of the transcript
+ * that the voice did not say.
+ */
+export function breaksThrough(transcript: string, unsaid: readonly string[]): boolean {
   const words = normalise(transcript).split(' ').filter(Boolean)
 
-  return words.length > 1 || BREAK_IN_WORDS.has(words[0] ?? '')
+  return unsaid.length > 1 || (words.length <= 3 && words.some(word => BREAK_IN_WORDS.has(word)))
+}
+
+/** What the engine knows of its own voice, for one transcript. */
+export interface OwnVoice {
+  /** The transcript is only the voice itself. */
+  isEcho(transcript: string): boolean
+  /** The words of the transcript that the voice did not say. */
+  unsaid(transcript: string): string[]
 }
 
 /**
@@ -376,7 +396,7 @@ export function breaksThrough(transcript: string): boolean {
  * voice plays now or did a moment ago; `isEcho` says a transcript is only the
  * voice itself.
  */
-export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, isEcho: (transcript: string) => boolean): TurnStep {
+export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, voice: OwnVoice): TurnStep {
   const transcript = String(info.transcript ?? '').trim()
   let next = turn
 
@@ -385,7 +405,7 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, is
   }
 
   if (info.event === 'StartOfTurn' || info.event === 'Update') {
-    const hush = audible && !next.barged && breaksThrough(transcript) && !isEcho(transcript)
+    const hush = audible && !next.barged && Boolean(transcript) && !voice.isEcho(transcript) && breaksThrough(transcript, voice.unsaid(transcript))
 
     if (hush) {
       next = { ...next, barged: true }
@@ -402,8 +422,9 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, is
   }
 
   // A turn that began under the voice is the voice itself when it never broke through, or when
-  // its last words are still the words of the voice: one wrong word in the middle can break through.
-  const real = Boolean(transcript) && !(next.duringPlayback && (!next.barged || isEcho(transcript)))
+  // its last words are not enough to break through: one wrong word in the middle can do that.
+  const mine = !next.duringPlayback || (next.barged && !voice.isEcho(transcript) && breaksThrough(transcript, voice.unsaid(transcript)))
+  const real = Boolean(transcript) && mine
 
   return { turn: NEW_TURN, hush: false, hearing: false, partial: '', utterance: real ? transcript : null }
 }

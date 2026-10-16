@@ -352,7 +352,10 @@ export class DeepgramEngine implements VoiceEngine {
     }
 
     const now = Date.now()
-    const step = advanceTurn(this.turn, info, this.audible(), transcript => this.echo.isEcho(transcript, now))
+    const step = advanceTurn(this.turn, info, this.audible(), {
+      isEcho: transcript => this.echo.isEcho(transcript, now),
+      unsaid: transcript => this.echo.unsaid(transcript, now)
+    })
     const turn = this.turn
 
     trace(`${info.event} audible=${this.audible()} hush=${step.hush} barged=${step.turn.barged} "${String(info.transcript ?? '').slice(-60)}"`)

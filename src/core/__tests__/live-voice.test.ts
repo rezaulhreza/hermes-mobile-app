@@ -128,8 +128,9 @@ describe('EchoMemory', () => {
 })
 
 describe('advanceTurn', () => {
-  const never = () => false
-  const always = () => true
+  const words = (transcript: string) => transcript.toLowerCase().replace(/[^a-z ]/g, '').split(' ').filter(Boolean)
+  const never = { isEcho: () => false, unsaid: words }
+  const always = { isEcho: () => true, unsaid: () => [] }
 
   it('shows the words while the user talks, then gives the utterance', () => {
     const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'What' }, false, never)
@@ -173,17 +174,34 @@ describe('a turn that broke through the voice by mistake', () => {
 
     echo.remember("I'm checking which of those driver copies are still attached.", 0)
 
-    const isEcho = (transcript: string) => echo.isEcho(transcript, 1000)
-    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Hmm jacking' }, true, isEcho)
+    const own = { isEcho: (transcript: string) => echo.isEcho(transcript, 1000), unsaid: (transcript: string) => echo.unsaid(transcript, 1000) }
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Hmm jacking witch' }, true, own)
 
     expect(start.hush).toBe(true)
-    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: "I'm checking." }, true, isEcho).utterance).toBeNull()
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: "I'm checking." }, true, own).utterance).toBeNull()
+  })
+
+  it('does not stop the voice for one new word among words of the voice', () => {
+    const echo = new EchoMemory()
+
+    echo.remember('Four. I answer in a shape you can follow by ear. Five. For emails, I say the recipients in words.', 0)
+
+    const own = { isEcho: (transcript: string) => echo.isEcho(transcript, 1000), unsaid: (transcript: string) => echo.unsaid(transcript, 1000) }
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Hi five' }, true, own)
+
+    expect(start.hush).toBe(false)
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'Hi,' }, true, own).utterance).toBeNull()
+    // The user over the same sentence.
+    expect(advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'no wait' }, true, own).hush).toBe(true)
+    expect(advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'skip the emails' }, true, own).hush).toBe(false)
+    expect(advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'skip the emails please' }, true, own).hush).toBe(true)
   })
 
   it('still sends the words of the user that are also words of the voice, when the voice was quiet', () => {
-    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'yes' }, false, () => true)
+    const always = { isEcho: () => true, unsaid: () => [] }
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'yes' }, false, always)
 
-    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'yes go ahead' }, false, () => true).utterance).toBe('yes go ahead')
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'yes go ahead' }, false, always).utterance).toBe('yes go ahead')
   })
 })
 
