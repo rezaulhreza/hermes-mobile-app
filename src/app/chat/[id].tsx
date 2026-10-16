@@ -17,7 +17,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View
+  View,
+  useWindowDimensions
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -72,6 +73,7 @@ import { $previews } from '@/store/browser'
 import { hostFilesThatExist } from '@/store/preview'
 import { unwatchBackground, watchBackground } from '@/store/background'
 import { $linkState } from '@/store/link'
+import type { AgentRequest } from '@/core/requests'
 import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
@@ -153,6 +155,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const sessions = useStore($sessions)
   const insets = useSafeAreaInsets()
   const keyboardOpen = useKeyboardOpen()
+  const { height: windowHeight } = useWindowDimensions()
   const linkState = useStore($linkState)
   const conversation = useStore($conversations)[sessionId ?? '']
   const requests = useStore($requests).filter(r => r.sessionId === sessionId)
@@ -328,6 +331,16 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }
 
     const text = draft
+    const question = oneQuestion(requests)
+
+    // The agent waits on one question: what the user types in the message field is the answer to it.
+    if (question && text.trim() && !staged.length && !text.trimStart().startsWith('/')) {
+      setDraft('')
+      setCompletions(null)
+      tap()
+
+      return answerRequest(question.id, { kind: 'clarify', answers: { [question.qid]: text.trim() } })
+    }
 
     setDraft('')
     setCompletions(null)
@@ -444,11 +457,20 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           </View>
         )}
 
-        {requests.map(request => (
-          <View key={request.id} style={styles.request}>
-            <RequestCard onAnswer={answer => answerRequest(request.id, answer)} request={request} />
-          </View>
-        ))}
+        {requests.length ? (
+          // A long form is taller than the space over the keyboard: it scrolls in its own space, and a drag puts the keyboard away.
+          <ScrollView
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            style={[styles.requests, { maxHeight: windowHeight * (keyboardOpen ? 0.3 : 0.6) }]}
+          >
+            {requests.map(request => (
+              <View key={request.id} style={styles.request}>
+                <RequestCard onAnswer={answer => answerRequest(request.id, answer)} request={request} />
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
 
         {sessionId ? <BackgroundPanel sessionId={sessionId} /> : null}
         {sessionId ? <QueuePanel onEdit={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n${text}` : text))} sessionId={sessionId} /> : null}
@@ -829,6 +851,14 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
 }
 
 /** The words of a dictation while the user talks. They go into the message field when the user stops. */
+/** The one question the agent waits on in this chat, when it is one form with one question. */
+function oneQuestion(requests: readonly AgentRequest[]): { id: string; qid: string } | null {
+  const forms = requests.filter(request => request.kind === 'clarify')
+  const form = forms[0]
+
+  return forms.length === 1 && requests.length === 1 && form?.kind === 'clarify' && form.questions.length === 1 ? { id: form.id, qid: form.questions[0].qid } : null
+}
+
 const DICTATION_BUTTON = {
   off: { icon: 'mic', label: 'Dictate a message' },
   starting: { icon: 'x', label: 'Cancel dictation' },
@@ -992,6 +1022,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.55 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   toolBlock: { gap: space.sm, alignItems: 'flex-start' },
+  requests: { flexGrow: 0, flexShrink: 0 },
   request: { paddingHorizontal: space.md, paddingBottom: space.sm, maxWidth: 760, width: '100%', alignSelf: 'center' },
   completions: {
     marginHorizontal: space.md,

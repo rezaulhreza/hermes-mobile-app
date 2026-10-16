@@ -80,13 +80,14 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const complete = request.questions.every(q => answers[q.qid]?.trim())
 
-  const toggle = (qid: string, choice: string, multi: boolean) =>
+  const toggle = (qid: string, choice: string, multi: boolean, choices: readonly string[]) =>
     setAnswers(current => {
       if (!multi) {
         return { ...current, [qid]: choice }
       }
 
-      const picked = new Set((current[qid] ?? '').split(', ').filter(Boolean))
+      // A typed answer gives way to the choices: the two do not mix.
+      const picked = new Set((current[qid] ?? '').split(', ').filter(part => choices.includes(part)))
 
       if (!picked.delete(choice)) {
         picked.add(choice)
@@ -111,7 +112,7 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
                     accessibilityState={{ checked: on }}
                     key={choice}
                     hitSlop={8}
-                    onPress={() => toggle(question.qid, choice, question.multiSelect)}
+                    onPress={() => toggle(question.qid, choice, question.multiSelect, question.choices)}
                     style={styles.choice}
                   >
                     <View style={[styles.circle, question.multiSelect && styles.square, { borderColor: on ? t.ink : t.muted }]}>
@@ -122,13 +123,15 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
                 )
               })}
             </View>
-          ) : (
-            <Input
-              onChangeText={value => setAnswers(current => ({ ...current, [question.qid]: value }))}
-              placeholder="Your answer"
-              value={answers[question.qid] ?? ''}
-            />
-          )}
+          ) : null}
+          {/* An answer in the user's own words, also when the question has choices: it takes their place. */}
+          <Input
+            accessibilityLabel={`Your answer: ${question.question}`}
+            onChangeText={value => setAnswers(current => ({ ...current, [question.qid]: value }))}
+            placeholder={question.choices.length ? 'Or type your answer' : 'Your answer'}
+            returnKeyType="done"
+            value={typed(question, answers[question.qid])}
+          />
         </View>
       ))}
       <Pressable
@@ -142,6 +145,13 @@ function Clarify({ request, onAnswer }: Of<'clarify'>) {
       </Pressable>
     </>
   )
+}
+
+/** The answer as the user typed it. An answer that is only choices of the question shows in the circles, not in the field. */
+function typed(question: { choices: string[] }, answer: string | undefined): string {
+  const value = answer ?? ''
+
+  return value.split(', ').every(part => question.choices.includes(part)) ? '' : value
 }
 
 function Value({ request, onAnswer }: Of<'value'>) {
