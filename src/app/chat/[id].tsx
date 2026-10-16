@@ -72,7 +72,7 @@ import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions } from '@/store/sessions'
-import { $call, $callEnded, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, startCall } from '@/store/voice'
+import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
@@ -110,6 +110,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const [tool, setTool] = useState<ToolTarget | null>(null)
   // Only whether a call is open: the words and the phase of a call must not draw this whole screen again.
   const call = useStore($callSession)
+  const callMuted = useStore($callMuted)
   const dictation = useStore($dictation)
 
   // A call has no view outside this screen. It must not keep the microphone open after the user leaves.
@@ -543,11 +544,16 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             ) : null}
             {!hasContent && sessionId && linkState === 'open' ? (
               <>
-                <IconButton
-                  icon={dictation === 'off' ? 'mic' : dictation === 'listening' ? 'check' : 'loader'}
-                  label={dictation === 'off' ? 'Dictate a message' : dictation === 'listening' ? 'Done talking' : 'Writing it down'}
-                  onPress={speakDraft}
-                />
+                {call ? (
+                  // Live voice has the microphone: the same button turns it off and on.
+                  <IconButton icon={callMuted ? 'mic-off' : 'mic'} label={callMuted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!callMuted)} />
+                ) : (
+                  <IconButton
+                    icon={dictation === 'off' ? 'mic' : dictation === 'listening' ? 'check' : 'loader'}
+                    label={dictation === 'off' ? 'Dictate a message' : dictation === 'listening' ? 'Done talking' : 'Writing it down'}
+                    onPress={speakDraft}
+                  />
+                )}
                 {call ? null : <IconButton icon="phone" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />}
               </>
             ) : null}

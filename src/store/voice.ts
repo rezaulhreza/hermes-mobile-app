@@ -90,6 +90,8 @@ export const $callLevel = atom(0)
 
 /** True while a call is open in a conversation, and which one. Changes only when a call starts or ends. */
 export const $callSession = computed($call, call => call?.sessionId ?? null)
+/** The microphone of the call is off. Changes only on a tap. */
+export const $callMuted = computed($call, call => call?.muted ?? false)
 
 const LEVEL_EVERY_MS = 80
 let levelShownAt = 0
