@@ -53,3 +53,20 @@ it('summarises a request for a list row', () => {
 
   expect(login && requestSummary(login)).toBe('Save a login for github.com')
 })
+
+describe('a message in the place of a form', () => {
+  const { answerInOwnWords } = jest.requireActual('../requests') as typeof import('../requests')
+  const question = (qid: string) => ({ qid, question: qid, choices: [], multiSelect: false })
+
+  it('answers the one question of a form', () => {
+    expect(answerInOwnWords([question('a')], ' Assay ')).toEqual({ a: 'Assay' })
+  })
+
+  it('gives the words to the first question and skips the others', () => {
+    expect(answerInOwnWords([question('a'), question('b'), question('c')], 'Assay, and I am at the desk nine to five')).toEqual({
+      a: 'Assay, and I am at the desk nine to five',
+      b: null,
+      c: null
+    })
+  })
+})

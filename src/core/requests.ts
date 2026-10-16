@@ -38,6 +38,16 @@ export type AgentAnswer =
   | { kind: 'value'; value: string }
   | { kind: 'login'; identifier: string; password: string }
 
+/**
+ * The answer to a form when the user wrote a message in the place of the
+ * form. The words go to the first question, where the agent reads them
+ * first, and the other questions are skipped: one message such as "Assay,
+ * and I am at the desk nine to five" answers several questions at once.
+ */
+export function answerInOwnWords(questions: readonly ClarifyQuestion[], words: string): Record<string, string | null> {
+  return Object.fromEntries(questions.map((question, index) => [question.qid, index === 0 ? words.trim() : null]))
+}
+
 const DEFAULT_CHOICES: ApprovalChoice[] = ['once', 'session', 'deny']
 const APPROVAL_CHOICES: ReadonlySet<string> = new Set(['once', 'session', 'always', 'deny'])
 

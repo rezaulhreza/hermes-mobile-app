@@ -73,7 +73,7 @@ import { $previews } from '@/store/browser'
 import { hostFilesThatExist } from '@/store/preview'
 import { unwatchBackground, watchBackground } from '@/store/background'
 import { $linkState } from '@/store/link'
-import type { AgentRequest } from '@/core/requests'
+import { type AgentRequest, answerInOwnWords } from '@/core/requests'
 import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
@@ -331,15 +331,16 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }
 
     const text = draft
-    const question = oneQuestion(requests)
+    const form = waitingForm(requests)
 
-    // The agent waits on one question: what the user types in the message field is the answer to it.
-    if (question && text.trim() && !staged.length && !text.trimStart().startsWith('/')) {
+    // The agent waits on a form: what the user types in the message field is the answer to it. A
+    // message that waited for the turn would never go, because the turn waits for the form.
+    if (form && text.trim() && !staged.length && !text.trimStart().startsWith('/')) {
       setDraft('')
       setCompletions(null)
       tap()
 
-      return answerRequest(question.id, { kind: 'clarify', answers: { [question.qid]: text.trim() } })
+      return answerRequest(form.id, { kind: 'clarify', answers: answerInOwnWords(form.questions, text) })
     }
 
     setDraft('')
@@ -851,12 +852,11 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
 }
 
 /** The words of a dictation while the user talks. They go into the message field when the user stops. */
-/** The one question the agent waits on in this chat, when it is one form with one question. */
-function oneQuestion(requests: readonly AgentRequest[]): { id: string; qid: string } | null {
-  const forms = requests.filter(request => request.kind === 'clarify')
-  const form = forms[0]
+/** The form the agent waits on in this chat, when a form is the one thing it waits on. */
+function waitingForm(requests: readonly AgentRequest[]): Extract<AgentRequest, { kind: 'clarify' }> | null {
+  const only = requests.length === 1 ? requests[0] : null
 
-  return forms.length === 1 && requests.length === 1 && form?.kind === 'clarify' && form.questions.length === 1 ? { id: form.id, qid: form.questions[0].qid } : null
+  return only?.kind === 'clarify' ? only : null
 }
 
 const DICTATION_BUTTON = {
