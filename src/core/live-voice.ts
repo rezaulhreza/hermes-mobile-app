@@ -89,7 +89,10 @@ export const MIC_GAIN_WITH_ECHO_CANCELLING = 1
  * call heard the end of its own answer 460 ms after playback ended.
  */
 export const PLAYBACK_TAIL_MS = 900
+/** A line is kept this long after its sound: the listening model reports late, and the time of the sound is an estimate. */
 const ECHO_MEMORY_MS = 20_000
+/** The voice says about this many characters in a second. For the time at which a line that waits will sound. */
+const SPOKEN_CHARS_PER_SECOND = 14
 /** A tool that starts with nothing said recently gets a stock line, so long work is never silent. */
 export const TOOL_LINE_QUIET_MS = 2500
 
@@ -283,10 +286,20 @@ function inOrder(heard: readonly string[], said: readonly string[]): number {
  * word comes cut short or a little wrong, so the match is loose.
  */
 export class EchoMemory {
-  private spoken: { at: number; words: string[] }[] = []
+  // `until`: when the sound of the line ends. A long answer comes as text in two seconds and
+  // sounds for a minute, so the time the text came says nothing about when the microphone hears it.
+  private spoken: { until: number; words: string[] }[] = []
 
   remember(line: string, now: number): void {
-    this.spoken = [...this.recent(now), { at: now, words: echoWords(line) }]
+    const kept = this.recent(now)
+    const from = Math.max(now, kept.at(-1)?.until ?? 0)
+
+    this.spoken = [...kept, { until: from + (line.length / SPOKEN_CHARS_PER_SECOND) * 1000, words: echoWords(line) }]
+  }
+
+  /** The speaker is quiet now: all that waited has sounded, or was dropped. */
+  quiet(now: number): void {
+    this.spoken = this.spoken.map(entry => ({ ...entry, until: Math.min(entry.until, now) }))
   }
 
   isEcho(transcript: string, now: number): boolean {
@@ -316,7 +329,7 @@ export class EchoMemory {
   }
 
   private recent(now: number) {
-    return this.spoken.filter(entry => now - entry.at < ECHO_MEMORY_MS)
+    return this.spoken.filter(entry => now - entry.until < ECHO_MEMORY_MS)
   }
 }
 
@@ -347,6 +360,17 @@ export interface TurnStep {
   utterance: string | null
 }
 
+// One word over the voice stops it only when it is a word a person says to stop a voice.
+// The listening model writes a piece of the echo as one wrong word ("caller") now and then.
+const BREAK_IN_WORDS = new Set(['stop', 'wait', 'hey', 'hermes', 'no', 'yes', 'yeah', 'okay', 'ok', 'sorry', 'hello', 'pause', 'quiet', 'enough', 'thanks', 'goodbye', 'bye'])
+
+/** Words over the voice that are enough to stop it: two words, or one word that asks for it. */
+export function breaksThrough(transcript: string): boolean {
+  const words = normalise(transcript).split(' ').filter(Boolean)
+
+  return words.length > 1 || BREAK_IN_WORDS.has(words[0] ?? '')
+}
+
 /**
  * One `TurnInfo` message of the listening model later. `audible` says the
  * voice plays now or did a moment ago; `isEcho` says a transcript is only the
@@ -361,7 +385,7 @@ export function advanceTurn(turn: UserTurn, info: TurnInfo, audible: boolean, is
   }
 
   if (info.event === 'StartOfTurn' || info.event === 'Update') {
-    const hush = audible && !next.barged && Boolean(transcript) && !isEcho(transcript)
+    const hush = audible && !next.barged && breaksThrough(transcript) && !isEcho(transcript)
 
     if (hush) {
       next = { ...next, barged: true }

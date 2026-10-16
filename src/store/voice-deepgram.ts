@@ -120,6 +120,7 @@ export class DeepgramEngine implements VoiceEngine {
 
     if (!playing) {
       this.playbackEndedAt = Date.now()
+      this.echo.quiet(this.playbackEndedAt)
     }
 
     this.events.changed()

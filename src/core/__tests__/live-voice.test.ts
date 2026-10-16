@@ -102,6 +102,26 @@ describe('EchoMemory', () => {
     expect(echo.isEcho('which copies do you mean', 2000)).toBe(false)
   })
 
+  it('knows a line that sounds long after its text came', () => {
+    const echo = new EchoMemory()
+
+    // A long answer comes as text at once. Its last line sounds half a minute later.
+    echo.remember('x'.repeat(420), 1000)
+    echo.remember('You can turn it back on at any time.', 1100)
+    expect(echo.isEcho('can you', 32_000)).toBe(true)
+  })
+
+  it('forgets after the speaker went quiet, not after the text came', () => {
+    const echo = new EchoMemory()
+
+    echo.remember('x'.repeat(420), 1000)
+    echo.remember('You can turn it back on at any time.', 1100)
+    // The voice was stopped: the line never sounded.
+    echo.quiet(5000)
+    expect(echo.isEcho('can you', 24_000)).toBe(true)
+    expect(echo.isEcho('can you', 26_000)).toBe(false)
+  })
+
   it('takes an empty transcript as an echo', () => {
     expect(new EchoMemory().isEcho(' ... ', 0)).toBe(true)
   })
@@ -128,6 +148,15 @@ describe('advanceTurn', () => {
     expect(start.hush).toBe(false)
     expect(update).toMatchObject({ hush: true, partial: 'wait stop' })
     expect(advanceTurn(update.turn, { event: 'EndOfTurn', transcript: 'wait stop' }, false, never).utterance).toBe('wait stop')
+  })
+
+  it('does not stop the voice for one word that asks for nothing', () => {
+    const start = advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Caller' }, true, never)
+
+    expect(start.hush).toBe(false)
+    expect(advanceTurn(start.turn, { event: 'EndOfTurn', transcript: 'Caller,' }, true, never).utterance).toBeNull()
+    expect(advanceTurn(NEW_TURN, { event: 'StartOfTurn', transcript: 'Stop' }, true, never).hush).toBe(true)
+    expect(advanceTurn(start.turn, { event: 'Update', transcript: 'Call her now' }, true, never).hush).toBe(true)
   })
 
   it('drops a turn that is only the voice itself', () => {
