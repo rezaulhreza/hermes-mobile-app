@@ -552,8 +552,8 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                   <IconButton icon={callMuted ? 'mic-off' : 'mic'} label={callMuted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!callMuted)} />
                 ) : (
                   <IconButton
-                    icon={dictation === 'off' ? 'mic' : dictation === 'listening' ? 'check' : 'loader'}
-                    label={dictation === 'off' ? 'Dictate a message' : dictation === 'listening' ? 'Done talking' : 'Writing it down'}
+                    icon={DICTATION_BUTTON[dictation].icon}
+                    label={DICTATION_BUTTON[dictation].label}
                     onPress={speakDraft}
                   />
                 )}
@@ -815,15 +815,32 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
 }
 
 /** The words of a dictation while the user talks. They go into the message field when the user stops. */
+const DICTATION_BUTTON = {
+  off: { icon: 'mic', label: 'Dictate a message' },
+  starting: { icon: 'x', label: 'Cancel dictation' },
+  listening: { icon: 'check', label: 'Done talking' },
+  hearing: { icon: 'check', label: 'Done talking' },
+  transcribing: { icon: 'loader', label: 'Writing it down' }
+} as const
+
+const DICTATION_LINE = {
+  off: '',
+  starting: 'Opening the microphone…',
+  listening: 'Listening. Talk now.',
+  hearing: 'Hearing you…',
+  transcribing: 'Writing it down…'
+} as const
+
 function DictationLine() {
   const t = useTheme()
   const words = useStore($dictationWords)
+  const state = useStore($dictation)
 
   return (
     <View accessibilityLiveRegion="polite" style={[styles.dictation, { backgroundColor: t.greenBg }]}>
       <Feather color={t.green} name="mic" size={14} />
       <Text numberOfLines={3} style={[type.small, styles.dictationWords, { color: words ? t.ink : t.muted }]}>
-        {words || 'Listening. Talk now.'}
+        {words || DICTATION_LINE[state]}
       </Text>
     </View>
   )

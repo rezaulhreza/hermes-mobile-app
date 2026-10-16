@@ -71,8 +71,11 @@ export interface Call {
 export const $call = atom<Call | null>(null)
 /** Why the last call ended by itself (a lost connection). Null after the user has read it. */
 export const $callEnded = atom<string | null>(null)
-/** One-shot dictation into the message field: off, the microphone is open, or the text is on its way. */
-export const $dictation = atom<'off' | 'listening' | 'transcribing'>('off')
+/**
+ * One-shot dictation into the message field: off, the microphone opens, it is
+ * open and waits for words, it hears the user, or the text is on its way.
+ */
+export const $dictation = atom<'off' | 'starting' | 'listening' | 'hearing' | 'transcribing'>('off')
 /** The key of the answer that is read aloud now, outside a call. */
 export const $reading = atom<string | null>(null)
 
@@ -787,7 +790,14 @@ let endDictation: ((words: string) => void) | null = null
  * what was said.
  */
 export async function dictate(): Promise<string> {
-  if ($dictation.get() === 'listening') {
+  if ($dictation.get() === 'starting') {
+    // The tap came before the microphone was open: it calls the listen off.
+    $dictation.set('off')
+
+    return ''
+  }
+
+  if ($dictation.get() === 'listening' || $dictation.get() === 'hearing') {
     dictationEngine?.finishTurn()
 
     // Nothing was said yet: the tap calls the listen off.
@@ -798,7 +808,7 @@ export async function dictate(): Promise<string> {
     return ''
   }
 
-  if ($dictation.get() !== 'off' || $call.get()) {
+  if ($dictation.get() !== 'off' || dictating || $call.get()) {
     return ''
   }
 
@@ -820,15 +830,19 @@ export async function dictate(): Promise<string> {
   }
 
   stopPlayback?.()
-  $dictation.set('listening')
+  $dictation.set('starting')
   $dictationWords.set('')
   dictationHeard = false
+  dictating = true
 
   const listeners: { remove(): void }[] = []
+  let idle: ReturnType<typeof setTimeout> | null = null
 
   try {
+    // Whether the host writes the words down live. A busy host answers late: the
+    // microphone does not wait for it, and the words then come when the user stops.
     if (!host) {
-      await loadEngines()
+      await Promise.race([loadEngines().catch(() => undefined), wait(HOST_WAIT_MS)])
     }
 
     await audio.start({ inputRate: INPUT_SAMPLE_RATE, frameMs: FRAME_MS, duckGain: 1, speaker: true })
@@ -837,17 +851,22 @@ export async function dictate(): Promise<string> {
       audio.setMuted(true)
     }
 
-    if ($dictation.get() !== 'listening') {
+    if ($dictation.get() !== 'starting') {
       return ''
     }
 
+    $dictation.set('listening')
+
     return await new Promise<string>((resolve, reject) => {
       endDictation = resolve
+      // A listen that hears nothing does not hold the microphone open for ever.
+      idle = setTimeout(() => !dictationHeard && resolve(''), DICTATION_IDLE_MS)
 
       const ears = new RelayEngine(api, host?.liveStt ?? false, {
         partial: text => $dictationWords.set(text),
         hearing: () => {
           dictationHeard = true
+          $dictation.set('hearing')
         },
         barge: () => undefined,
         transcribing: () => $dictation.set('transcribing'),
@@ -855,9 +874,11 @@ export async function dictate(): Promise<string> {
           if (text) {
             resolve(text)
           } else {
-            // A sound that was not speech. Go on listening.
+            // A sound that was not speech. Go on listening, for a while.
             dictationHeard = false
             $dictation.set('listening')
+            clearTimeout(idle ?? undefined)
+            idle = setTimeout(() => !dictationHeard && resolve(''), DICTATION_IDLE_MS)
           }
         },
         stopWord: () => undefined,
@@ -876,6 +897,8 @@ export async function dictate(): Promise<string> {
       )
     })
   } finally {
+    clearTimeout(idle ?? undefined)
+    dictating = false
     listeners.forEach(listener => listener.remove())
     dictationEngine?.stop()
     dictationEngine = null
@@ -888,6 +911,12 @@ export async function dictate(): Promise<string> {
 
 let dictationEngine: RelayEngine | null = null
 let dictationHeard = false
+/** A dictation runs, from the tap to the end of its clean-up. */
+let dictating = false
+/** How long a dictation waits to learn what the host can do, before it starts with no live words. */
+const HOST_WAIT_MS = 1500
+/** A dictation that hears no speech for this long ends. */
+const DICTATION_IDLE_MS = 15_000
 
 export function cancelDictation(): void {
   endDictation?.('')
