@@ -8,6 +8,7 @@ import { fade, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { DraftCard } from './draft-card'
+import { InfoCardView } from './info-card'
 import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
@@ -98,6 +99,9 @@ function BlockView({ block, muted, after }: { block: Block; muted: boolean; /** 
 
     case 'draft':
       return <DraftCard draft={block.draft} />
+
+    case 'info':
+      return <InfoCardView card={block.card} />
 
     case 'card':
       return <Card card={block} colour={colour} first={after !== 'card'} />

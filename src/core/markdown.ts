@@ -10,6 +10,7 @@
  */
 
 import { type Draft, draftFrom } from "./drafts";
+import { type InfoCard, infoCardFrom } from "./info-cards";
 
 export type Span =
   | { readonly kind: "text"; readonly text: string }
@@ -55,6 +56,8 @@ export type Block =
   | { readonly kind: "image"; readonly picture: Picture }
   // A message Hermes wrote for the user to send.
   | { readonly kind: "draft"; readonly draft: Draft }
+  // A call, an event, a place, a reminder, a payment or a contact to act on.
+  | { readonly kind: "info"; readonly card: InfoCard }
   // A result with a picture: the picture, then the lines that came with it.
   | { readonly kind: "card"; readonly picture: Picture; readonly lines: readonly (readonly Span[])[] };
 
@@ -245,12 +248,13 @@ function withDrafts(blocks: readonly Block[]): Block[] {
     const run = blocks.slice(index, end + 1);
     const before = out[out.length - 1];
     const lead = before?.kind === "paragraph" ? spansText(before.spans) : "";
-    const draft = draftFrom(
-      lead,
-      run.map((quote) => (quote.kind === "quote" ? quote.spans : [])),
-    );
+    const lines = run.map((quote) => (quote.kind === "quote" ? quote.spans : []));
+    const card = infoCardFrom(lines);
+    const draft = card ? null : draftFrom(lead, lines);
 
-    if (draft) {
+    if (card) {
+      out.push({ kind: "info", card });
+    } else if (draft) {
       out.push({ kind: "draft", draft });
     } else {
       out.push(...run);
