@@ -24,6 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Answer } from '@/components/answer'
 import { ArrivalRow } from '@/components/arrival'
+import { TeachSheet } from '@/components/teach-sheet'
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
@@ -50,6 +51,7 @@ import { $referencePlugins, loadReferencePlugins } from '@/store/commands'
 import { answerSources } from '@/core/sources'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
 import { BOT_CHAT_TITLE } from '@/core/bots'
+import { teachCommand } from '@/core/teach'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
@@ -307,6 +309,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const attachments = useStore($attachments)[sessionId ?? '']
   const staged = attachments ?? NO_ATTACHMENTS
   const [adding, setAdding] = useState(false)
+  const [teaching, setTeaching] = useState(false)
   const [viewing, setViewing] = useState<ViewerTarget | null>(null)
   const [canPaste, setCanPaste] = useState(false)
 
@@ -407,6 +410,18 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
 
   // During a turn a plain message can wait for the turn (send) or join it (steer).
   const canSteer = running && canSend && !staged.length && !draft.trimStart().startsWith('/')
+
+  // The bot a lesson is for: the bot of this chat, or the main bot.
+  const teachName = (bots?.find(known => (params.profile ? known.name === params.profile : known.isDefault))?.title ?? 'this bot').trim()
+
+  const teach = (request: string) => {
+    setTeaching(false)
+
+    if (sessionId) {
+      tap()
+      void sendDraft(sessionId, teachCommand(request)).then(apply, error => Alert.alert('Could not start the lesson', error instanceof Error ? error.message : String(error)))
+    }
+  }
 
   const attach = (source: AttachSource) => {
     setAdding(false)
@@ -572,6 +587,19 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             <Text style={[type.small, styles.limit, { color: t.muted, borderTopColor: t.line }]}>
               A file can be up to 100 MB. A large photo is made smaller before it is sent.
             </Text>
+            {/* Not a thing to attach: its own row under the line, in the list the user opens to give the bot something. */}
+            <Pressable
+              accessibilityHint="The bot writes the task down as a skill"
+              accessibilityRole="button"
+              onPress={() => {
+                setAdding(false)
+                setTeaching(true)
+              }}
+              style={({ pressed }) => [styles.completion, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+            >
+              <Feather color={t.accent} name="book-open" size={18} />
+              <Text style={[type.label, { color: t.ink }]}>Teach {teachName} a task</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -670,6 +698,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           />
           <VoiceCallScreen items={transcript?.items ?? NO_ITEMS} sessionId={sessionId} title={conversation?.title ?? ''} />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
+          {teaching ? <TeachSheet bot={teachName} hasWork={(transcript?.items.length ?? 0) > 0} onClose={() => setTeaching(false)} onTeach={teach} /> : null}
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
       {bot && botOpen ? <BotSheet bot={bot} onClose={() => setBotOpen(false)} /> : null}
@@ -743,7 +772,7 @@ function Working({ status }: { status: string | null }) {
 }
 
 /** A message of the user. A long press copies its words. */
-function UserBubble({ text, attached, waiting, onOpen }: { text: string; attached?: SentAttachment[]; waiting: boolean; onOpen: (target: ViewerTarget) => void }) {
+function UserBubble({ text, attached, waiting, teach, onOpen }: { text: string; attached?: SentAttachment[]; waiting: boolean; /** The text is what the user asked the bot to learn. */ teach?: boolean; onOpen: (target: ViewerTarget) => void }) {
   const t = useTheme()
   const bots = useStore($bots)
   const plugins = useStore($referencePlugins)
@@ -773,6 +802,12 @@ function UserBubble({ text, attached, waiting, onOpen }: { text: string; attache
         style={[styles.bubble, { backgroundColor: t.soft }, waiting && styles.waiting]}
       >
         {attached?.length ? <SentAttachments items={attached} onOpen={index => onOpen({ items: attached, index })} /> : null}
+        {teach ? (
+          <View style={styles.teach}>
+            <Feather color={t.accent} name="book-open" size={13} />
+            <Text style={[type.small, { color: t.accent, fontWeight: '700' }]}>Teach</Text>
+          </View>
+        ) : null}
         {text ? (
           <Text style={[type.body, { color: t.ink }]}>
             <MentionText parts={chatMentionParts(text, bots ?? [], self, plugins ?? [])} />
@@ -803,7 +838,7 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
     case 'user':
       return (
         <View style={styles.sent}>
-          <UserBubble attached={item.attached} onOpen={onOpen} text={item.text} waiting={item.delivery === 'queued' || item.delivery === 'dropped'} />
+          <UserBubble attached={item.attached} onOpen={onOpen} teach={item.teach} text={item.text} waiting={item.delivery === 'queued' || item.delivery === 'dropped'} />
           {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
       )
@@ -1034,6 +1069,7 @@ const styles = StyleSheet.create({
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
   bubble: { padding: space.md, borderRadius: radius.lg, gap: space.sm },
+  teach: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   chips: { gap: space.sm, paddingHorizontal: space.xs, paddingBottom: space.sm },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   waiting: { opacity: 0.6 },

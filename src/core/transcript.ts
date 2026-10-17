@@ -8,6 +8,7 @@
  */
 
 import { type Arrival, arrivalOf } from './arrivals'
+import { teachRequest } from './teach'
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
 import { type ToolDetail, toolDetail, toolInput, toolOutput, toolPicture } from './tools'
@@ -23,7 +24,7 @@ import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 export type Delivery = 'queued' | 'steered' | 'redirected' | 'dropped'
 
 export type TranscriptItem =
-  | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: SentAttachment[] }
+  | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: SentAttachment[]; /** The text is what the user asked the bot to learn. */ teach?: boolean }
   /** What the bot was given and the user did not write: the message of another bot, a schedule, the end of a background task. */
   | { kind: 'arrival'; key: string; arrival: Arrival }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
@@ -63,7 +64,7 @@ export function transcriptFromHistory(
       const stored = splitStoredPrompt(text)
       const files = stored.attached.length ? { attached: stored.attached } : {}
 
-      transcript = push(transcript, key => ({ kind: 'user', key, text: stored.text, ...files }))
+      transcript = push(transcript, key => ({ kind: 'user', key, ...userWords(stored.text), ...files }))
     } else if (message.role === 'assistant' && text) {
       transcript = push(transcript, key => ({ kind: 'assistant', key, text, streaming: false }))
     } else if (message.role === 'tool' && message.name) {
@@ -134,7 +135,7 @@ export function withDelivery(transcript: Transcript, key: string, delivery: Deli
 export function withUserMessage(transcript: Transcript, text: string, attached: readonly SentAttachment[] = []): Transcript {
   const files = attached.length ? { attached: [...attached] } : {}
 
-  return { ...push(transcript, key => ({ kind: 'user', key, text, ...files })), running: true }
+  return { ...push(transcript, key => ({ kind: 'user', key, ...userWords(text), ...files })), running: true }
 }
 
 /** Add what a slash command printed. It does not start a turn. */
@@ -333,6 +334,13 @@ function push(transcript: Transcript, make: (key: string) => TranscriptItem): Tr
     items: [...transcript.items, make(`i${transcript.nextKey}`)],
     nextKey: transcript.nextKey + 1
   }
+}
+
+/** The words of a message of the user for its row. The instruction of the host for "teach" shows as the request of the user. */
+function userWords(text: string): { text: string; teach?: true } {
+  const request = teachRequest(text)
+
+  return request === null ? { text } : { text: request, teach: true }
 }
 
 /** The short line the host wrote for a screen, for a message that is not the words of the user. */
