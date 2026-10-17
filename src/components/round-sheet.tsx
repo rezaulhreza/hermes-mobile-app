@@ -14,6 +14,7 @@ import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Answer } from './answer'
+import { ArrivalRow } from './arrival'
 import { AttachmentViewer, type ViewerTarget } from './attachment-viewer'
 import { SentAttachments } from './attachments'
 import { BotAvatar } from './bot-sheet'
@@ -278,6 +279,11 @@ function WorkRow({ item, running, marked, onTool, onOpen }: WorkRowProps) {
 
     case 'notice':
       return <Text style={[type.small, { color: item.tone === 'error' ? t.red : t.muted }]}>{item.text}</Text>
+
+    // What the bot was given in its turn and nobody in the group wrote: the message of another bot,
+    // the end of a background task, and the line of Hermes when it saved a skill or a memory.
+    case 'arrival':
+      return <ArrivalRow arrival={item.arrival} mentions={marked} />
 
     default:
       return null

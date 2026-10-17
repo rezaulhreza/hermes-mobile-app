@@ -1,5 +1,6 @@
 import { arrivalLine, arrivalOf } from '../arrivals'
 import { pageMessages } from '../history-page'
+import { turnWork } from '../rounds'
 import { EMPTY_TRANSCRIPT, reduceTranscript, transcriptFromHistory } from '../transcript'
 
 describe('what comes into a chat and is not from the user', () => {
@@ -73,5 +74,15 @@ describe('what comes into a chat and is not from the user', () => {
   it('keeps a bot that was removed readable', () => {
     // The app no longer has the bot: the name it gave itself stays on the message.
     expect(arrivalOf('Message from 🤖 Old Helper (@old-helper): done')).toMatchObject({ kind: 'bot', name: 'Old Helper', handle: 'old-helper' })
+  })
+
+  it('stays in the work of a turn in a group chat, for the sheet of that turn', () => {
+    const rows = [
+      { id: 1, role: 'user', content: '[Discussion: "Ideas"] Your turn.' },
+      { id: 2, role: 'user', content: 'Message from 🤖 QA (@qa): checked' },
+      { id: 3, role: 'assistant', content: 'QA checked it.' }
+    ]
+
+    expect(turnWork(transcriptFromHistory(pageMessages(rows)).items).map(item => item.kind)).toEqual(['arrival', 'assistant'])
   })
 })

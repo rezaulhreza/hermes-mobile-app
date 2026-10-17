@@ -166,6 +166,23 @@ export async function readFullMessage(id: string, messageId: string): Promise<st
  * words of its answer. The host stores each row as the bot makes it, so a
  * read of the session shows the work while it runs. Only a read: it takes no
  * place in the session and cannot disturb the turn.
+ *
+ * NOT HERE YET: the line of Hermes when it saved a skill or a memory after a
+ * turn ("Self-improvement review: ..."). In a normal chat the host sends it
+ * as the `review.summary` event and `reduceTranscript` makes a row of it. For
+ * a turn in a group chat Hermes makes the same event and then loses it: the
+ * session of the turn is hidden and no app is connected to it, the event is
+ * not stored in the history that this function reads, and
+ * `tui_gateway/hosted_room_member_activity.py` of Hermes does not pass it to
+ * a plugin (its `KIND_BY_FRAME_TYPE` has no `review.summary`). This is a gap
+ * in Hermes itself, not in this app and not in the group-rooms plugin, and
+ * there is no patch for it in `host/patches`.
+ *
+ * WHEN HERMES GIVES IT: make an item of it with `reviewArrival(text)` from
+ * `core/arrivals` and add it to the items this function returns:
+ * `{ kind: 'arrival', key, arrival }`. The sheet of the turn draws that row
+ * already (`round-sheet.tsx`, case 'arrival'). If Hermes stores the line in
+ * the history of the session, `transcriptFromHistory` is the place.
  */
 export async function readTurnWork(member: string, session: string): Promise<TranscriptItem[]> {
   const page = await api().request<HistoryPage>({ path: historyPagePath(session, 0), profile: member })
