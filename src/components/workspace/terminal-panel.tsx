@@ -18,7 +18,7 @@ import { duration } from "@/core/format";
 import { baseName, recentCommands, type TerminalEntry } from "@/core/workspace";
 import { tap } from "@/native/haptics";
 import { $terminal, clearTerminal, runCommand } from "@/store/workspace";
-import { dark, MONO, radius, space } from "@/theme/tokens";
+import { dark, lineOf, MONO, radius, space } from "@/theme/tokens";
 import { useKeyboardOpen } from "@/theme/use-keyboard";
 
 /** A terminal is dark in both appearances: that is what a terminal looks like, and its colours need the dark ground. */
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: space.sm,
   },
-  mono: { fontFamily: MONO, fontSize: 12.5, lineHeight: 18 },
+  mono: { fontFamily: MONO, fontSize: 12.5, lineHeight: lineOf(18) },
   offerBar: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth },
   offers: {
     gap: space.sm,

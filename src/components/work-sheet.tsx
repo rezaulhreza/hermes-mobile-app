@@ -8,7 +8,7 @@ import { relativeTime } from '@/core/format'
 import { currentTodo, type Helper, helperEnded, helpersInTree, helperStatusWord, NO_WORK, type Todo, workSummary } from '@/core/work'
 import type { SpawnTreeEntry } from '@/core/gateway/gateway-contract.generated'
 import { $delegation, $work, helperTail, loadDelegation, loadHelpers, loadRun, loadRuns, pauseDelegation, steerHelper, stopHelper } from '@/store/work'
-import { MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
+import { lineOf, MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Markdown } from './markdown'
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   todo: { flexDirection: 'row', gap: space.md },
   todoIcon: { marginTop: 3 },
   helper: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
-  tail: { fontFamily: MONO, fontSize: 13, lineHeight: 19, padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
+  tail: { fontFamily: MONO, fontSize: 13, lineHeight: lineOf(19), padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
   actions: { gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth },
   sendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth }

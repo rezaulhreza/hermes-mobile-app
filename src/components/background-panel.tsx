@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { backgroundHeading, type BackgroundJob, backgroundLine } from '@/core/background'
 import { faultWords } from '@/core/format'
 import { $background, dismissBackground, stopBackground } from '@/store/background'
-import { MONO, radius, space, type } from '@/theme/tokens'
+import { lineOf, MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 /**
@@ -88,6 +88,6 @@ const styles = StyleSheet.create({
   panel: { marginHorizontal: space.md, marginBottom: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md, gap: space.xs },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  command: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },
+  command: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(17) },
   action: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }
 })

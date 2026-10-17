@@ -69,10 +69,23 @@ export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const
 
 export const radius = { sm: 10, md: 14, lg: 22, pill: 999 } as const
 
+
+/**
+ * The height of a line of text, a hair under the whole number. iOS draws a
+ * text in a box of the height that the layout gave it. In a tall list that
+ * height comes out a fraction short (68.9998 for three lines of 23), and iOS
+ * then leaves the last line out and lets the line before it run off the
+ * edge. A line height that is not a whole number of pixels makes the layout
+ * round the box up, so the box always has a little room. The 0.07 is small
+ * enough not to be seen and does not add up to a whole pixel under a hundred
+ * lines.
+ */
+export const lineOf = (height: number) => height - 0.07
+
 export const type = {
   title: { fontSize: 28, fontWeight: '700', letterSpacing: -0.4 },
   heading: { fontSize: 20, fontWeight: '700', letterSpacing: -0.2 },
-  body: { fontSize: 16, lineHeight: 23 },
+  body: { fontSize: 16, lineHeight: lineOf(23) },
   label: { fontSize: 15, fontWeight: '600' },
   small: { fontSize: 13 }
 } as const

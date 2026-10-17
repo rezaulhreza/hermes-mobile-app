@@ -8,7 +8,7 @@ import type { Bot } from '@/core/bots'
 import { chatMentionParts, type TextPart } from '@/core/mentions'
 import { $bots } from '@/store/bots'
 import { openBotChat } from '@/store/chat'
-import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
+import { lineOf, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { BotAvatar } from './bot-sheet'
@@ -153,5 +153,5 @@ const styles = StyleSheet.create({
   card: { alignSelf: 'flex-start', maxWidth: '100%', padding: space.md, borderRadius: radius.md, borderTopLeftRadius: 4, borderWidth: StyleSheet.hairlineWidth, gap: space.sm },
   event: { gap: space.sm },
   eventHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 24 },
-  record: { fontFamily: MONO, fontSize: 12, lineHeight: 17, padding: space.md, borderRadius: radius.sm, overflow: 'hidden' }
+  record: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(17), padding: space.md, borderRadius: radius.sm, overflow: 'hidden' }
 })

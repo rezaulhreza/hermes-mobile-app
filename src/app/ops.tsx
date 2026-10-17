@@ -33,7 +33,7 @@ import {
   stopBackgroundJob,
   updateHermes
 } from '@/store/ops'
-import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
+import { lineOf, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
 
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   bar: { height: 10, borderRadius: 5 },
   card: { gap: space.sm, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   log: { gap: 2, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  mono: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },
+  mono: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(17) },
   actions: { gap: space.sm, marginTop: space.md },
   confirm: { gap: space.sm, padding: space.md, borderRadius: radius.md },
   line: { flexDirection: 'row', gap: space.md }

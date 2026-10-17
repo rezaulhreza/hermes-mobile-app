@@ -5,7 +5,7 @@ import { type CodeTokenKind, highlightCode } from '@/core/highlight'
 import { type Block, columnWidths, parseMarkdown, type Span } from '@/core/markdown'
 import type { TextPart } from '@/core/mentions'
 import { answerSources, cardLines } from '@/core/sources'
-import { fade, MONO, type Palette, radius, space, type } from '@/theme/tokens'
+import { fade, lineOf, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { DraftCard } from './draft-card'
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   marker: { minWidth: 16 },
   code: { borderRadius: radius.md, overflow: 'hidden' },
   language: { fontSize: 12, fontWeight: '600', paddingHorizontal: space.md, paddingTop: space.sm },
-  codeText: { fontFamily: MONO, fontSize: 13, lineHeight: 19, padding: space.md },
+  codeText: { fontFamily: MONO, fontSize: 13, lineHeight: lineOf(19), padding: space.md },
   inlineCode: { fontFamily: MONO, fontSize: 14 },
   strong: { fontWeight: '700' },
   em: { fontStyle: 'italic' },

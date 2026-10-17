@@ -7,7 +7,7 @@ import { duration } from '@/core/format'
 import { diffLines, type DiffLineKind, type ToolDetail, toolPicture } from '@/core/tools'
 import { loadToolOutput } from '@/store/chat'
 import { localCopy } from '@/store/preview'
-import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
+import { lineOf, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { IconButton } from './ui'
@@ -166,5 +166,5 @@ const styles = StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center' },
   box: { borderRadius: radius.md },
   pad: { padding: space.md },
-  mono: { fontFamily: MONO, fontSize: 12, lineHeight: 18 }
+  mono: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(18) }
 })

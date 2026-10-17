@@ -85,7 +85,7 @@ import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions, markSessionRead } from '@/store/sessions'
 import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
-import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
+import { lineOf, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
 
@@ -1088,7 +1088,7 @@ const styles = StyleSheet.create({
   limit: { padding: space.md, borderTopWidth: StyleSheet.hairlineWidth },
   completion: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   output: { gap: space.xs, padding: space.md, borderRadius: radius.md },
-  outputText: { fontFamily: MONO, fontSize: 12, lineHeight: 17 },
+  outputText: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(17) },
   composer: {
     margin: space.md,
     padding: space.sm,

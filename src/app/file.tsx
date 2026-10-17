@@ -8,7 +8,7 @@ import { IconButton, Notice } from '@/components/ui'
 import { fileSize } from '@/core/format'
 import { baseName, editProblem, type TextFile } from '@/core/workspace'
 import { readFile, saveFile } from '@/store/workspace'
-import { MONO, space, type } from '@/theme/tokens'
+import { lineOf, MONO, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 function words(error: unknown): string {
@@ -132,6 +132,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   refusal: { paddingHorizontal: space.lg, paddingTop: space.md },
-  mono: { fontFamily: MONO, fontSize: 12, lineHeight: 18, padding: space.lg },
-  editor: { flex: 1, fontFamily: MONO, fontSize: 13, lineHeight: 19, padding: space.lg }
+  mono: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(18), padding: space.lg },
+  editor: { flex: 1, fontFamily: MONO, fontSize: 13, lineHeight: lineOf(19), padding: space.lg }
 })

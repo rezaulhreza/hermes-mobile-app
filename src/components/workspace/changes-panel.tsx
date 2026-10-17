@@ -25,7 +25,7 @@ import {
   switchBranch,
   unstageAll
 } from '@/store/workspace'
-import { MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
+import { lineOf, MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { Button, IconButton, Notice } from '../ui'
@@ -341,5 +341,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: TOUCH + space.md, paddingLeft: space.lg, paddingRight: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', padding: space.lg, gap: space.sm },
   diff: { padding: space.lg },
-  mono: { fontFamily: MONO, fontSize: 12, lineHeight: 18 }
+  mono: { fontFamily: MONO, fontSize: 12, lineHeight: lineOf(18) }
 })

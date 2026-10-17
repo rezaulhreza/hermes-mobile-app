@@ -21,7 +21,7 @@ import { WebView } from 'react-native-webview'
 import { fileGlyph, isMarkdown, previewMode, previewText, type SentAttachment } from '@/core/attachments'
 import { fileSize } from '@/core/format'
 import { localCopy, readText } from '@/store/preview'
-import { MONO, space, type } from '@/theme/tokens'
+import { lineOf, MONO, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { GLYPH_ICON } from './attachments'
@@ -285,5 +285,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth
   },
   text: { padding: space.lg, gap: space.md },
-  mono: { fontFamily: MONO, fontSize: 13, lineHeight: 19 }
+  mono: { fontFamily: MONO, fontSize: 13, lineHeight: lineOf(19) }
 })
