@@ -28,6 +28,7 @@ import { BotAvatar, BotSheet } from '@/components/bot-sheet'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { SayToAgent } from '@/components/draft-card'
 import { Markdown } from '@/components/markdown'
+import { MentionText } from '@/components/mention-text'
 import { SourcesButton, SourcesSheet } from '@/components/sources'
 import { ModelSheet } from '@/components/model-sheet'
 import { PreviewPane, PreviewPill } from '@/components/preview-pane'
@@ -42,6 +43,7 @@ import { WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { parseMarkdown } from '@/core/markdown'
+import { botChoices, chatMentionParts, withBotChoices } from '@/core/mentions'
 import { answerSources } from '@/core/sources'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
 import { BOT_CHAT_TITLE } from '@/core/bots'
@@ -56,6 +58,7 @@ import { $attachments, addAttachments, type AttachSource, clipboardHasImage, rem
 import {
   $conversations,
   $shownSession,
+  botOfChat,
   closeConversation,
   completeDraft,
   type Completions,
@@ -68,7 +71,7 @@ import {
   type SendMode,
   stopTurn
 } from '@/store/chat'
-import { $bots } from '@/store/bots'
+import { $bots, loadBots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { hostFilesThatExist } from '@/store/preview'
 import { unwatchBackground, watchBackground } from '@/store/background'
@@ -238,7 +241,17 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const [watching, setWatching] = useState(false)
   const [workOpen, setWorkOpen] = useState(false)
   // The bot this chat belongs to, when it is a chat of a bot.
-  const bot = useStore($bots)?.find(known => known.name === params.profile && !known.isDefault)
+  const bots = useStore($bots)
+  const bot = bots?.find(known => known.name === params.profile && !known.isDefault)
+  // The bot of this chat: every other bot can be named in a message ("@qa").
+  const self = botOfChat(params.profile)
+
+  // A chat opened from a notification can come before the Bots list was read.
+  useEffect(() => {
+    if (linkState === 'open' && !$bots.get()) {
+      void loadBots().catch(() => undefined)
+    }
+  }, [linkState])
   const [botOpen, setBotOpen] = useState(false)
   // The one long conversation of the bot. The host finds it by its title, so the phone must not rename or remove it.
   const botChat = bot && (!conversation?.title || conversation.title === BOT_CHAT_TITLE) ? bot : null
@@ -302,7 +315,10 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }
   }, [sessionId, trigger])
 
-  const shownCompletions = trigger ? (completions?.items ?? []).slice(0, 8) : []
+  // The bots come from the list the phone has, so they show at once and before the files of the host.
+  const shownCompletions = trigger
+    ? (trigger.kind === 'path' ? withBotChoices(botChoices(bots ?? [], trigger.word, self), completions?.items ?? [], bots ?? []) : (completions?.items ?? [])).slice(0, 8)
+    : []
 
   const apply = (effect: DraftEffect) => {
     switch (effect.kind) {
@@ -568,8 +584,9 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               placeholderTextColor={t.muted}
               // An empty field is one line high. iOS keeps the height of the text that was sent until the next key.
               style={[styles.input, type.body, { color: t.ink }, !draft && styles.inputEmpty]}
-              value={draft}
-            />
+            >
+              <MentionText parts={chatMentionParts(draft, bots ?? [], self)} />
+            </TextInput>
             {canSteer ? (
               <Pressable
                 accessibilityHint="The agent reads the message after its current step, in this turn"
@@ -739,6 +756,8 @@ function Working({ status }: { status: string | null }) {
 /** A message of the user. A long press copies its words. */
 function UserBubble({ text, attached, waiting, onOpen }: { text: string; attached?: SentAttachment[]; waiting: boolean; onOpen: (target: ViewerTarget) => void }) {
   const t = useTheme()
+  const bots = useStore($bots)
+  const self = botOfChat(useLocalSearchParams<{ profile?: string }>().profile)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -764,7 +783,11 @@ function UserBubble({ text, attached, waiting, onOpen }: { text: string; attache
         style={[styles.bubble, { backgroundColor: t.soft }, waiting && styles.waiting]}
       >
         {attached?.length ? <SentAttachments items={attached} onOpen={index => onOpen({ items: attached, index })} /> : null}
-        {text ? <Text style={[type.body, { color: t.ink }]}>{text}</Text> : null}
+        {text ? (
+          <Text style={[type.body, { color: t.ink }]}>
+            <MentionText parts={chatMentionParts(text, bots ?? [], self)} />
+          </Text>
+        ) : null}
       </Pressable>
       {copied ? <Text style={[type.small, { color: t.muted }]}>Copied</Text> : null}
     </>

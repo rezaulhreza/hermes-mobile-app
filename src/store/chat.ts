@@ -27,6 +27,7 @@ import { EMPTY_QUEUE, enqueue, pauseQueue, promoteQueued, type Queue, removeQueu
 import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
+import { mentionNote } from '@/core/mentions'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
 import {
   type Delivery,
@@ -43,6 +44,7 @@ import {
 } from '@/core/transcript'
 
 import { takeAttachments } from './attachments'
+import { $bots } from './bots'
 import { $catalog, loadCatalog } from './commands'
 import { currentApi, onGatewayEvent, rpc } from './link'
 import { $sessionQuery } from './sessions'
@@ -225,6 +227,20 @@ export async function sendDraft(sessionId: string, text: string, mode: SendMode 
   return NOTHING
 }
 
+/** The bot a conversation is with: the main bot when it names none. A bot does not mention itself. */
+export function botOfChat(profile?: string): string | undefined {
+  return profile || $bots.get()?.find(bot => bot.isDefault)?.name
+}
+
+/**
+ * The message as the agent reads it. Under a message that names bots
+ * ("@qa"), a note says who each one is, as the desktop app does. The chat
+ * shows the words of the user only.
+ */
+function forAgent(sessionId: string, text: string): string {
+  return text + mentionNote(text, $bots.get() ?? [], botOfChat($conversations.get()[sessionId]?.profile))
+}
+
 function note(sessionId: string, text: string, tone: 'info' | 'error' = 'info'): void {
   patch(sessionId, c => ({ ...c, transcript: withNotice(c.transcript, text, tone) }))
 }
@@ -245,7 +261,7 @@ export async function redirectTurn(sessionId: string, text: string): Promise<voi
   const key = showUserMessage(sessionId, text)
 
   try {
-    const result = await rpc<PromptSubmitResult>('prompt.submit', { session_id: sessionId, text, surface: 'mobile' })
+    const result = await rpc<PromptSubmitResult>('prompt.submit', { session_id: sessionId, text: forAgent(sessionId, text), surface: 'mobile' })
 
     if (result?.status === 'queued' || result?.status === 'steered' || result?.status === 'redirected') {
       label(sessionId, key, result.status)
@@ -291,7 +307,7 @@ async function submitPrompt(sessionId: string, text: string, attachments: readon
   try {
     const result = await rpc<PromptSubmitResult>('prompt.submit', {
       session_id: sessionId,
-      text: promptWithAttachments(text, attachments),
+      text: forAgent(sessionId, promptWithAttachments(text, attachments)),
       surface: 'mobile',
       ...(voiceContext ? { voice_context: voiceContext } : {}),
       ...(busy ? { queued: true } : {})
@@ -314,7 +330,7 @@ async function steerTurn(sessionId: string, text: string): Promise<void> {
   let accepted = false
 
   try {
-    const result = await rpc<SessionCorrectionResult>('session.steer', { session_id: sessionId, text })
+    const result = await rpc<SessionCorrectionResult>('session.steer', { session_id: sessionId, text: forAgent(sessionId, text) })
 
     accepted = result?.status === 'queued'
   } catch {
