@@ -10,6 +10,7 @@
 #   HERMES_BUNDLE_ID      your bundle identifier (an App ID and an app record must exist for it)
 #   HERMES_APP_VERSION    the version a person reads, for example 2.0
 #   HERMES_BUILD_NUMBER   higher than every build App Store Connect holds
+#                         (the script adds one to it in the file after each upload)
 #   HERMES_APPLE_TEAM     your team identifier
 #   HERMES_PUSH_MODE      production
 #   HERMES_PROFILE_NAME   the name of your App Store provisioning profile for the bundle identifier
@@ -84,3 +85,15 @@ xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$WORK/Exp
   -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
   > "$WORK/export.log" 2>&1 || { grep -E "error:|Error" "$WORK/export.log" | head -20; echo "UPLOAD FAILED, log: $WORK/export.log"; exit 1; }
 grep -E "Upload succeeded|EXPORT SUCCEEDED" "$WORK/export.log" || tail -3 "$WORK/export.log"
+
+# App Store Connect refuses a build number twice. Write the next one now, so the file is ready.
+case "$HERMES_BUILD_NUMBER" in
+  *[!0-9]*) echo "Raise HERMES_BUILD_NUMBER in $ENV_FILE before the next upload."; exit 0 ;;
+esac
+NEXT=$((HERMES_BUILD_NUMBER + 1))
+if grep -q "^HERMES_BUILD_NUMBER=" "$ENV_FILE"; then
+  sed -i '' "s/^HERMES_BUILD_NUMBER=.*/HERMES_BUILD_NUMBER=$NEXT/" "$ENV_FILE"
+  echo "The next build number is $NEXT (written to $ENV_FILE)"
+else
+  echo "Set HERMES_BUILD_NUMBER=$NEXT in $ENV_FILE before the next upload."
+fi
