@@ -20,7 +20,7 @@ const TABS: Record<string, { label: string; icon: IconName }> = {
   bots: { label: 'Bots', icon: 'users' },
   activity: { label: 'Activity', icon: 'activity' },
   workspace: { label: 'Workspace', icon: 'folder' },
-  settings: { label: 'Settings', icon: 'settings' }
+  settings: { label: 'More', icon: 'settings' }
 }
 
 export default function TabsLayout() {
