@@ -150,6 +150,12 @@ describe('a room read again', () => {
     expect(roomRow('id:r2', { name: ' ' })).toBeNull()
   })
 
+  it('marks a message the host cut, and takes the mark of the host out of its words', () => {
+    const { messages } = roomRow('id:r1', { name: 'Launch', log: [{ id: 'a', text: 'A long answer… [truncated]', at: 1 }, { id: 'b', text: 'Short', at: 2 }] })!
+
+    expect(messages.map(message => [message.text, message.cut])).toEqual([['A long answer…', true], ['Short', undefined]])
+  })
+
   it('takes the place of its older copy, or goes first', () => {
     expect(withRoom([room('a', 'A'), room('b', 'B')], room('b', 'B2')).map(item => item.name)).toEqual(['A', 'B2'])
     expect(withRoom([room('a', 'A')], room('c', 'C')).map(item => item.name)).toEqual(['C', 'A'])

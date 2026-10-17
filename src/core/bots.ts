@@ -254,7 +254,12 @@ export interface RoomMessage {
   text: string
   /** Unix milliseconds. */
   at: number
+  /** The host keeps only the start of this message in the record. The rest can be read from the host. */
+  cut?: boolean
 }
+
+/** What the host and the desktop app put at the end of a message they cut. */
+const CUT_MARK = '… [truncated]'
 
 export interface Room {
   id: string
@@ -297,9 +302,23 @@ export function roomRow(key: string, value: unknown): Room | null {
   const messages = (Array.isArray(room.log) ? room.log : []).flatMap((entry, index): RoomMessage[] => {
     const { id, from, text, at } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown }
 
-    return typeof text === 'string' && text.trim()
-      ? [{ id: typeof id === 'string' ? id : `m${index}`, from: typeof from?.name === 'string' ? from.name : '', mine: from?.kind === 'user', text, at: typeof at === 'number' ? at : 0 }]
-      : []
+    if (typeof text !== 'string' || !text.trim()) {
+      return []
+    }
+
+    // The mark is not a part of the message: the screen says in its own words that there is more.
+    const cut = text.endsWith(CUT_MARK)
+
+    return [
+      {
+        id: typeof id === 'string' ? id : `m${index}`,
+        from: typeof from?.name === 'string' ? from.name : '',
+        mine: from?.kind === 'user',
+        text: cut ? `${text.slice(0, -CUT_MARK.length).trimEnd()}…` : text,
+        at: typeof at === 'number' ? at : 0,
+        ...(cut ? { cut: true } : {})
+      }
+    ]
   })
 
   const members = (Array.isArray(room.members) ? room.members : []).filter((member): member is { name: string; handle?: unknown } => typeof (member as { name?: unknown })?.name === 'string')

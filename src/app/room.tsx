@@ -15,7 +15,7 @@ import { faultWords, relativeTime } from '@/core/format'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, readFullMessage, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -51,6 +51,9 @@ export default function RoomScreen() {
   const [fault, setFault] = useState<string | null>(null)
   const [settings, setSettings] = useState(false)
   const [removing, setRemoving] = useState(false)
+  // The messages the host cut in the record, read in full: by the id of the message.
+  const [full, setFull] = useState<Record<string, string>>({})
+  const readAll = useCallback((messageId: string) => readFullMessage(id, messageId).then(text => setFull(known => ({ ...known, [messageId]: text }))), [id])
 
   const forget = () => {
     if (!room) {
@@ -161,7 +164,7 @@ export default function RoomScreen() {
           initialNumToRender={10}
           inverted={newestFirst.length > 0}
           keyExtractor={message => message.id}
-          renderItem={({ item }) => <Message bot={byName.get(item.from)} marked={marked} message={item} />}
+          renderItem={({ item }) => <Message bot={byName.get(item.from)} full={full[item.id]} marked={marked} message={item} onReadAll={readAll} />}
           windowSize={7}
         />
       )}
@@ -218,15 +221,48 @@ export default function RoomScreen() {
   )
 }
 
-function Message({ message, bot, marked }: { message: RoomMessage; bot?: Bot; marked: (text: string) => TextPart[] }) {
+interface MessageProps {
+  message: RoomMessage
+  bot?: Bot
+  marked: (text: string) => TextPart[]
+  /** The whole message, when the host cut it in the record and the user asked for the rest. */
+  full?: string
+  onReadAll: (messageId: string) => Promise<void>
+}
+
+function Message({ message, bot, marked, full, onReadAll }: MessageProps) {
   const t = useTheme()
+  const [reading, setReading] = useState(false)
+  const [fault, setFault] = useState<string | null>(null)
+  const text = full ?? message.text
+
+  // The record of the host holds the start of a long message. The rest is one request away.
+  const more =
+    message.cut && full === undefined ? (
+      <Pressable
+        accessibilityRole="button"
+        disabled={reading}
+        hitSlop={8}
+        onPress={() => {
+          setReading(true)
+          setFault(null)
+          onReadAll(message.id)
+            // A host with an older plugin has no such route.
+            .catch(error => setFault(faultWords(error) === 'Not Found' ? 'This host cannot give the rest yet. Update its group-rooms plugin.' : faultWords(error)))
+            .finally(() => setReading(false))
+        }}
+      >
+        <Text style={[type.small, { color: fault ? t.muted : t.accent, fontWeight: fault ? '400' : '600' }]}>{fault ?? (reading ? 'Reading the rest' : 'Show all')}</Text>
+      </Pressable>
+    ) : null
 
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
         <Text style={[type.body, { color: t.ink }]}>
-          <MentionText parts={marked(message.text)} />
+          <MentionText parts={marked(text)} />
         </Text>
+        {more}
       </View>
     )
   }
@@ -239,7 +275,8 @@ function Message({ message, bot, marked }: { message: RoomMessage; bot?: Bot; ma
           <Text style={{ color: t.ink, fontWeight: '700' }}>{bot?.title ?? message.from}</Text>
           {message.at ? `  ${relativeTime(message.at / 1000)}` : ''}
         </Text>
-        <Markdown mentions={marked} text={message.text} />
+        <Markdown mentions={marked} text={text} />
+        {more}
       </View>
     </View>
   )
@@ -251,15 +288,15 @@ const styles = StyleSheet.create({
   list: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   note: { textAlign: 'center', paddingVertical: space.md },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
-  working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   composer: { gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.sm, borderTopWidth: StyleSheet.hairlineWidth, maxWidth: 760, width: '100%', alignSelf: 'center' },
   choices: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   choice: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   choiceIcon: { width: 26, textAlign: 'center' },
   sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   confirm: { gap: space.sm, alignSelf: 'stretch' },
-  mine: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg },
+  mine: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg, gap: space.xs },
   theirs: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   unknown: { width: 30, height: 30, borderRadius: 15 }
 })

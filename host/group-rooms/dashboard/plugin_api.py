@@ -340,6 +340,32 @@ def read_room(room_id: str) -> dict:
     return _guard(work)
 
 
+@router.get("/rooms/{room_id}/messages/{message_id}")
+def read_message(room_id: str, message_id: str) -> dict:
+    """One message in full. The record keeps only the start of a long message (``MAX_TEXT``); the
+    log of the engine keeps all of it. A message of a round the desktop app ran, or of the room
+    before its members changed, is not in that log."""
+    def work():
+        record, _revision, _profiles = _read()
+        engine_id = _engine_id(record["rooms"][_key(record, room_id)])
+        cursor = 0
+        try:
+            while True:
+                page = _rpc("groups.log", {"room_id": engine_id, "since_seq": cursor, "limit": 200})
+                for event in page.get("events") or []:
+                    text = str((event.get("payload") or {}).get("text") or "") if isinstance(event, dict) else ""
+                    if text.strip() and event.get("event_id") == message_id:
+                        return {"id": message_id, "text": text}
+                moved = int(page.get("cursor") or 0)
+                if not page.get("has_more") or moved <= cursor:
+                    break
+                cursor = moved
+        except Refused:
+            pass  # The engine has no room for these members: it has no log of them.
+        raise HTTPException(status_code=404, detail="The host does not have the rest of this message.")
+    return _guard(work)
+
+
 @router.post("/rooms")
 def make_room(body: NewRoom) -> dict:
     name = body.name.strip()[:64]

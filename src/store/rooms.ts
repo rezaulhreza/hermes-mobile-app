@@ -109,6 +109,17 @@ export async function sendToRoom(id: string, text: string): Promise<void> {
   }
 }
 
+/** A message the host cut in the record, in full. The host refuses when it has no log of the message. */
+export async function readFullMessage(id: string, messageId: string): Promise<string> {
+  const answer = (await api().request({ path: `${at(id)}/messages/${encodeURIComponent(messageId)}` })) as { text?: unknown } | null
+
+  if (typeof answer?.text !== 'string' || !answer.text.trim()) {
+    throw new Error('The host does not have the rest of this message.')
+  }
+
+  return answer.text
+}
+
 export async function stopRoom(id: string): Promise<void> {
   await api().request({ path: `${at(id)}/stop`, method: 'POST' })
 }
