@@ -204,6 +204,15 @@ export function dataUrl(file: Pick<PickedFile, 'mimeType'>, base64: string): str
  * after the user's words. A prompt of images alone still needs text, so it
  * names the images the way the backend does for a dropped image.
  */
+/**
+ * The line that names a file in a message to a group chat, in the form the
+ * app reads back as an attachment (`splitStoredPrompt`). A bot of the group
+ * reads the path and opens the file with its own tools.
+ */
+export function roomFileLine(path: string, kind: AttachmentKind): string {
+  return `@${kind === 'image' ? 'image' : 'file'}:${/\s/.test(path) ? `"${path}"` : path}`
+}
+
 export function promptWithAttachments(text: string, attachments: readonly Attachment[]): string {
   const ready = attachments.filter(attachment => attachment.state === 'ready')
   const extra = ready.map(attachment => attachment.promptText).filter(Boolean)
@@ -270,6 +279,19 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
   }
 
   return { text: lines.join('\n').trim(), attached: [...over, ...attached] }
+}
+
+/** A stored message in one line of words, for a title or a row: its words, or what was sent when it has no words. */
+export function messageWords(stored: string): string {
+  const { text, attached } = splitStoredPrompt(stored)
+
+  if (text || !attached.length) {
+    return text
+  }
+
+  const what = attached.every(file => file.kind === 'image') ? 'picture' : 'file'
+
+  return attached.length === 1 ? `A ${what}` : `${attached.length} ${what}s`
 }
 
 /** The file of a reference line. A text the desktop app saved from a long paste has the name the desktop app shows for it. */

@@ -14,6 +14,7 @@ import { map } from 'nanostores'
 import {
   type Attachment,
   attachmentKind,
+  roomFileLine,
   attachProblem,
   dataUrl,
   jpegName,
@@ -165,7 +166,45 @@ export async function stage(sessionId: string, file: PickedFile): Promise<void> 
 
 type Uploaded = Pick<Attachment, 'heldPaths' | 'promptText' | 'size'>
 
+/**
+ * The key of the staged files of a group chat. A group chat has no session
+ * that holds a file: Hermes gives a group text only. So its files go to the
+ * upload folder of the host, and the message names each one by its path
+ * (`roomFileLine`). Each bot of the group then opens the file itself.
+ */
+export const roomFilesKey = (roomId: string) => `room:${roomId}`
+
+const forRoom = (key: string) => key.startsWith('room:')
+
+/** A file for a group chat: on the host, and named in the message. Nothing holds it for a session. */
+async function uploadForRoom(file: PickedFile): Promise<Uploaded> {
+  const api = currentApi()
+
+  if (!api || !file.uri) {
+    throw new Error(`Could not send ${file.name}.`)
+  }
+
+  const listing = await api.request<{ path?: string; locked_root?: string | null }>({ path: '/api/files' })
+  let stored: { path?: string }
+
+  try {
+    stored = await api.upload<{ path?: string }>('/api/files/upload-stream', { path: uploadTarget(listing, file.name, Date.now()), overwrite: 'true' }, new File(file.uri), file.name, STREAM_TIMEOUT_MS)
+  } catch (error) {
+    throw new Error(error instanceof HttpError && error.status === 413 ? `${file.name} is too large for this Hermes host.` : `Could not send ${file.name} to the Hermes host.`)
+  }
+
+  if (!stored.path) {
+    throw new Error(`Could not send ${file.name} to the Hermes host.`)
+  }
+
+  return { heldPaths: [], promptText: roomFileLine(stored.path, attachmentKind(file)), size: file.size ?? undefined }
+}
+
 async function upload(sessionId: string, entry: Attachment, file: PickedFile): Promise<Uploaded> {
+  if (forRoom(sessionId)) {
+    return uploadForRoom(file)
+  }
+
   const known = pickedSize(file) ?? (file.uri ? new File(file.uri).size : null)
 
   if (needsStream(known)) {
@@ -302,7 +341,8 @@ async function uploadLarge(sessionId: string, entry: Attachment, file: PickedFil
 }
 
 function release(sessionId: string, paths: readonly string[]): void {
-  for (const path of paths) {
+  // A group chat holds nothing for a session.
+  for (const path of forRoom(sessionId) ? [] : paths) {
     // If this fails the image rides along with the next prompt. Nothing the user can do about it here.
     void rpc('image.detach', { session_id: sessionId, path }).catch(() => undefined)
   }

@@ -10,6 +10,7 @@ import { ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { NewRoomSheet } from '@/components/room-sheets'
 import { WorkingMark } from '@/components/working-mark'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
+import { messageWords } from '@/core/attachments'
 import { type Bot, botGroups, botMark, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
 import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
@@ -205,7 +206,7 @@ export default function Bots() {
                       {last ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(last.at / 1000)}</Text> : null}
                     </View>
                     <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
-                      {last ? previewLine(last.text) : `${room.members.length} bots`}
+                      {last ? previewLine(messageWords(last.text)) : `${room.members.length} bots`}
                     </Text>
                   </View>
                 </Pressable>

@@ -1,4 +1,4 @@
-import {  attachmentKind, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, promptWithAttachments, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
+import {  attachmentKind, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, messageWords, promptWithAttachments, roomFileLine, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
 
 const ready = (kind: Attachment['kind'], name: string, promptText = ''): Attachment => ({
   id: name,
@@ -177,5 +177,31 @@ describe('a file too large for one frame', () => {
 
   it('goes inside the locked root of a hosted install', () => {
     expect(uploadTarget({ path: '/opt/data', locked_root: '/opt/data' }, '..hidden', 36)).toBe('.hermes-phone-uploads/10-hidden')
+  })
+})
+
+describe('a file in a message to a group chat', () => {
+  it('is named by a line the app reads back as an attachment', () => {
+    const text = promptWithAttachments('look at these', [
+      { id: 'a1', kind: 'image', name: 'p.jpg', state: 'ready', heldPaths: [], promptText: roomFileLine('/Users/me/.hermes-phone-uploads/k1-p.jpg', 'image') },
+      { id: 'a2', kind: 'file', name: 'my plan.pdf', state: 'ready', heldPaths: [], promptText: roomFileLine('/Users/me/up loads/k2-my_plan.pdf', 'pdf') }
+    ] as Attachment[])
+
+    expect(text).toBe('look at these\n@image:/Users/me/.hermes-phone-uploads/k1-p.jpg\n@file:"/Users/me/up loads/k2-my_plan.pdf"')
+    expect(splitStoredPrompt(text)).toEqual({
+      text: 'look at these',
+      attached: [
+        { name: 'k1-p.jpg', kind: 'image', path: '/Users/me/.hermes-phone-uploads/k1-p.jpg' },
+        { name: 'k2-my_plan.pdf', kind: 'pdf', path: '/Users/me/up loads/k2-my_plan.pdf' }
+      ]
+    })
+  })
+
+  it('has words for a title when the message is only files', () => {
+    expect(messageWords('look\n@image:/up/a.png')).toBe('look')
+    expect(messageWords('@image:/up/a.png')).toBe('A picture')
+    expect(messageWords('@image:/up/a.png\n@image:/up/b.png')).toBe('2 pictures')
+    expect(messageWords('@image:/up/a.png\n@file:/up/n.txt')).toBe('2 files')
+    expect(messageWords('')).toBe('')
   })
 })

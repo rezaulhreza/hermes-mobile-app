@@ -5,6 +5,7 @@
  * thread starts with a clean page.
  */
 
+import { messageWords } from './attachments'
 import type { RoomMessage } from './bots'
 
 /** A message this soon after the one before goes on with its thread. The host has the same number. */
@@ -113,7 +114,8 @@ const TITLE_CHARS = 48
 
 /** A thread in a few words: the start of its first message. */
 export function threadTitle(messages: readonly RoomMessage[], thread: string): string {
-  const words = (messages.find(message => message.thread === thread)?.text ?? '').replace(/\s+/g, ' ').trim()
+  // The files of a message are lines of its text. A title is its words.
+  const words = messageWords(messages.find(message => message.thread === thread)?.text ?? '').replace(/\s+/g, ' ').trim()
 
   return words.length > TITLE_CHARS ? `${words.slice(0, TITLE_CHARS).trimEnd()}…` : words
 }

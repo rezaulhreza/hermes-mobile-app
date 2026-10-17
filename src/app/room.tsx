@@ -2,20 +2,24 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
+import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
+import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
 import { MentionText } from '@/components/mention-text'
 import { RoomActivity } from '@/components/room-activity'
 import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
+import { type Attachment, promptWithAttachments, sentAttachment, splitStoredPrompt } from '@/core/attachments'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
 import { currentThread, shownRows, threadFolds, type ThreadRow, threadRows, threadTitle } from '@/core/threads'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
+import { $attachments, addAttachments, type AttachSource, removeAttachment, roomFilesKey, takeAttachments } from '@/store/attachments'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
 import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
@@ -38,6 +42,15 @@ import { useTheme } from '@/theme/use-theme'
  * A host without the `group-rooms` plugin shows the record and takes no
  * message.
  */
+const NO_FILES: Attachment[] = []
+
+// What a person can add to a message to the group. No paste: a pasted picture has no file to send.
+const ROOM_FILE_SOURCES: { id: AttachSource; label: string; icon: 'image' | 'camera' | 'file' }[] = [
+  { id: 'photos', label: 'Photo library', icon: 'image' },
+  { id: 'camera', label: 'Take a photo', icon: 'camera' },
+  { id: 'files', label: 'Choose a file', icon: 'file' }
+]
+
 export default function RoomScreen() {
   const t = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -155,8 +168,26 @@ export default function RoomScreen() {
     [targets, byName]
   )
 
+  // The files that go with the next message. A group takes text only, so each file is on the host and the message names it.
+  const filesKey = roomFilesKey(id)
+  const staged = useStore($attachments)[filesKey] ?? NO_FILES
+  const [adding, setAdding] = useState(false)
+  const [viewing, setViewing] = useState<ViewerTarget | null>(null)
+  const uploading = staged.some(item => item.state === 'uploading')
+  const hasFiles = staged.some(item => item.state === 'ready')
+
+  const attach = (source: AttachSource) => {
+    setAdding(false)
+    addAttachments(filesKey, source).catch(error => setFault(faultWords(error)))
+  }
+
   const send = (words = draft) => {
-    const text = words.trim()
+    // An upload that still runs would miss the message it was picked for.
+    if (uploading) {
+      return
+    }
+
+    const text = promptWithAttachments(words, takeAttachments(filesKey))
 
     if (!text) {
       return
@@ -278,6 +309,7 @@ export default function RoomScreen() {
                     full={full[item.message.id]}
                     marked={marked}
                     message={item.message}
+                    onOpen={setViewing}
                     onReadAll={readAll}
                     onReply={writable && item.known ? () => reply(item, true) : undefined}
                   />
@@ -357,7 +389,36 @@ export default function RoomScreen() {
             </View>
           ) : null}
           <DictationLine />
+          {adding ? (
+            <View style={[styles.choices, { backgroundColor: t.paper, borderColor: t.line }]}>
+              {ROOM_FILE_SOURCES.map((source, index) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={source.id}
+                  onPress={() => attach(source.id)}
+                  style={({ pressed }) => [styles.choice, index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+                >
+                  <Feather color={t.muted} name={source.icon} size={18} style={styles.choiceIcon} />
+                  <Text style={[type.label, { color: t.ink }]}>{source.label}</Text>
+                </Pressable>
+              ))}
+              <Text style={[type.small, styles.fileNote, { color: t.muted, borderTopColor: t.line }]}>Files up to 100 MB. Each bot opens the file itself.</Text>
+            </View>
+          ) : null}
+          {staged.length ? (
+            <ScrollView contentContainerStyle={styles.staged} horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
+              {staged.map(item => (
+                <StagedAttachment
+                  item={item}
+                  key={item.id}
+                  onOpen={() => setViewing({ items: staged.map(sentAttachment), index: staged.indexOf(item) })}
+                  onRemove={() => removeAttachment(filesKey, item.id)}
+                />
+              ))}
+            </ScrollView>
+          ) : null}
           <View style={styles.sendRow}>
+            <IconButton icon={adding ? 'x' : 'plus'} label={adding ? 'Close the attachment list' : 'Add a photo or a file'} onPress={() => setAdding(value => !value)} />
             <TextInput
               accessibilityLabel="Message to the group"
               autoCapitalize={typed === null ? 'sentences' : 'none'}
@@ -371,19 +432,20 @@ export default function RoomScreen() {
               <MentionText parts={roomMentionParts(draft, targets)} typed />
             </TextInput>
             {/* An empty field: the microphone. While a dictation runs, the same button ends it. */}
-            {draft.trim() ? null : <DictationButton onPress={() => dictation.speak()} state={dictation.state} />}
+            {draft.trim() || staged.length ? null : <DictationButton onPress={() => dictation.speak()} state={dictation.state} />}
             {dictation.running && !draft.trim() ? (
               <SendSpokenButton onPress={() => dictation.speak(true)} />
-            ) : working && !draft.trim() ? (
+            ) : working && !draft.trim() && !staged.length ? (
               <IconButton icon="square" label="Stop the bots" onPress={() => void stopRoom(id).catch(error => setFault(faultWords(error)))} />
             ) : (
-              <IconButton disabled={!draft.trim() || sending} filled icon="arrow-up" label="Send to the group" onPress={() => send()} />
+              <IconButton disabled={(!draft.trim() && !hasFiles) || sending || uploading} filled icon="arrow-up" label="Send to the group" onPress={() => send()} />
             )}
           </View>
         </View>
       ) : null}
       {settings && room ? <RoomSettingsSheet onClose={() => setSettings(false)} onClosed={() => router.back()} room={room} /> : null}
       </KeyboardAvoidingView>
+      <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
     </SafeAreaView>
   )
 }
@@ -395,6 +457,8 @@ interface MessageProps {
   /** The whole message, when the host cut it in the record and the user asked for the rest. */
   full?: string
   onReadAll: (messageId: string) => Promise<void>
+  /** Open a file that went with the message. */
+  onOpen: (target: ViewerTarget) => void
   /** Reply to the bot of this message in its thread. Absent when the room takes no reply. */
   onReply?: () => void
   /** Show the start of the message only. */
@@ -403,11 +467,14 @@ interface MessageProps {
 
 const FOLDED_LINES = 4
 
-function Message({ message, bot, marked, full, onReadAll, onReply, folded = false }: MessageProps) {
+function Message({ message, bot, marked, full, onReadAll, onOpen, onReply, folded = false }: MessageProps) {
   const t = useTheme()
   const [reading, setReading] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
-  const text = full ?? message.text
+  // The files of a message are lines at its end that name them. They show as files, not as those lines.
+  const stored = splitStoredPrompt(full ?? message.text)
+  const text = stored.text
+  const files = stored.attached
 
   // The record of the host holds the start of a long message. The rest is one request away.
   const more =
@@ -432,9 +499,12 @@ function Message({ message, bot, marked, full, onReadAll, onReply, folded = fals
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
-        <Text numberOfLines={folded ? FOLDED_LINES : undefined} style={[type.body, { color: t.ink }]}>
-          <MentionText parts={marked(text)} />
-        </Text>
+        {files.length ? <SentAttachments items={files} onOpen={index => onOpen({ items: files, index })} /> : null}
+        {text ? (
+          <Text numberOfLines={folded ? FOLDED_LINES : undefined} style={[type.body, { color: t.ink }]}>
+            <MentionText parts={marked(text)} />
+          </Text>
+        ) : null}
         {more}
       </View>
     )
@@ -489,6 +559,8 @@ const styles = StyleSheet.create({
   choices: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   choice: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
   choiceIcon: { width: 26, textAlign: 'center' },
+  fileNote: { padding: space.md, borderTopWidth: StyleSheet.hairlineWidth },
+  staged: { gap: space.sm, paddingHorizontal: space.xs },
   sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   confirm: { gap: space.sm, alignSelf: 'stretch' },
