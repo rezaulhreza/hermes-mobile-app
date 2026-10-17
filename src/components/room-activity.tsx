@@ -57,7 +57,8 @@ export function RoomActivity({ round, working, bots, onRetry, onStop, onStopTurn
   }, [working])
 
   if (!working && !after && !actions.length) {
-    return null
+    // The round ended while the user reads its sheet: the sheet stays until they close it.
+    return open && turns.some(turn => turn.taskId) ? <RoundSheet bots={bots} onClose={() => setOpen(false)} onStop={onStop} onStopTurn={onStopTurn} round={round} /> : null
   }
 
   const run = (key: string, work: () => Promise<void>) => {
@@ -69,8 +70,8 @@ export function RoomActivity({ round, working, bots, onRetry, onStop, onStopTurn
   }
 
   const line = working || asks.length ? (roundLine(round, title) ?? 'The bots answer in turn.') : (after ?? 'A turn did not end. You can run it again.')
-  // The host says in which session a bot works: the sheet can show the work. An older host gives the turns only.
-  const detailed = turns.some(turn => turn.session)
+  // A host that names the task of a turn can also say what its bot does: the sheet shows it. An older host gives the turns only.
+  const detailed = turns.some(turn => turn.taskId)
   // A turn to run again is in the list of turns: it must be in view.
   const shown = (open && !detailed) || (retries.size > 0 && !working)
 

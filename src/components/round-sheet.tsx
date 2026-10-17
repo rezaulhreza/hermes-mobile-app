@@ -186,7 +186,8 @@ export function RoundSheet({ round, bots, onStop, onStopTurn, onClose }: RoundSh
                 {turnLive ? `What ${title(turn.member)} does now` : `What ${title(turn.member)} did in this turn`}
               </Text>
               {!turn.session ? (
-                <Text style={[type.small, { color: t.muted }]}>This host does not say what a bot does in its turn. Update its group-rooms plugin.</Text>
+                // The engine opens the session of a bot when its first turn in the room starts.
+                <Text style={[type.small, { color: t.muted }]}>{turnLive ? 'It starts. Nothing to show yet.' : 'The host kept nothing of this turn.'}</Text>
               ) : fault && !items ? (
                 <Text style={[type.small, { color: t.red }]}>{fault}</Text>
               ) : !items ? (
