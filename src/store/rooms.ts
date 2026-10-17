@@ -7,7 +7,7 @@
 
 import { atom } from 'nanostores'
 
-import { type Room, roomRow, withRoom } from '@/core/bots'
+import { logMessages, type Room, type RoomMessage, roomRow, withRoom } from '@/core/bots'
 import { type HistoryPage, historyPagePath, pageMessages } from '@/core/history-page'
 import { NO_ROUND, type Round, type RoundAction, roundOf, turnWork } from '@/core/rounds'
 import { transcriptFromHistory, type TranscriptItem } from '@/core/transcript'
@@ -134,6 +134,20 @@ export async function sendToRoom(id: string, text: string, thread: string | null
   if (watched === id) {
     again(id)
   }
+}
+
+const EARLIER_PAGE = 30
+
+/**
+ * The messages of a room from before `before` (Unix milliseconds), the newest
+ * of them, in full and in the order of time. The record of a room keeps its
+ * newest messages only; the log of the engine has them all. `more` says that
+ * there are still earlier ones.
+ */
+export async function readEarlier(id: string, before: number): Promise<{ messages: RoomMessage[]; more: boolean }> {
+  const answer = (await api().request({ path: `${at(id)}/history?before=${Math.floor(before)}&limit=${EARLIER_PAGE}` })) as { messages?: unknown; more?: unknown } | null
+
+  return { messages: logMessages(answer?.messages), more: answer?.more === true }
 }
 
 /** A message the host cut in the record, in full. The host refuses when it has no log of the message. */

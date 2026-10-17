@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
@@ -17,7 +17,7 @@ import { currentThread, shownRows, threadFolds, type ThreadRow, threadRows, thre
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -45,7 +45,17 @@ export default function RoomScreen() {
   const linkState = useStore($linkState)
   const byName = useMemo(() => botsByAnyName(bots ?? []), [bots])
   // The list is upside down: it opens at the newest message with only the rows on screen drawn.
-  const rows = useMemo(() => threadRows(room?.messages ?? []), [room?.messages])
+  // The messages from before the record of the host: the user asked for them. They are whole, so none is cut.
+  const [earlier, setEarlier] = useState<{ messages: RoomMessage[]; more: boolean; reading: boolean; fault: string | null }>({ messages: [], more: true, reading: false, fault: null })
+  const messages = useMemo(() => {
+    const recent = room?.messages ?? []
+    const first = recent[0]?.at ?? Infinity
+    const known = new Set(recent.map(message => message.id))
+
+    // The record moves on while the screen is open: an earlier message that is in the record again shows once.
+    return [...earlier.messages.filter(message => message.at < first && !known.has(message.id)), ...recent]
+  }, [earlier.messages, room?.messages])
+  const rows = useMemo(() => threadRows(messages), [messages])
   const folds = useMemo(() => threadFolds(rows), [rows])
   // A line between two threads. A room with one thread needs none.
   const several = useMemo(() => new Set(rows.map(row => row.thread)).size > 1, [rows])
@@ -60,7 +70,7 @@ export default function RoomScreen() {
   // The thread the user chose for the next message, or a new thread (null). No choice: the newest thread while it is recent.
   const [choice, setChoice] = useState<{ thread: string | null } | null>(null)
   const [now, setNow] = useState(Date.now)
-  const thread = choice ? choice.thread : currentThread(room?.messages ?? [], now)
+  const thread = choice ? choice.thread : currentThread(messages, now)
 
   // The newest thread is open, and so is the thread the next message goes to. An older thread is folded to its topic.
   const newest = rows[rows.length - 1]?.thread
@@ -86,6 +96,20 @@ export default function RoomScreen() {
   // The messages the host cut in the record, read in full: by the id of the message.
   const [full, setFull] = useState<Record<string, string>>({})
   const readAll = useCallback((messageId: string) => readFullMessage(id, messageId).then(text => setFull(known => ({ ...known, [messageId]: text }))), [id])
+
+  const showEarlier = () => {
+    const before = messages[0]?.at
+
+    if (!before || earlier.reading) {
+      return
+    }
+
+    setEarlier(known => ({ ...known, reading: true, fault: null }))
+    readEarlier(id, before)
+      .then(page => setEarlier(known => ({ messages: [...page.messages, ...known.messages], more: page.more, reading: false, fault: null })))
+      // A host with an older plugin has no such route.
+      .catch(error => setEarlier(known => ({ ...known, reading: false, fault: faultWords(error) === 'Not Found' ? 'This host cannot give earlier messages yet. Update its group-rooms plugin.' : faultWords(error) })))
+  }
 
   const forget = () => {
     if (!room) {
@@ -195,7 +219,19 @@ export default function RoomScreen() {
             )
           }
           ListFooterComponent={
-            room.omitted ? <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are not kept on the host.</Text> : null
+            // The record of the host holds the newest messages. The ones before come from the log of its engine.
+            room.omitted && writable && !room.unmade ? (
+              earlier.fault || !earlier.more ? (
+                <Text style={[type.small, styles.note, { color: t.muted }]}>{earlier.fault ?? 'This is the start of what the host has of this group.'}</Text>
+              ) : (
+                <Pressable accessibilityRole="button" disabled={earlier.reading} hitSlop={8} onPress={showEarlier} style={styles.earlier}>
+                  {earlier.reading ? <ActivityIndicator color={t.muted} size="small" /> : <Feather color={t.accent} name="arrow-up" size={14} />}
+                  <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>{earlier.reading ? 'Reading earlier messages' : 'Show earlier messages'}</Text>
+                </Pressable>
+              )
+            ) : room.omitted ? (
+              <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are not kept on the host.</Text>
+            ) : null
           }
           ListHeaderComponent={
             writable === false ? (
@@ -305,7 +341,7 @@ export default function RoomScreen() {
             <View style={styles.inThread}>
               <Feather color={t.muted} name="corner-down-right" size={14} />
               <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
-                In thread: <Text style={{ color: t.ink }}>{threadTitle(room.messages, thread) || 'earlier messages'}</Text>
+                In thread: <Text style={{ color: t.ink }}>{threadTitle(messages, thread) || 'earlier messages'}</Text>
               </Text>
               <Pressable accessibilityLabel="Start a new thread" accessibilityRole="button" hitSlop={10} onPress={() => setChoice({ thread: null })}>
                 <Feather color={t.muted} name="x" size={16} />
@@ -434,6 +470,7 @@ const styles = StyleSheet.create({
   byline: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   list: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   note: { textAlign: 'center', paddingVertical: space.md },
+  earlier: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, minHeight: TOUCH },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
   composer: { gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.sm, borderTopWidth: StyleSheet.hairlineWidth, maxWidth: 760, width: '100%', alignSelf: 'center' },
   choices: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },

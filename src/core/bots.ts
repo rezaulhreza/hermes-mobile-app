@@ -293,15 +293,12 @@ interface StoredRoom {
   omitted?: unknown
 }
 
-/** One room of the record the host keeps. Null for a record with no name. */
-export function roomRow(key: string, value: unknown): Room | null {
-  const room = (value ?? {}) as StoredRoom
-
-  if (typeof room.name !== 'string' || !room.name.trim()) {
-    return null
-  }
-
-  const messages = (Array.isArray(room.log) ? room.log : []).flatMap((entry, index): RoomMessage[] => {
+/**
+ * The messages in a log of the host, in the order of time. The record of a
+ * room and the route for its earlier messages give the same kind of entry.
+ */
+export function logMessages(log: unknown): RoomMessage[] {
+  const messages = (Array.isArray(log) ? log : []).flatMap((entry, index): RoomMessage[] => {
     const { id, from, text, at, thread } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown; thread?: unknown }
 
     if (typeof text !== 'string' || !text.trim()) {
@@ -323,6 +320,19 @@ export function roomRow(key: string, value: unknown): Room | null {
       }
     ]
   })
+
+  return messages
+}
+
+/** One room of the record the host keeps. Null for a record with no name. */
+export function roomRow(key: string, value: unknown): Room | null {
+  const room = (value ?? {}) as StoredRoom
+
+  if (typeof room.name !== 'string' || !room.name.trim()) {
+    return null
+  }
+
+  const messages = logMessages(room.log)
 
   const members = (Array.isArray(room.members) ? room.members : []).filter((member): member is { name: string; handle?: unknown } => typeof (member as { name?: unknown })?.name === 'string')
 

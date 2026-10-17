@@ -457,6 +457,43 @@ def read_room(room_id: str) -> dict:
     return _guard(work)
 
 
+@router.get("/rooms/{room_id}/history")
+def read_history(room_id: str, before: int = 0, limit: int = 30) -> dict:
+    """The messages of a room from before ``before`` (Unix milliseconds; 0: the newest), the newest
+    ``limit`` of them, in the order of time and in full. The record keeps the newest messages only
+    (``MAX_MESSAGES``); the log of the engine keeps them all. Messages of a round the desktop app
+    ran, or of the room before its members changed, are not in that log."""
+    limit = max(1, min(int(limit), 100))
+
+    def work():
+        engine_id = _engine_of(room_id)
+        rows, cursor = [], 0
+        try:
+            while True:
+                page = _rpc("groups.log", {"room_id": engine_id, "since_seq": cursor, "limit": 200})
+                for event in page.get("events") or []:
+                    payload = event.get("payload") if isinstance(event, dict) else None
+                    kind = str(event.get("kind") or "") if isinstance(event, dict) else ""
+                    if not isinstance(payload, dict) or kind not in ("message.user", "message.member") or not str(payload.get("text") or "").strip():
+                        continue
+                    at = int(float(event.get("created_at") or 0) * 1000)
+                    if before and at >= before:
+                        continue
+                    mine = kind == "message.user"
+                    rows.append({
+                        "id": str(event.get("event_id") or ""), "at": at, "text": str(payload["text"]), "thread": str(payload.get("thread_id") or ""),
+                        "from": {"kind": "user", "name": "You"} if mine else {"kind": "member", "name": str((event.get("actor") or {}).get("id") or payload.get("member_id") or "")}})
+                moved = int(page.get("cursor") or 0)
+                if not page.get("has_more") or moved <= cursor:
+                    break
+                cursor = moved
+        except Refused:
+            pass  # The engine has no room for these members: it has no log of them.
+        rows.sort(key=lambda row: row["at"])
+        return {"messages": rows[-limit:], "more": len(rows) > limit}
+    return _guard(work)
+
+
 @router.get("/rooms/{room_id}/messages/{message_id}")
 def read_message(room_id: str, message_id: str) -> dict:
     """One message in full. The record keeps only the start of a long message (``MAX_TEXT``); the
