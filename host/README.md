@@ -89,3 +89,7 @@ When step 2 stops:
 3. Clone this repository and run `host/setup.sh`.
 4. Set up the tunnel to port 9130. The setup command does not do this part.
 5. Open the phone app.
+
+Live voice with Deepgram needs the `deepgram-live` plugin on the host:
+<https://github.com/rezaulhreza/hermes-deepgram-live>. Without the plugin, the app works,
+but the Deepgram voice engine is not available.
