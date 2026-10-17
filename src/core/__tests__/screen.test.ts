@@ -1,4 +1,4 @@
-import { isScreenTool, screenProblem, screenWork, stopMessage, tapPoint } from '../screen'
+import { clampPan, clampZoom, isScreenTool, screenProblem, screenWork, stopMessage, tapPoint } from '../screen'
 
 describe('screen tools', () => {
   it('knows the tools that use the screen or a browser', () => {
@@ -82,5 +82,16 @@ describe('screenProblem for a 404', () => {
 
   it('gives the words of the plugin for its own 404', () => {
     expect(screenProblem(new Error('404: {"detail":"The host gave an empty picture of the whole screen."}'))).toBe('The host gave an empty picture of the whole screen.')
+  })
+})
+
+describe('the zoom of the picture', () => {
+  // The pinch and the two-finger move call these on the UI thread. A function that is not a worklet throws
+  // there, and the throw closes the app.
+  it.each([
+    ['clampZoom', clampZoom],
+    ['clampPan', clampPan]
+  ])('%s is a worklet', (_name, fn) => {
+    expect((fn as unknown as { __workletHash?: number }).__workletHash).toBeDefined()
   })
 })

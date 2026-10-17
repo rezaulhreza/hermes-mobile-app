@@ -120,20 +120,6 @@ def windows() -> dict[str, Any]:
     ]}
 
 
-def _window_capture(backend, pid: Optional[int], window_id: Optional[int], exact: bool, followed: bool):
-    """The picture of one window. The driver raises for a window that is closed: the phone gets words, not a 500.
-    A closed window of the agent (``followed``) gives the frontmost window, so the view goes on."""
-    try:
-        return backend.capture(mode="vision", **({"pid": pid, "window_id": window_id} if exact else {}))
-    except Exception as exc:  # noqa: BLE001 - the driver's error, told to the phone below
-        if not exact:
-            raise HTTPException(status_code=502, detail=f"The host gave no picture: {exc}") from exc
-        if not followed:
-            raise HTTPException(status_code=404, detail="That window is closed. Choose another window.") from exc
-        logger.info("screen-remote: the agent's window %s is closed, the frontmost window is shown", window_id)
-    return _window_capture(backend, None, None, False, False)
-
-
 @router.get("/frame")
 def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id: Optional[str] = None,
           last: Optional[str] = None, whole: bool = False) -> dict[str, Any]:
@@ -141,10 +127,8 @@ def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id
     frontmost window. ``last`` is the digest of the picture the phone has: an unchanged picture is not sent again.
     ``whole`` gives the whole screen, every window on it: a picture to look at. It names no window, so the phone
     sends no input for it."""
-    followed = False
     if not whole and (pid is None or window_id is None) and session_id:
         pid, window_id = _agent_target(session_id)
-        followed = pid is not None and window_id is not None
     exact = not whole and pid is not None and window_id is not None
     with _tool()._backend_for_call(SESSION) as backend:
         if whole:
@@ -152,7 +136,7 @@ def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id
             capture = backend.capture(mode="vision", app="screen")
             target = {"pid": None, "window_id": None}
         else:
-            capture = _window_capture(backend, pid, window_id, exact, followed)
+            capture = backend.capture(mode="vision", **({"pid": pid, "window_id": window_id} if exact else {}))
             target = {"pid": getattr(backend, "_active_pid", None), "window_id": getattr(backend, "_active_window_id", None)}
     if not capture.png_b64:
         raise HTTPException(status_code=404, detail=capture.note or "The window gave no picture. It may be closed.")

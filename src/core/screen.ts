@@ -57,10 +57,17 @@ export interface Size {
   height: number
 }
 
-/** The picture can be made this many times larger with two fingers. */
+/**
+ * The picture can be made this many times larger with two fingers.
+ *
+ * `clampZoom` and `clampPan` run in the gestures of the picture, on the UI thread, so each is a worklet.
+ * A plain function throws there, and the throw closes the app.
+ */
 export const MAX_ZOOM = 5
 
 export function clampZoom(scale: number): number {
+  'worklet'
+
   return Math.max(1, Math.min(MAX_ZOOM, scale))
 }
 
@@ -69,6 +76,8 @@ export function clampZoom(scale: number): number {
  * picture never comes inside the box. At scale 1 it does not move.
  */
 export function clampPan(offset: number, side: number, scale: number): number {
+  'worklet'
+
   const limit = (side * (scale - 1)) / 2
 
   return Math.max(-limit, Math.min(limit, offset))
