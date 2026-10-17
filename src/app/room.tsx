@@ -2,15 +2,17 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
+import { MentionText } from '@/components/mention-text'
 import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
+import { roomAnswerLine, roomChoices, roomMentionParts, type RoomTarget, roomTargets, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
@@ -21,6 +23,8 @@ import { useTheme } from '@/theme/use-theme'
  * A group chat of bots: who is in it, what was said last, and a field to say
  * something to all of them. The host runs the round: it gives the message to
  * each member in turn and logs the answers in the record every client reads.
+ * A message that names bots ("@qa") goes to those bots only: the field offers
+ * the names, colours the ones the host follows and says who answers.
  * A host without the `group-rooms` plugin shows the record and takes no
  * message.
  */
@@ -37,6 +41,10 @@ export default function RoomScreen() {
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
   const [draft, setDraft] = useState('')
+  const targets = useMemo(() => (room ? roomTargets(room, byName) : []), [room, byName])
+  const typed = typedMention(draft)
+  const choices = typed === null ? [] : roomChoices(targets, typed)
+  const answerLine = roomAnswerLine(draft, targets)
   const [sending, setSending] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
   const [settings, setSettings] = useState(false)
@@ -151,24 +159,49 @@ export default function RoomScreen() {
           initialNumToRender={10}
           inverted={newestFirst.length > 0}
           keyExtractor={message => message.id}
-          renderItem={({ item }) => <Message bot={byName.get(item.from)} message={item} />}
+          renderItem={({ item }) => <Message bot={byName.get(item.from)} message={item} targets={targets} />}
           windowSize={7}
         />
       )}
 
       {room && writable && !room.unmade ? (
         <View style={[styles.composer, { borderTopColor: t.line }]}>
+          {choices.length ? (
+            <View style={[styles.choices, { backgroundColor: t.paper, borderColor: t.line }]}>
+              {choices.map((target, index) => (
+                <Pressable
+                  accessibilityLabel={`Mention ${target.title}`}
+                  accessibilityRole="button"
+                  key={target.handle}
+                  // The name replaces the word that is being typed.
+                  onPress={() => setDraft(`${draft.slice(0, draft.length - (typed ?? '').length)}${target.handle} `)}
+                  style={({ pressed }) => [styles.choice, index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+                >
+                  {byName.get(target.name) ? <BotAvatar bot={byName.get(target.name)!} size={26} t={t} /> : <Feather color={t.muted} name="users" size={18} style={styles.choiceIcon} />}
+                  <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+                    {target.title}
+                  </Text>
+                  <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+                    @{target.handle}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
+          {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           <View style={styles.sendRow}>
             <TextInput
               accessibilityLabel="Message to the group"
+              autoCapitalize={typed === null ? 'sentences' : 'none'}
               multiline
               onChangeText={setDraft}
-              placeholder="Say something to all of them"
+              placeholder="Say something to all of them, or @ one"
               placeholderTextColor={t.muted}
               style={[type.body, styles.input, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
-              value={draft}
-            />
+            >
+              <MentionText parts={roomMentionParts(draft, targets)} />
+            </TextInput>
             {working && !draft.trim() ? (
               <IconButton icon="square" label="Stop the bots" onPress={() => void stopRoom(id).catch(error => setFault(faultWords(error)))} />
             ) : (
@@ -183,13 +216,15 @@ export default function RoomScreen() {
   )
 }
 
-function Message({ message, bot }: { message: RoomMessage; bot?: Bot }) {
+function Message({ message, bot, targets }: { message: RoomMessage; bot?: Bot; targets: readonly RoomTarget[] }) {
   const t = useTheme()
 
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
-        <Text style={[type.body, { color: t.ink }]}>{message.text}</Text>
+        <Text style={[type.body, { color: t.ink }]}>
+          <MentionText parts={roomMentionParts(message.text, targets)} />
+        </Text>
       </View>
     )
   }
@@ -216,6 +251,9 @@ const styles = StyleSheet.create({
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
   working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   composer: { gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.sm, borderTopWidth: StyleSheet.hairlineWidth, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  choices: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md },
+  choiceIcon: { width: 26, textAlign: 'center' },
   sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   confirm: { gap: space.sm, alignSelf: 'stretch' },
