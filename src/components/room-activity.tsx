@@ -21,6 +21,7 @@ interface RoomActivityProps {
   working: boolean
   bots: ReadonlyMap<string, Bot>
   onRetry: (taskId: string) => Promise<void>
+  onStop: () => Promise<void>
   onApproval: (action: Approval, choice: 'once' | 'deny') => Promise<void>
 }
 
@@ -31,7 +32,7 @@ interface RoomActivityProps {
  * shows the turns under the line. What the round waits for from the user is
  * always in view: a bot that asks for a yes, and a turn that can run again.
  */
-export function RoomActivity({ round, working, bots, onRetry, onApproval }: RoomActivityProps) {
+export function RoomActivity({ round, working, bots, onRetry, onStop, onApproval }: RoomActivityProps) {
   const t = useTheme()
   const [open, setOpen] = useState(false)
   const [now, setNow] = useState(Date.now)
@@ -143,7 +144,7 @@ export function RoomActivity({ round, working, bots, onRetry, onApproval }: Room
         : null}
 
       {fault ? <Text style={[type.small, styles.fault, { color: t.red, borderTopColor: t.line }]}>{fault}</Text> : null}
-      {open && detailed ? <RoundSheet bots={bots} onClose={() => setOpen(false)} round={round} /> : null}
+      {open && detailed ? <RoundSheet bots={bots} onClose={() => setOpen(false)} onStop={onStop} round={round} /> : null}
     </View>
   )
 }

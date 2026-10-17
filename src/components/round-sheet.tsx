@@ -12,13 +12,15 @@ import { useTheme } from '@/theme/use-theme'
 
 import { BotAvatar } from './bot-sheet'
 import { Markdown } from './markdown'
-import { IconButton } from './ui'
+import { Button, IconButton } from './ui'
 
 const READ_MS = 2500
 
 interface RoundSheetProps {
   round: Round
   bots: ReadonlyMap<string, Bot>
+  /** Stop the bot that works and the turns that wait. */
+  onStop: () => Promise<void>
   onClose: () => void
 }
 
@@ -29,7 +31,7 @@ const live = (turn: Turn) => turn.state === 'working' || turn.state === 'stoppin
  * picks, what the bot does in it: its thoughts, its tools and the answer as
  * far as it is written. It opens on the bot that works now.
  */
-export function RoundSheet({ round, bots, onClose }: RoundSheetProps) {
+export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
   const t = useTheme()
   const { turns } = round
   const [now, setNow] = useState(Date.now)
@@ -39,6 +41,8 @@ export function RoundSheet({ round, bots, onClose }: RoundSheetProps) {
   const running = turns.some(live)
   const [work, setWork] = useState<{ taskId: string; items: TranscriptItem[] } | null>(null)
   const [fault, setFault] = useState<string | null>(null)
+  const [stopping, setStopping] = useState(false)
+  const [stopFault, setStopFault] = useState<string | null>(null)
   const title = (member: string) => bots.get(member)?.title ?? member
   const taskId = turn?.taskId
   const member = turn?.member
@@ -131,6 +135,26 @@ export function RoundSheet({ round, bots, onClose }: RoundSheetProps) {
             })}
           </View>
 
+          {running ? (
+            <View style={styles.stop}>
+              {/* The engine stops a room as a whole: the bot at work, and every turn that waits. */}
+              <Button
+                busy={stopping}
+                icon="square"
+                label={turns.some(known => known.state === 'waiting') ? 'Stop this bot and the turns that wait' : 'Stop this bot'}
+                onPress={() => {
+                  setStopping(true)
+                  setStopFault(null)
+                  onStop()
+                    .catch(error => setStopFault(faultWords(error)))
+                    .finally(() => setStopping(false))
+                }}
+                tone="danger"
+              />
+              {stopFault ? <Text style={[type.small, { color: t.red }]}>{stopFault}</Text> : null}
+            </View>
+          ) : null}
+
           {turn ? (
             <View style={styles.work}>
               <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>
@@ -218,6 +242,7 @@ const styles = StyleSheet.create({
   turn: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.md, paddingVertical: space.sm },
   unknown: { width: 24, height: 24, borderRadius: 12 },
   words: { fontVariant: ['tabular-nums'] },
+  stop: { gap: space.sm },
   work: { gap: space.md },
   step: { gap: space.sm },
   stepHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
