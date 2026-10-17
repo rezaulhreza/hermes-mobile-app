@@ -39,6 +39,8 @@ interface Fiber {
   child: Fiber | null
   sibling: Fiber | null
   memoizedProps: Record<string, unknown> | string | null
+  /** The instance of a class component: a list has `scrollToOffset`. */
+  stateNode?: unknown
 }
 
 interface DevToolsHook {
@@ -238,6 +240,19 @@ const helpers = {
     return 'fed'
   },
   stores: { $callLevel, $screen, $screenHold, $screenPicture, $push, $shownSession, $attachments, $previews, $call, $dictation, $engines, $preferences, $wake, $work, $conversations, $linkState, $requests, $sessions, $sessionSource, $sessionView, $pane },
+
+  /** Move the list of the top screen to an offset, which a script cannot do with a finger. A chat counts from its newest message. */
+  scroll: (offset: number) => {
+    const lists = fibers().flatMap(fiber => {
+      const list = fiber.stateNode as { scrollToOffset?: (to: { offset: number; animated: boolean }) => void } | null | undefined
+
+      return typeof list?.scrollToOffset === 'function' ? [list] : []
+    })
+
+    lists.at(-1)?.scrollToOffset?.({ offset, animated: false })
+
+    return `lists: ${lists.length}`
+  },
 
   /** Every string on screen, in order. Screens under the current one are included. */
   texts: () => fibers().filter(f => f.tag === HOST_TEXT).map(f => String(f.memoizedProps)),
