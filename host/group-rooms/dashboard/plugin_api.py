@@ -378,8 +378,13 @@ def read_message(room_id: str, message_id: str) -> dict:
     before its members changed, is not in that log."""
     def work():
         record, _revision, _profiles = _read()
-        engine_id = _engine_id(record["rooms"][_key(record, room_id)])
-        cursor = 0
+        room = record["rooms"][_key(record, room_id)]
+        engine_id = _engine_id(room)
+        # The engine gives a message of the user an id of its own. Such a message is found by the
+        # start that the record kept: more than a thousand characters, so no other message has it.
+        kept = next((str(entry.get("text") or "") for entry in room.get("log") or [] if isinstance(entry, dict) and entry.get("id") == message_id), "")
+        start = kept[: -len(TRUNCATED)] if kept.endswith(TRUNCATED) else ""
+        same_start, cursor = "", 0
         try:
             while True:
                 page = _rpc("groups.log", {"room_id": engine_id, "since_seq": cursor, "limit": 200})
@@ -387,12 +392,16 @@ def read_message(room_id: str, message_id: str) -> dict:
                     text = str((event.get("payload") or {}).get("text") or "") if isinstance(event, dict) else ""
                     if text.strip() and event.get("event_id") == message_id:
                         return {"id": message_id, "text": text}
+                    if start and len(text) > len(start) and text.startswith(start):
+                        same_start = text
                 moved = int(page.get("cursor") or 0)
                 if not page.get("has_more") or moved <= cursor:
                     break
                 cursor = moved
         except Refused:
             pass  # The engine has no room for these members: it has no log of them.
+        if same_start:
+            return {"id": message_id, "text": same_start}
         raise HTTPException(status_code=404, detail="The host does not have the rest of this message.")
     return _guard(work)
 
