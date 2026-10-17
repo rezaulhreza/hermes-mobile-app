@@ -188,6 +188,22 @@ export async function refreshLiveSessions(): Promise<void> {
   }
 }
 
+/**
+ * The user sees this conversation now: it is read up to this moment. The host
+ * counts what comes later as unread, so the chat screen says it when it opens
+ * and again when the user leaves. Never throws: the mark is not worth a fault.
+ */
+export async function markSessionRead(id: string, profile?: string): Promise<void> {
+  $sessions.set(withSessionChange($sessions.get(), id, { unread: false }))
+
+  try {
+    // This route reads the profile from the body, not from the address.
+    await api().request({ path: `/api/sessions/${encodeURIComponent(id)}`, method: 'PATCH', body: { unread: false, ...(profile ? { profile } : {}) } })
+  } catch {
+    // The next list from the host says what it knows.
+  }
+}
+
 export async function refreshSessions(): Promise<void> {
   void refreshLiveSessions()
 

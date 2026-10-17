@@ -1,4 +1,4 @@
-import { botInitials, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
+import { botInitials, botMark, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
 
 const NOW = 10_000
 
@@ -201,5 +201,35 @@ describe('a group that only the bots name', () => {
     const rooms = groupRooms([{ ...bot('default', ['Old'], { 'hermes-bots-groups': { rooms: {}, deleted: { 'name:Old': 4 } } }), is_default: true }] as never)
 
     expect(rooms).toEqual([])
+  })
+})
+
+describe('the marks of a bot on its row', () => {
+  const bot = { name: 'qa', chatId: 'tip', chatRoot: 'root', chatCount: 100, working: false }
+
+  it('has none for a bot that rests', () => {
+    expect(botMark(bot, {}, {})).toEqual({ live: undefined, unread: false })
+    expect(botMark({ ...bot, chatId: null, chatRoot: null }, { other: 'working' }, {})).toEqual({ live: undefined, unread: false })
+  })
+
+  it('finds the chat by the id of today and by its first id', () => {
+    expect(botMark(bot, { tip: 'working' }, {}).live).toBe('working')
+    expect(botMark(bot, { root: 'waiting' }, {}).live).toBe('waiting')
+  })
+
+  it('works when a task outside the chat runs, and a chat that waits comes first', () => {
+    expect(botMark({ ...bot, working: true }, {}, {}).live).toBe('working')
+    expect(botMark({ ...bot, working: true }, { tip: 'waiting' }, {}).live).toBe('waiting')
+  })
+
+  it('is unread when the chat has more messages than the user saw', () => {
+    expect(botMark(bot, {}, { qa: 99 }).unread).toBe(true)
+    expect(botMark(bot, {}, { qa: 100 }).unread).toBe(false)
+    // A chat the user never opened on this phone, and the chat of another bot.
+    expect(botMark(bot, {}, {}).unread).toBe(false)
+    expect(botMark(bot, {}, { writer: 1 }).unread).toBe(false)
+    // The last message is not there yet while the bot writes it.
+    expect(botMark(bot, { tip: 'working' }, { qa: 99 }).unread).toBe(false)
+    expect(botMark(bot, { tip: 'waiting' }, { qa: 99 }).unread).toBe(true)
   })
 })

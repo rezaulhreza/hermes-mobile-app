@@ -6,6 +6,7 @@
  */
 
 import type { ProfileRow } from './gateway/gateway-contract.generated'
+import type { LiveState } from './sessions'
 
 /** The title the host gives the one long conversation of a bot. It is plumbing: a person sees the bot's name. */
 export const BOT_CHAT_TITLE = 'Bot Chat'
@@ -21,6 +22,10 @@ export interface Bot {
   isDefault: boolean
   /** The stored id of its Bot Chat. Null for a bot nobody has talked to. */
   chatId: string | null
+  /** The id the Bot Chat had first. The host can name the chat by it after it made the chat shorter. */
+  chatRoot: string | null
+  /** How many messages its Bot Chat has. The host counts an answer when it is complete. */
+  chatCount: number
   /** The last words of its chat, for the row. */
   preview: string
   /** Unix seconds of its last activity, in a chat or as a worker. */
@@ -88,6 +93,8 @@ export function botRows(profiles: readonly ProfileRow[], nowS: number): Bot[] {
         model: row.model ?? '',
         isDefault: Boolean(row.is_default),
         chatId: chat?.resolved_id || chat?.id || null,
+        chatRoot: chat?.id || null,
+        chatCount: chat?.live_message_count ?? chat?.message_count ?? 0,
         preview: (chat?.preview ?? row.last_session?.preview ?? '').replace(/\s+/g, ' ').trim(),
         lastActive: Math.max(chat?.last_active ?? 0, row.last_session?.last_active ?? 0, workerAt),
         working: workerAt > 0 && nowS - workerAt < WORKING_WINDOW_S,
@@ -109,6 +116,42 @@ function filing(meta: Record<string, unknown>): Pick<Bot, 'section' | 'pinned' |
     pinned: meta.pinned === true,
     hidden: meta.hidden === true,
     groups: Array.isArray(meta.groups) ? meta.groups.filter((group): group is string => typeof group === 'string') : []
+  }
+}
+
+/** What the row of a bot says about its chat. */
+export interface BotMark {
+  /** Hermes works for this bot now, or its chat waits for an answer of the user. */
+  live?: LiveState
+  /** Its chat has words the user did not read. */
+  unread: boolean
+}
+
+/**
+ * How far each Bot Chat was read on this phone: how many messages it had when
+ * the user left it, by the name of the bot. The count and not the time: the
+ * host does not move the time of a chat when an answer ends. The host hides a
+ * Bot Chat from its list of conversations, so its own "unread" does not reach
+ * the phone for these chats.
+ */
+export type ReadMarks = Readonly<Record<string, number>>
+
+/**
+ * The state of a bot for its row, the same marks as a row of the chat list.
+ * `live` is by the stored id of a conversation. A bot that works on a task
+ * outside its chat (a kanban or tool worker) works too. A chat is unread when
+ * it has more messages than the user saw. A chat the user
+ * never opened on this phone has no mark: old words are not news.
+ */
+export function botMark(bot: Pick<Bot, 'name' | 'chatId' | 'chatRoot' | 'chatCount' | 'working'>, live: Readonly<Record<string, LiveState>>, read: ReadMarks): BotMark {
+  const states = [bot.chatId, bot.chatRoot].map(id => (id ? live[id] : undefined))
+  const state = states.includes('waiting') ? 'waiting' : states.includes('working') || bot.working ? 'working' : undefined
+
+  return {
+    // A chat that waits for the user needs the user more than a task that runs.
+    live: state,
+    // While the bot still writes, the last message is not there to read yet.
+    unread: state !== 'working' && read[bot.name] !== undefined && bot.chatCount > read[bot.name]
   }
 }
 

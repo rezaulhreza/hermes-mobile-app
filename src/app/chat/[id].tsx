@@ -45,7 +45,6 @@ import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { parseMarkdown } from '@/core/markdown'
 import { botChoices, chatMentionParts, withBotChoices } from '@/core/mentions'
-import { $referencePlugins, loadReferencePlugins } from '@/store/commands'
 import { answerSources } from '@/core/sources'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
 import { BOT_CHAT_TITLE } from '@/core/bots'
@@ -72,7 +71,7 @@ import {
   type SendMode,
   stopTurn
 } from '@/store/chat'
-import { $bots, loadBots } from '@/store/bots'
+import { markBotChatRead, $bots, loadBots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { unwatchBackground, watchBackground } from '@/store/background'
 import { $linkState } from '@/store/link'
@@ -80,7 +79,7 @@ import { type AgentRequest, answerInOwnWords } from '@/core/requests'
 import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
-import { $sessions } from '@/store/sessions'
+import { $sessions, markSessionRead } from '@/store/sessions'
 import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
@@ -185,6 +184,21 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }, [sessionId])
   )
 
+  // The user reads this chat while it is on screen: read when it opens, and read up to the moment the user leaves.
+  // What a bot writes after that is unread in the lists.
+  useFocusEffect(
+    useCallback(() => {
+      const read = () => {
+        void markSessionRead(params.id, params.profile)
+        void markBotChatRead(params.id)
+      }
+
+      read()
+
+      return read
+    }, [params.id, params.profile])
+  )
+
   useEffect(() => {
     if (opened || linkState !== 'open') {
       return
@@ -245,14 +259,6 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const bot = bots?.find(known => known.name === params.profile && !known.isDefault)
   // The bot of this chat: every other bot can be named in a message ("@qa").
   const self = botOfChat(params.profile)
-  const plugins = useStore($referencePlugins) ?? []
-
-  // A message can refer to a thing of a plugin ("@issue:12"): the host says which plugins take one.
-  useEffect(() => {
-    if (sessionId) {
-      void loadReferencePlugins(sessionId)
-    }
-  }, [sessionId])
 
   // A chat opened from a notification can come before the Bots list was read.
   useEffect(() => {
@@ -520,7 +526,6 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                   pressed && { backgroundColor: t.soft }
                 ]}
               >
-                {'bot' in item && bots?.find(known => known.name === item.bot) ? <BotAvatar bot={bots.find(known => known.name === item.bot)!} size={26} t={t} /> : null}
                 <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
                   {item.display || item.text}
                 </Text>
@@ -594,7 +599,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               // An empty field is one line high. iOS keeps the height of the text that was sent until the next key.
               style={[styles.input, type.body, { color: t.ink }, !draft && styles.inputEmpty]}
             >
-              <MentionText parts={chatMentionParts(draft, bots ?? [], self, plugins)} typed />
+              <MentionText parts={chatMentionParts(draft, bots ?? [], self)} />
             </TextInput>
             {canSteer ? (
               <Pressable
@@ -728,7 +733,6 @@ function Working({ status }: { status: string | null }) {
 function UserBubble({ text, attached, waiting, onOpen }: { text: string; attached?: SentAttachment[]; waiting: boolean; onOpen: (target: ViewerTarget) => void }) {
   const t = useTheme()
   const bots = useStore($bots)
-  const plugins = useStore($referencePlugins)
   const self = botOfChat(useLocalSearchParams<{ profile?: string }>().profile)
   const [copied, setCopied] = useState(false)
 
@@ -757,7 +761,7 @@ function UserBubble({ text, attached, waiting, onOpen }: { text: string; attache
         {attached?.length ? <SentAttachments items={attached} onOpen={index => onOpen({ items: attached, index })} /> : null}
         {text ? (
           <Text style={[type.body, { color: t.ink }]}>
-            <MentionText parts={chatMentionParts(text, bots ?? [], self, plugins ?? [])} />
+            <MentionText parts={chatMentionParts(text, bots ?? [], self)} />
           </Text>
         ) : null}
       </Pressable>
@@ -776,10 +780,6 @@ interface RowProps {
 
 function Row({ item, final, onOpen, onTool }: RowProps) {
   const t = useTheme()
-  const bots = useStore($bots)
-  const self = botOfChat(useLocalSearchParams<{ profile?: string }>().profile)
-  // The bots an answer names. One function while the bots stay the same: an answer is drawn again only when its text changes.
-  const named = useCallback((text: string) => chatMentionParts(text, bots ?? [], self, null), [bots, self])
 
   switch (item.kind) {
     case 'user':
@@ -793,11 +793,11 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
     case 'assistant':
       return final ? (
         <View style={styles.answer}>
-          <Answer mentions={named} onOpen={onOpen} streaming={item.streaming} text={item.text} />
+          <Answer onOpen={onOpen} streaming={item.streaming} text={item.text} />
           <AnswerActions id={item.key} text={item.text} />
         </View>
       ) : (
-        <Answer mentions={named} onOpen={onOpen} streaming={item.streaming} text={item.text} />
+        <Answer onOpen={onOpen} streaming={item.streaming} text={item.text} />
       )
 
     case 'thinking':

@@ -1,20 +1,22 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { router } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { router, useFocusEffect } from 'expo-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar as Avatar, BotSheet, SectionSheet, SheetFrame } from '@/components/bot-sheet'
 import { ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { NewRoomSheet } from '@/components/room-sheets'
+import { WorkingMark } from '@/components/working-mark'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Bot, botGroups, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
+import { type Bot, botGroups, botMark, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
-import { $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
+import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
 import { createConversation } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
+import { $liveSessions, refreshLiveSessions } from '@/store/sessions'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
 import { useTheme } from '@/theme/use-theme'
@@ -62,10 +64,34 @@ export default function Bots() {
 
   useEffect(() => {
     if (linkState === 'open') {
-      void load()
       void checkRoomsWritable()
     }
   }, [linkState])
+
+  // The marks of each row, as on the chat list: the bot works, its chat waits for the user, or it has unread words.
+  const live = useStore($liveSessions)
+  const read = useStore($botRead)
+
+  // Each time the list shows: the user can come back from a chat in which a bot still works.
+  useFocusEffect(
+    useCallback(() => {
+      if (linkState === 'open') {
+        void load()
+        void refreshLiveSessions()
+      }
+    }, [linkState])
+  )
+
+  // A bot started or stopped: its last words and their time arrive when it stops.
+  const lastLive = useRef(live)
+
+  useEffect(() => {
+    if (lastLive.current !== live && linkState === 'open') {
+      void load()
+    }
+
+    lastLive.current = live
+  }, [live, linkState])
 
   const talk = async (bot: Bot) => {
     setOpening(bot.name)
@@ -194,28 +220,40 @@ export default function Bots() {
             }
 
             const item = row.bot
+            const mark = botMark(item, live, read)
+            const state = mark.live === 'working' ? 'Working' : mark.live ? 'Needs you' : mark.unread ? 'Unread' : ''
 
             return (
               <Pressable
                 accessibilityHint="Opens the conversation with this bot. Hold for its details and its section."
-                accessibilityLabel={item.title}
+                accessibilityLabel={state ? `${item.title}, ${state}` : item.title}
                 accessibilityRole="button"
                 onLongPress={() => setDetail(item.name)}
                 onPress={() => void talk(item)}
                 style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
               >
-                <Avatar bot={item} size={46} t={t} />
+                <View>
+                  <Avatar bot={item} size={46} t={t} />
+                  {/* On the picture, so the rows keep one left edge. The ring is the colour of the row. */}
+                  {mark.unread ? <View style={[styles.unread, { backgroundColor: t.accent, borderColor: t.paper }]} /> : null}
+                </View>
                 <View style={styles.fill}>
                   <View style={styles.nameRow}>
                     <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
                       {item.title}
                     </Text>
                     {item.name === defaultBot ? <Text style={[type.small, styles.badge, { color: t.muted, backgroundColor: t.soft }]}>Default</Text> : null}
-                    {item.working ? <Text style={[type.small, styles.badge, { color: t.accent, backgroundColor: t.accentBg }]}>Working</Text> : null}
                     <View style={styles.fill} />
-                    {item.lastActive ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text> : null}
+                    {mark.live === 'working' ? (
+                      // The bot works now: the mark of the chat screen stands where the time was.
+                      <WorkingMark />
+                    ) : mark.live ? (
+                      <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>Needs you</Text>
+                    ) : item.lastActive ? (
+                      <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text>
+                    ) : null}
                   </View>
-                  <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
+                  <Text numberOfLines={2} style={[type.small, { color: mark.unread ? t.ink : t.muted }]}>
                     {item.preview || item.description || 'No role written yet.'}
                   </Text>
                 </View>
@@ -333,6 +371,7 @@ const styles = StyleSheet.create({
   empty: { padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', textAlign: 'center' },
   addSection: { marginTop: space.md },
   shrink: { flexShrink: 1 },
+  unread: { position: 'absolute', top: -3, right: -3, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },
   content: { padding: space.lg, gap: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },

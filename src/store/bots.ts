@@ -4,7 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { atom, map } from 'nanostores'
 
-import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type Room } from '@/core/bots'
+import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type ReadMarks, type Room } from '@/core/bots'
 import type { ProfilesCreateResult, ProfilesGetAssetResult, ProfilesListResult } from '@/core/gateway/gateway-contract.generated'
 
 import { readCached, writeCached } from './cache'
@@ -113,9 +113,41 @@ async function loadAvatars(bots: readonly Bot[], workspaceId: string | undefined
   }
 }
 
+/** How far the user read each Bot Chat on this phone. The Bots list marks a bot with newer words. */
+export const $botRead = atom<ReadMarks>({})
+
+/**
+ * The user sees this chat now. When it is the chat of a bot, it is read up to
+ * the messages it has. The chat screen says it when it opens and when the user
+ * leaves, so what the bot writes later is unread. Never throws.
+ */
+export async function markBotChatRead(chatId: string): Promise<void> {
+  const ofChat = (bot: Bot) => bot.chatId === chatId || bot.chatRoot === chatId
+
+  if (!$bots.get()?.some(ofChat)) {
+    return
+  }
+
+  try {
+    // How many messages the chat has now.
+    await loadBots()
+  } catch {
+    // The count the list had is good enough.
+  }
+
+  const bot = $bots.get()?.find(ofChat)
+
+  if (bot && bot.chatCount !== $botRead.get()[bot.name]) {
+    $botRead.set({ ...$botRead.get(), [bot.name]: bot.chatCount })
+    writeCached('botRead', $botRead.get())
+  }
+}
+
 /** Show the bots of the last run until the host answers. */
 export function restoreBots(): void {
   const bots = readCached<Bot[]>('bots')
+
+  $botRead.set(readCached<ReadMarks>('botRead') ?? {})
 
   if (bots?.length && !$bots.get()) {
     $bots.set(bots)

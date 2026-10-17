@@ -12,7 +12,7 @@ import type { SessionRow } from './sessions'
 /** Change this when the shape of a stored list changes. An older copy is then not read. */
 export const CACHE_VERSION = 1
 
-export type CacheKey = 'sessions' | 'bots' | 'avatars' | 'schedules' | 'providers'
+export type CacheKey = 'sessions' | 'bots' | 'avatars' | 'schedules' | 'providers' | 'botRead'
 
 /** A workspace id is made by the app, but a file name must be safe whatever it holds. */
 export function cacheFolderName(workspaceId: string): string {

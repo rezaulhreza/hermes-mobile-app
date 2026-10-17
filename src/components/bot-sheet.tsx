@@ -28,8 +28,7 @@ export function BotAvatar({ bot, size, t }: { bot: Bot; size: number; t: Palette
     <Image accessibilityIgnoresInvertColors source={{ uri: picture }} style={shape} />
   ) : (
     <View style={[shape, styles.initials, { backgroundColor: bot.isDefault ? t.accentBg : t.soft }]}>
-      {/* In a small circle the letters are small too. */}
-      <Text style={[type.label, size < 30 && { fontSize: size * 0.45 }, { color: bot.isDefault ? t.accent : t.muted }]}>{botInitials(bot.title)}</Text>
+      <Text style={[type.label, { color: bot.isDefault ? t.accent : t.muted }]}>{botInitials(bot.title)}</Text>
     </View>
   )
 }

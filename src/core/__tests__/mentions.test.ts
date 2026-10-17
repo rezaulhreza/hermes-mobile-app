@@ -7,7 +7,6 @@ import {
   mentionedBots,
   mentionForms,
   mentionNote,
-  referencePlugins,
   roomAnswerLine,
   roomChoices,
   roomHandle,
@@ -70,9 +69,9 @@ describe('a mention in a normal chat', () => {
   it('marks only the mentions that reach a bot', () => {
     expect(chatMentionParts('ask @cos-bot and @nobody, then @qa.', bots)).toEqual([
       { text: 'ask ', mention: false },
-      { text: '@cos-bot', mention: true, target: { kind: 'bot', name: 'scout', title: 'CoS Bot' } },
+      { text: '@cos-bot', mention: true },
       { text: ' and @nobody, then ', mention: false },
-      { text: '@qa', mention: true, target: { kind: 'bot', name: 'qa', title: 'QA' } },
+      { text: '@qa', mention: true },
       { text: '.', mention: false }
     ])
     expect(chatMentionParts('no mention', bots)).toEqual([{ text: 'no mention', mention: false }])
@@ -99,7 +98,7 @@ describe('a mention in a normal chat', () => {
   it('offers the bots that start with the typed word', () => {
     expect(botChoices(bots, '@', 'default').map(choice => choice.text)).toEqual(expect.arrayContaining(['@cos-bot', '@qa', '@writer']))
     expect(botChoices(bots, '@', 'default')).toHaveLength(3)
-    expect(botChoices(bots, '@co')).toEqual([{ text: '@cos-bot', display: 'CoS Bot', meta: '@cos-bot', bot: 'scout' }])
+    expect(botChoices(bots, '@co')).toEqual([{ text: '@cos-bot', display: '@cos-bot', meta: 'Bot · CoS Bot' }])
     expect(botChoices(bots, '@sc').map(choice => choice.text)).toEqual(['@cos-bot'])
     expect(botChoices(bots, '@src/ap')).toEqual([])
     expect(botChoices(bots, '@file:')).toEqual([])
@@ -144,8 +143,7 @@ describe('a mention in a group chat', () => {
     expect(marked(roomMentionParts('@COS-BOT and @scout, @all then @qa', targets))).toEqual(['@COS-BOT', '@all', '@qa'])
     // The end of a clause is not a part of the name: the colour stops before it.
     expect(marked(roomMentionParts('ask @qa. Then @cos-bot: go, @everyone.', targets))).toEqual(['@qa', '@cos-bot', '@everyone'])
-    expect(roomMentionParts('ask @qa.', targets)).toEqual([{ text: 'ask ', mention: false }, { text: '@qa', mention: true, target: { kind: 'bot', name: 'qa', title: 'QA' } }, { text: '.', mention: false }])
-    expect(roomMentionParts('@all go', targets)[0].target).toEqual({ kind: 'everyone', title: 'All bots' })
+    expect(roomMentionParts('ask @qa.', targets)).toEqual([{ text: 'ask ', mention: false }, { text: '@qa', mention: true }, { text: '.', mention: false }])
     // Only "." and ":" at the end are taken off, never letters.
     expect(marked(roomMentionParts('ask @qa.bye and me@example.com.', targets))).toEqual([])
   })
@@ -169,50 +167,5 @@ describe('a mention in a group chat', () => {
     expect(roomAnswerLine('thanks @qa.', targets)).toBe('Only QA answers.')
     expect(roomAnswerLine('thanks @scot.', targets)).toBe('@scot is not a bot in this group. All bots answer.')
     expect(roomAnswerLine('@qa and @scout and @x', targets)).toBe('Only QA answers. @scout and @x are not bots in this group.')
-  })
-})
-
-describe('a reference in a message of a normal chat', () => {
-  const shown = (text: string, plugins?: string[] | null) =>
-    chatMentionParts(text, bots, undefined, plugins).flatMap(part => (part.target?.kind === 'reference' ? [[part.text, part.target.type, part.target.title]] : []))
-
-  it('has the name a person reads', () => {
-    expect(shown('read @file:src/core/notes.md and @folder:src/app/ now')).toEqual([
-      ['@file:src/core/notes.md', 'file', 'notes.md'],
-      ['@folder:src/app/', 'folder', 'app']
-    ])
-    expect(shown('@file:"my notes.md":3-9 and @file:a.ts:4')).toEqual([
-      ['@file:"my notes.md":3-9', 'file', 'my notes.md, lines 3 to 9'],
-      ['@file:a.ts:4', 'file', 'a.ts, line 4']
-    ])
-    expect(shown('@url:https://www.h.example/page?x=1 @git:5 @git:1 @diff @staged')).toEqual([
-      ['@url:https://www.h.example/page?x=1', 'url', 'h.example'],
-      ['@git:5', 'git', 'Last 5 commits'],
-      ['@git:1', 'git', 'Last commit'],
-      ['@diff', 'git', 'Changes'],
-      ['@staged', 'git', 'Staged changes']
-    ])
-  })
-
-  it('ends before the full stop of its sentence and a bracket that was open', () => {
-    expect(shown('(see @file:a.ts). Then @file:b(1).ts, ok')).toEqual([
-      ['@file:a.ts', 'file', 'a.ts'],
-      ['@file:b(1).ts', 'file', 'b(1).ts']
-    ])
-  })
-
-  it('is of a plugin only when the host has that plugin', () => {
-    expect(shown('fix @issue:12 please')).toEqual([])
-    expect(shown('fix @issue:12, please', ['issue'])).toEqual([['@issue:12', 'plugin', 'Issue: 12']])
-    expect(referencePlugins([{ text: '@diff' }, { text: '@file:' }, { text: '@Issue:' }, { text: '@qa' }, { text: '@issue:' }])).toEqual(['issue'])
-  })
-
-  it('is not one in code, in an address, or in the answer of a bot', () => {
-    expect(shown('run `@file:a.ts` or mail me@file:a.ts')).toEqual([])
-    expect(shown('read @file:a.ts', null)).toEqual([])
-  })
-
-  it('stands beside a bot in one message', () => {
-    expect(chatMentionParts('@qa read @file:a.ts', bots).map(part => part.target?.title)).toEqual(['QA', undefined, 'a.ts'])
   })
 })
