@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
+import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
 import { MentionText } from '@/components/mention-text'
 import { RoomActivity } from '@/components/room-activity'
 import { RoomSettingsSheet } from '@/components/room-sheets'
@@ -154,8 +155,12 @@ export default function RoomScreen() {
     [targets, byName]
   )
 
-  const send = () => {
-    const text = draft.trim()
+  const send = (words = draft) => {
+    const text = words.trim()
+
+    if (!text) {
+      return
+    }
 
     setSending(true)
     setFault(null)
@@ -169,6 +174,9 @@ export default function RoomScreen() {
       })
       .finally(() => setSending(false))
   }
+
+  // Dictation into the field, as in a chat. With its send button the words go to the group at once.
+  const dictation = useDictation({ draft, setDraft, onSend: send, onFault: error => setFault(faultWords(error)) })
 
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={[styles.fill, { backgroundColor: t.bg }]}>
@@ -348,6 +356,7 @@ export default function RoomScreen() {
               </Pressable>
             </View>
           ) : null}
+          <DictationLine />
           <View style={styles.sendRow}>
             <TextInput
               accessibilityLabel="Message to the group"
@@ -361,10 +370,14 @@ export default function RoomScreen() {
             >
               <MentionText parts={roomMentionParts(draft, targets)} typed />
             </TextInput>
-            {working && !draft.trim() ? (
+            {/* An empty field: the microphone. While a dictation runs, the same button ends it. */}
+            {draft.trim() ? null : <DictationButton onPress={() => dictation.speak()} state={dictation.state} />}
+            {dictation.running && !draft.trim() ? (
+              <SendSpokenButton onPress={() => dictation.speak(true)} />
+            ) : working && !draft.trim() ? (
               <IconButton icon="square" label="Stop the bots" onPress={() => void stopRoom(id).catch(error => setFault(faultWords(error)))} />
             ) : (
-              <IconButton disabled={!draft.trim() || sending} filled icon="arrow-up" label="Send to the group" onPress={send} />
+              <IconButton disabled={!draft.trim() || sending} filled icon="arrow-up" label="Send to the group" onPress={() => send()} />
             )}
           </View>
         </View>

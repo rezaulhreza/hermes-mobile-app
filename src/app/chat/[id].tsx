@@ -24,6 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Answer } from '@/components/answer'
 import { ArrivalRow } from '@/components/arrival'
+import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
 import { TeachSheet } from '@/components/teach-sheet'
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
@@ -84,7 +85,7 @@ import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions, markSessionRead } from '@/store/sessions'
-import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, cancelDictation, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
+import { $call, $callEnded, $callMuted, $callSession, $reading, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
 import { lineOf, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
@@ -123,7 +124,6 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   // Only whether a call is open: the words and the phase of a call must not draw this whole screen again.
   const call = useStore($callSession)
   const callMuted = useStore($callMuted)
-  const dictation = useStore($dictation)
 
   // A call has no view outside this screen. It must not keep the microphone open after the user leaves.
   useEffect(
@@ -146,43 +146,18 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }
   }, [callEnded])
 
-  // The user ended a dictation with the send button: the words go to the agent, not into the field.
-  const sendSpoken = useRef(false)
-  const typed = useRef('')
-
-  // The dictation that ends later needs the field as it is then, not as it was at its start.
-  useEffect(() => {
-    typed.current = draft
-  }, [draft])
-
-  /**
-   * Start a dictation, or end the one that runs. A pause does not end it: the user ends it. The words
-   * go into the field, after what is there, so the user reads them and sends. With `andSend` they go
-   * to the agent at once.
-   */
-  const speakDraft = (andSend = false) => {
-    sendSpoken.current = andSend
-
-    dictate()
-      .then(words => {
-        // The call that ended a dictation gets no words: the words come to the call that started it.
-        if (!words) {
-          return
-        }
-
-        const text = typed.current.trim() ? `${typed.current.trimEnd()} ${words}` : words
-
-        if (sendSpoken.current && sessionId) {
-          sendSpoken.current = false
-          setDraft('')
-          tap()
-          void sendDraft(sessionId, text).then(apply)
-        } else {
-          setDraft(text)
-        }
-      })
-      .catch(say)
-  }
+  // Dictation into the field. With the send button of a dictation the words go to the agent, not into the field.
+  const dictation = useDictation({
+    draft,
+    setDraft,
+    onSend: text => {
+      if (sessionId) {
+        tap()
+        void sendDraft(sessionId, text).then(apply)
+      }
+    },
+    onFault: say
+  })
   const previewUrl = useStore($previews)[sessionId ?? '']?.url
   // The agent opened a page for the user: show it. The user can put it away; a new address shows again.
   const [putAway, setPutAway] = useState<string | null>(null)
@@ -565,7 +540,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
         {sessionId ? <QueuePanel onEdit={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n${text}` : text))} sessionId={sessionId} /> : null}
         {sessionId ? <WorkStrip sessionId={sessionId} storedId={conversation?.storedId} /> : null}
         {sessionId ? <VoiceStrip sessionId={sessionId} /> : null}
-        {dictation === 'off' ? null : <DictationLine />}
+        <DictationLine />
         {sessionId ? <PreviewPill onOpen={() => setPutAway(null)} sessionId={sessionId} /> : null}
         {sessionId && (screen.running || holdsScreen) && !stripHidden ? (
           <ScreenPill onHide={() => setHiddenAt(rowCount)} onOpen={() => setWatching(true)} working={screen.running} />
@@ -691,13 +666,12 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                   // Live voice has the microphone: the same button turns it off and on.
                   <IconButton icon={callMuted ? 'mic-off' : 'mic'} label={callMuted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!callMuted)} />
                 ) : (
-                  <IconButton icon={DICTATION_BUTTON[dictation].icon} label={DICTATION_BUTTON[dictation].label} onPress={() => speakDraft()} />
+                  <DictationButton onPress={() => dictation.speak()} state={dictation.state} />
                 )}
-                {call ? null : dictation === 'off' || dictation === 'starting' ? (
-                  <IconButton icon="waveform" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />
+                {call ? null : dictation.running ? (
+                  <SendSpokenButton onPress={() => dictation.speak(true)} />
                 ) : (
-                  // The short way: no look at the words, they go to the agent as they are.
-                  <IconButton filled icon="arrow-up" label="Send what I said" onPress={() => speakDraft(true)} />
+                  <IconButton icon="waveform" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />
                 )}
               </>
             ) : null}
@@ -946,42 +920,6 @@ function waitingForm(requests: readonly AgentRequest[]): Extract<AgentRequest, {
   return only?.kind === 'clarify' ? only : null
 }
 
-// One button for the whole of a dictation: the words of a part are written down while the user talks on.
-const DICTATION_BUTTON = {
-  off: { icon: 'mic', label: 'Dictate a message' },
-  starting: { icon: 'x', label: 'Cancel dictation' },
-  listening: { icon: 'check', label: 'Done talking' },
-  hearing: { icon: 'check', label: 'Done talking' },
-  transcribing: { icon: 'check', label: 'Done talking' }
-} as const
-
-const DICTATION_LINE = {
-  off: '',
-  starting: 'Opening the microphone…',
-  listening: 'Listening. Take your time. Tap ✓ to see the words, or the arrow to send them.',
-  hearing: 'Hearing you…',
-  transcribing: 'Writing it down…'
-} as const
-
-function DictationLine() {
-  const t = useTheme()
-  const words = useStore($dictationWords)
-  const state = useStore($dictation)
-
-  return (
-    <View accessibilityLiveRegion="polite" style={[styles.dictation, { backgroundColor: t.greenBg }]}>
-      <Feather color={t.green} name="mic" size={14} />
-      {/* A long dictation shows its newest words: the start is cut, not the end. */}
-      <Text ellipsizeMode="head" numberOfLines={3} style={[type.small, styles.dictationWords, { color: words ? t.ink : t.muted }]}>
-        {words || DICTATION_LINE[state]}
-      </Text>
-      <Pressable accessibilityLabel="Cancel dictation" accessibilityRole="button" hitSlop={10} onPress={cancelDictation}>
-        <Feather color={t.muted} name="x" size={16} />
-      </Pressable>
-    </View>
-  )
-}
-
 /** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
@@ -1075,8 +1013,6 @@ function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
 const styles = StyleSheet.create({
   thinking: { gap: space.sm },
   answer: { gap: space.sm },
-  dictation: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-  dictationWords: { flex: 1 },
   answerActions: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 24 },
   toEnd: { position: 'absolute', right: space.lg, bottom: space.sm },
   fill: { flex: 1 },
