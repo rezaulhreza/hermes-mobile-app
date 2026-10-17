@@ -79,11 +79,24 @@ step "3/5 The skills for the agent"
 # What Hermes itself must know: the shapes of the cards of the app, and what to do after an
 # update. A skill names this repository, so it is written with the path of this checkout.
 repo="$(cd "$here/.." && pwd)"
+# Every bot (profile) has a skill folder of its own: each one gets the skills, so the answer
+# is the same whichever bot the user asks.
+homes="$HERMES_HOME"
+for profile in "$HERMES_HOME"/profiles/*/; do
+  [ -d "${profile}skills" ] && homes="$homes
+${profile%/}"
+done
 for pair in "mobile-answer-cards:productivity" "phone-host-setup:devops"; do
   name="${pair%%:*}"; category="${pair##*:}"
-  mkdir -p "$HERMES_HOME/skills/$category/$name"
-  sed "s#{{REPO}}#$repo#g" "$here/skills/$name/SKILL.md" > "$HERMES_HOME/skills/$category/$name/SKILL.md"
-  say "  $name -> $HERMES_HOME/skills/$category/$name"
+  count=0
+  while IFS= read -r home; do
+    mkdir -p "$home/skills/$category/$name"
+    sed "s#{{REPO}}#$repo#g" "$here/skills/$name/SKILL.md" > "$home/skills/$category/$name/SKILL.md"
+    count=$((count + 1))
+  done <<EOF_HOMES
+$homes
+EOF_HOMES
+  say "  $name -> $count skill folders (the main one and each bot)"
 done
 
 step "4/5 The backend for the phone"
