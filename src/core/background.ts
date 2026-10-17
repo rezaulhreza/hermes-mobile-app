@@ -58,6 +58,11 @@ export function backgroundJobs(result: unknown): BackgroundJob[] {
  * The list after a new answer of the host. Rows keep their place (a row that
  * ends changes where it is), new ones go to the end, and a row the user took
  * away stays away.
+ *
+ * A command that ended shows only when this screen saw it run. The host keeps
+ * the commands that ended in its list, so without this rule a command that
+ * failed days ago came back each time a chat opened, and the user had to take
+ * it away again.
  */
 export function mergeBackground(shown: readonly BackgroundJob[], fresh: readonly BackgroundJob[], dismissed: ReadonlySet<string>): BackgroundJob[] {
   const next = new Map(fresh.filter(job => !dismissed.has(job.id)).map(job => [job.id, job]))
@@ -69,7 +74,7 @@ export function mergeBackground(shown: readonly BackgroundJob[], fresh: readonly
     return now ? [now] : []
   })
 
-  return [...kept, ...next.values()]
+  return [...kept, ...[...next.values()].filter(job => job.state === 'running')]
 }
 
 /** "1 command runs in the background", "2 commands run in the background", or what ended. */

@@ -28,6 +28,13 @@ describe('commands in the background of a chat', () => {
     expect(mergeBackground([job('a')], [], new Set())).toEqual([])
   })
 
+  it('does not show a command that ended before the chat opened', () => {
+    // The first read of a chat: the host still lists what ended long ago.
+    expect(mergeBackground([], [job('old', 'failed'), job('gone', 'done'), job('live')], new Set()).map(row => row.id)).toEqual(['live'])
+    // A command this screen saw run shows its end.
+    expect(mergeBackground([job('live')], [job('old', 'failed'), job('live', 'failed')], new Set()).map(row => [row.id, row.state])).toEqual([['live', 'failed']])
+  })
+
   it('says what runs and what ended', () => {
     expect(backgroundHeading([job('a'), job('b', 'done')])).toBe('1 command runs in the background')
     expect(backgroundHeading([job('a'), job('b')])).toBe('2 commands run in the background')
