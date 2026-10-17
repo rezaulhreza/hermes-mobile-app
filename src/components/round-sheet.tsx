@@ -2,16 +2,22 @@ import { Feather } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
+import type { SentAttachment } from '@/core/attachments'
 import type { Bot } from '@/core/bots'
 import { duration, faultWords } from '@/core/format'
 import { type Round, type Turn, turnWords } from '@/core/rounds'
+import { hasToolDetail } from '@/core/tools'
 import type { TranscriptItem } from '@/core/transcript'
 import { readTurnWork } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
+import { Answer } from './answer'
+import { AttachmentViewer, type ViewerTarget } from './attachment-viewer'
+import { SentAttachments } from './attachments'
 import { BotAvatar } from './bot-sheet'
 import { Markdown } from './markdown'
+import { ToolSheet, type ToolTarget } from './tool-sheet'
 import { Button, IconButton } from './ui'
 
 const READ_MS = 2500
@@ -29,7 +35,9 @@ const live = (turn: Turn) => turn.state === 'working' || turn.state === 'stoppin
 /**
  * The round of a group chat in full: every turn, and for the turn the user
  * picks, what the bot does in it: its thoughts, its tools and the answer as
- * far as it is written. It opens on the bot that works now.
+ * far as it is written. It opens on the bot that works now. The steps are
+ * drawn as a chat draws them: the same tool row and tool sheet, the same
+ * answer, the same picture viewer.
  */
 export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
   const t = useTheme()
@@ -42,6 +50,8 @@ export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
   const [work, setWork] = useState<{ taskId: string; items: TranscriptItem[] } | null>(null)
   const [fault, setFault] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
+  const [tool, setTool] = useState<ToolTarget | null>(null)
+  const [viewing, setViewing] = useState<ViewerTarget | null>(null)
   const [stopFault, setStopFault] = useState<string | null>(null)
   const title = (member: string) => bots.get(member)?.title ?? member
   const taskId = turn?.taskId
@@ -170,42 +180,61 @@ export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
                 <Text style={[type.small, { color: t.muted }]}>{turnLive ? 'It reads the thread. Nothing to show yet.' : 'Nothing was kept of this turn.'}</Text>
               ) : (
                 // The host stores a tool call before its result: with no result yet, the last tool of a live turn still runs.
-                items.map((item, index) => <WorkRow item={item} key={item.key} running={turnLive && index === items.length - 1} />)
+                items.map((item, index) => <WorkRow item={item} key={item.key} onOpen={setViewing} onTool={setTool} running={turnLive && index === items.length - 1} />)
               )}
             </View>
           ) : (
             <Text style={[type.small, { color: t.muted }]}>No bot had a turn yet.</Text>
           )}
         </ScrollView>
+        <ToolSheet onClose={() => setTool(null)} profile={member} storedId={session || undefined} tool={tool} />
+        <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
       </View>
     </Modal>
   )
 }
 
-/** One step of a bot in its turn. */
-function WorkRow({ item, running }: { item: TranscriptItem; running: boolean }) {
+interface WorkRowProps {
+  item: TranscriptItem
+  /** The last step of a turn that runs. */
+  running: boolean
+  onTool: (tool: ToolTarget) => void
+  onOpen: (target: ViewerTarget) => void
+}
+
+/** One step of a bot in its turn, as a chat shows it. */
+function WorkRow({ item, running, onTool, onOpen }: WorkRowProps) {
   const t = useTheme()
   const [open, setOpen] = useState(false)
 
   switch (item.kind) {
     case 'tool': {
-      const detail = item.input ?? item.output
+      // The host stores a tool call before its result: the last tool of a live turn can still run.
+      const busy = item.state === 'running' || (running && !item.output && item.durationS === undefined)
+      const opens = hasToolDetail(item) || !busy
+      // The capture of the screen that the tool took: what the bot saw.
+      const capture: SentAttachment[] = item.picture ? [{ name: item.picture.split(/[\\/]/).pop() ?? 'capture', kind: 'image', path: item.picture }] : []
 
       return (
         <View style={styles.step}>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} disabled={!detail} hitSlop={6} onPress={() => setOpen(value => !value)} style={styles.stepHead}>
-            {item.state === 'running' || (running && !item.output) ? <ActivityIndicator color={t.muted} size="small" /> : <Feather color={t.green} name="check" size={15} />}
-            <Text numberOfLines={open ? undefined : 1} style={[type.small, styles.fill, { color: t.muted }]}>
+          <Pressable
+            accessibilityHint={opens ? 'Opens the input and the output' : undefined}
+            accessibilityLabel={`${item.name} ${item.detail}`.trim()}
+            accessibilityRole="button"
+            disabled={!opens}
+            hitSlop={6}
+            onPress={() => onTool({ ...item, state: busy ? 'running' : 'done' })}
+            style={({ pressed }) => [styles.stepHead, pressed && styles.dim]}
+          >
+            {busy ? <ActivityIndicator color={t.muted} size="small" /> : <Feather color={t.green} name="check" size={15} />}
+            <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
               <Text style={{ color: t.ink, fontWeight: '600' }}>{item.name}</Text>
               {item.detail ? `  ${item.detail}` : ''}
             </Text>
             {item.durationS !== undefined ? <Text style={[type.small, { color: t.muted }]}>{duration(item.durationS)}</Text> : null}
+            {opens ? <Feather color={t.muted} name="chevron-right" size={15} /> : null}
           </Pressable>
-          {open && item.output ? (
-            <Text numberOfLines={12} selectable style={[type.small, styles.output, { color: t.muted, backgroundColor: t.soft }]}>
-              {item.output}
-            </Text>
-          ) : null}
+          {capture.length ? <SentAttachments items={capture} onOpen={index => onOpen({ items: capture, index })} /> : null}
         </View>
       )
     }
@@ -213,10 +242,11 @@ function WorkRow({ item, running }: { item: TranscriptItem; running: boolean }) 
     case 'thinking':
       return (
         <View style={styles.step}>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} hitSlop={6} onPress={() => setOpen(value => !value)} style={styles.stepHead}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} hitSlop={8} onPress={() => setOpen(value => !value)} style={styles.stepHead}>
             <Feather color={t.muted} name={open ? 'chevron-down' : 'chevron-right'} size={15} />
-            <Text numberOfLines={open ? undefined : 1} style={[type.small, styles.fill, { color: t.muted }]}>
-              {open ? 'Thought' : item.text.replace(/\s+/g, ' ').trim()}
+            <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+              <Text style={{ fontWeight: '600' }}>Thought</Text>
+              {open ? '' : `  ${item.text.replace(/\s+/g, ' ').trim()}`}
             </Text>
           </Pressable>
           {open ? <Markdown muted text={item.text} /> : null}
@@ -224,7 +254,7 @@ function WorkRow({ item, running }: { item: TranscriptItem; running: boolean }) 
       )
 
     case 'assistant':
-      return <Markdown text={item.text} />
+      return <Answer onOpen={onOpen} streaming={running} text={item.text} />
 
     case 'notice':
       return <Text style={[type.small, { color: item.tone === 'error' ? t.red : t.muted }]}>{item.text}</Text>
@@ -246,5 +276,5 @@ const styles = StyleSheet.create({
   work: { gap: space.md },
   step: { gap: space.sm },
   stepHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
-  output: { padding: space.md, borderRadius: radius.sm }
+  dim: { opacity: 0.55 }
 })

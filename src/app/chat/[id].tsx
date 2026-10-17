@@ -22,6 +22,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { Answer } from '@/components/answer'
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
@@ -49,7 +50,6 @@ import { type Attachment, sentAttachment, type SentAttachment } from '@/core/att
 import { BOT_CHAT_TITLE } from '@/core/bots'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
-import { answerFiles } from '@/core/host-files'
 import { modelLabel } from '@/core/models'
 import { screenWork } from '@/core/screen'
 import { finalAnswerKeys, hasToolDetail } from '@/core/tools'
@@ -73,7 +73,6 @@ import {
 } from '@/store/chat'
 import { $bots, loadBots } from '@/store/bots'
 import { $previews } from '@/store/browser'
-import { hostFilesThatExist } from '@/store/preview'
 import { unwatchBackground, watchBackground } from '@/store/background'
 import { $linkState } from '@/store/link'
 import { type AgentRequest, answerInOwnWords } from '@/core/requests'
@@ -701,44 +700,6 @@ const DELIVERY_LABEL: Record<Delivery, string> = {
   dropped: 'Not sent. The turn was stopped first.'
 }
 
-/**
- * The words of the agent. A file on the host that the words name shows under
- * them as a picture or a file row, because a host path opens nothing on a
- * phone. The text is read for paths only when it is complete.
- */
-function Answer({ text, streaming, onOpen }: { text: string; streaming: boolean; onOpen: (target: ViewerTarget) => void }) {
-  const shown = useMemo(() => (streaming ? { text, files: [] } : answerFiles(text)), [streaming, text])
-  // A row shows only for a file that is on the host: the agent can name a path it never wrote.
-  const [files, setFiles] = useState<SentAttachment[]>([])
-
-  useEffect(() => {
-    if (!shown.files.length) {
-      return
-    }
-
-    let cancelled = false
-
-    hostFilesThatExist(shown.files)
-      .then(found => !cancelled && setFiles(found))
-      .catch(() => undefined)
-
-    return () => {
-      cancelled = true
-    }
-  }, [shown.files])
-
-  if (!shown.files.length || !files.length) {
-    return <Markdown text={shown.text} />
-  }
-
-  return (
-    <View style={styles.answerFiles}>
-      <Markdown text={shown.text} />
-      <SentAttachments items={files} onOpen={index => onOpen({ items: files, index })} />
-    </View>
-  )
-}
-
 /** The sign of a running turn, under the last message: the animated mark and what the agent does now. */
 function Working({ status }: { status: string | null }) {
   const t = useTheme()
@@ -1032,7 +993,6 @@ const styles = StyleSheet.create({
   },
   pillText: { fontWeight: '600', flexShrink: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  answerFiles: { gap: space.sm },
   working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   statusText: { flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },

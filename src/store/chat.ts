@@ -696,7 +696,7 @@ const storedMessages = new Map<string, Promise<{ role?: string; tool_call_id?: s
  * The output of a tool call from stored history. `session.resume` leaves it
  * out to keep the first paint small; the REST messages route has it.
  */
-export async function loadToolOutput(storedId: string, toolId: string): Promise<string | undefined> {
+export async function loadToolOutput(storedId: string, toolId: string, profile?: string): Promise<string | undefined> {
   const api = currentApi()
 
   if (!api) {
@@ -709,7 +709,8 @@ export async function loadToolOutput(storedId: string, toolId: string): Promise<
     pending = api
       .request<{ messages?: { role?: string; tool_call_id?: string | null; content?: unknown }[] }>({
         path: `/api/sessions/${encodeURIComponent(storedId)}/messages`,
-        profile: Object.values($conversations.get()).find(conversation => conversation?.storedId === storedId)?.profile
+        // A session that is not open as a chat (the work of a bot for a group) names its profile itself.
+        profile: profile ?? Object.values($conversations.get()).find(conversation => conversation?.storedId === storedId)?.profile
       })
       .then(result => result.messages ?? [])
     storedMessages.set(storedId, pending)

@@ -20,15 +20,15 @@ export interface ToolTarget extends ToolDetail {
 }
 
 /** One tool call, opened: what the agent asked for, what changed, and what came back. */
-export function ToolSheet({ tool, storedId, onClose }: { tool: ToolTarget | null; storedId: string | undefined; onClose: () => void }) {
+export function ToolSheet({ tool, storedId, profile, onClose }: { tool: ToolTarget | null; storedId: string | undefined; /** The bot of the session, when the session is not open as a chat. */ profile?: string; onClose: () => void }) {
   if (!tool) {
     return null
   }
 
-  return <Sheet key={tool.toolId} onClose={onClose} storedId={storedId} tool={tool} />
+  return <Sheet key={tool.toolId} onClose={onClose} profile={profile} storedId={storedId} tool={tool} />
 }
 
-function Sheet({ tool, storedId, onClose }: { tool: ToolTarget; storedId: string | undefined; onClose: () => void }) {
+function Sheet({ tool, storedId, profile, onClose }: { tool: ToolTarget; storedId: string | undefined; profile?: string; onClose: () => void }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [fetched, setFetched] = useState<string | null>(null)
@@ -63,7 +63,7 @@ function Sheet({ tool, storedId, onClose }: { tool: ToolTarget; storedId: string
 
     let cancelled = false
 
-    loadToolOutput(storedId, tool.toolId)
+    loadToolOutput(storedId, tool.toolId, profile)
       .then(text => !cancelled && setFetched(text ?? null))
       .catch(() => undefined)
       .finally(() => !cancelled && setLoading(false))
@@ -71,7 +71,7 @@ function Sheet({ tool, storedId, onClose }: { tool: ToolTarget; storedId: string
     return () => {
       cancelled = true
     }
-  }, [missing, storedId, tool.toolId])
+  }, [missing, storedId, tool.toolId, profile])
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible>
