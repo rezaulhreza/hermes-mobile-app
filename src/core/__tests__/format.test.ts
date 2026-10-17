@@ -1,6 +1,16 @@
 import { duration, fileSize, headLines, previewLine, relativeTime, statusWords } from '../format'
 
 describe('previewLine', () => {
+  it('shows words, not the marks of Markdown', () => {
+    expect(previewLine('**Load Test** The bridge was *two* years older')).toBe('Load Test The bridge was two years older')
+    expect(previewLine('## Plan\n\n- first `step`\n- second\n\n> a quote\n1. one')).toBe('Plan first step second a quote one')
+    expect(previewLine('see [the page](https://h.example/a) and ~~not~~ this\n---\nend')).toBe('see the page and not this end')
+    // The host cut the preview in the middle of a mark.
+    expect(previewLine('Saved. **Skill: teach')).toBe('Saved. Skill: teach')
+    // Not Markdown: a sum, a path with a star, a name with a line under it.
+    expect(previewLine('2 * 3 * 4 and src/*.ts and my_file_name')).toBe('2 * 3 * 4 and src/*.ts and my_file_name')
+  })
+
   it('removes terminal prompt glyphs and box drawing from pasted output', () => {
     expect(previewLine('\u256D\u2500 \uE0B6 \uF115 ~/Developer \uE0B4\u2500\u2500\u2500\u2500\u256E\n  NameError: CASES')).toBe('~/Developer NameError: CASES')
   })

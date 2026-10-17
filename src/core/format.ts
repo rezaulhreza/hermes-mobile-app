@@ -63,9 +63,30 @@ export function fileSize(bytes: number): string {
 // decoration from pasted terminal output that a phone font cannot draw.
 const TERMINAL_DECORATION = /[\uE000-\uF8FF\u2500-\u259F]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g
 
-/** One readable line for a list row, from text that may be pasted terminal output. */
+/**
+ * A text without the marks of Markdown: a row of a list shows words, and it
+ * does not draw Markdown. The text can be cut in the middle (the host cuts a
+ * preview), so a mark with no partner goes too.
+ */
+function withoutMarkdown(text: string): string {
+  return (
+    text
+      .replace(/```[\w-]*/g, ' ')
+      // A link and a picture: their words.
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      // At the start of a line: a heading, a quote, a list, a rule.
+      .replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-*+]|\d+[.)])[ \t]+/gm, '')
+      .replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, ' ')
+      .replace(/\*\*|~~/g, '')
+      // One star around words. A star with a space beside it is a sign of its own ("2 * 3").
+      .replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=[\s).,;:!?]|$)/g, '$1$2')
+      .replace(/`/g, '')
+  )
+}
+
+/** One readable line for a list row, from text that may be Markdown or pasted terminal output. */
 export function previewLine(text: string): string {
-  return text.replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim()
+  return withoutMarkdown(text).replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim()
 }
 
 /** The first lines of a long text, and how many lines were left out. */

@@ -6,6 +6,7 @@
  */
 
 import type { ProfileRow } from './gateway/gateway-contract.generated'
+import { previewLine } from './format'
 import type { LiveState } from './sessions'
 
 /** The title the host gives the one long conversation of a bot. It is plumbing: a person sees the bot's name. */
@@ -95,7 +96,7 @@ export function botRows(profiles: readonly ProfileRow[], nowS: number): Bot[] {
         chatId: chat?.resolved_id || chat?.id || null,
         chatRoot: chat?.id || null,
         chatCount: chat?.live_message_count ?? chat?.message_count ?? 0,
-        preview: (chat?.preview ?? row.last_session?.preview ?? '').replace(/\s+/g, ' ').trim(),
+        preview: previewLine(chat?.preview ?? row.last_session?.preview ?? ''),
         lastActive: Math.max(chat?.last_active ?? 0, row.last_session?.last_active ?? 0, workerAt),
         working: workerAt > 0 && nowS - workerAt < WORKING_WINDOW_S,
         skillCount: row.skill_count ?? 0,
