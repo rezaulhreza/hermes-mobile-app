@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -12,7 +12,7 @@ import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
-import { roomAnswerLine, roomChoices, roomMentionParts, type RoomTarget, roomTargets, typedMention } from '@/core/mentions'
+import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
@@ -42,6 +42,8 @@ export default function RoomScreen() {
   const working = useStore($roomWorking) === id
   const [draft, setDraft] = useState('')
   const targets = useMemo(() => (room ? roomTargets(room, byName) : []), [room, byName])
+  // One function for every row: a row is drawn again only when its text changes.
+  const marked = useCallback((text: string) => roomMentionParts(text, targets), [targets])
   const typed = typedMention(draft)
   const choices = typed === null ? [] : roomChoices(targets, typed)
   const answerLine = roomAnswerLine(draft, targets)
@@ -159,7 +161,7 @@ export default function RoomScreen() {
           initialNumToRender={10}
           inverted={newestFirst.length > 0}
           keyExtractor={message => message.id}
-          renderItem={({ item }) => <Message bot={byName.get(item.from)} message={item} targets={targets} />}
+          renderItem={({ item }) => <Message bot={byName.get(item.from)} marked={marked} message={item} />}
           windowSize={7}
         />
       )}
@@ -216,14 +218,14 @@ export default function RoomScreen() {
   )
 }
 
-function Message({ message, bot, targets }: { message: RoomMessage; bot?: Bot; targets: readonly RoomTarget[] }) {
+function Message({ message, bot, marked }: { message: RoomMessage; bot?: Bot; marked: (text: string) => TextPart[] }) {
   const t = useTheme()
 
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
         <Text style={[type.body, { color: t.ink }]}>
-          <MentionText parts={roomMentionParts(message.text, targets)} />
+          <MentionText parts={marked(message.text)} />
         </Text>
       </View>
     )
@@ -237,7 +239,7 @@ function Message({ message, bot, targets }: { message: RoomMessage; bot?: Bot; t
           <Text style={{ color: t.ink, fontWeight: '700' }}>{bot?.title ?? message.from}</Text>
           {message.at ? `  ${relativeTime(message.at / 1000)}` : ''}
         </Text>
-        <Markdown text={message.text} />
+        <Markdown mentions={marked} text={message.text} />
       </View>
     </View>
   )

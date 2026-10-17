@@ -1,35 +1,45 @@
-import { memo, useMemo, useState } from 'react'
+import { createContext, memo, useContext, useMemo, useState } from 'react'
 import { Image, Linking, ScrollView, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native'
 
 import { type CodeTokenKind, highlightCode } from '@/core/highlight'
 import { type Block, columnWidths, parseMarkdown, type Span } from '@/core/markdown'
+import type { TextPart } from '@/core/mentions'
 import { answerSources, cardLines } from '@/core/sources'
 import { fade, MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { DraftCard } from './draft-card'
 import { InfoCardView } from './info-card'
+import { MentionText } from './mention-text'
 import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
 
+/** Splits the words of an answer into plain text and the mentions that reach a bot. */
+type MentionSplit = (text: string) => readonly TextPart[]
+
+const Mentions = createContext<MentionSplit | null>(null)
+
 /**
  * An answer, drawn from its Markdown. The parse runs again on every streamed
  * delta, so it is memoised on the text and the blocks are keyed by position:
- * while an answer streams, only its last block changes.
+ * while an answer streams, only its last block changes. With `mentions`, the
+ * names of bots in its words have the colour of a mention. Code keeps its own.
  */
-export const Markdown = memo(function Markdown({ text, muted = false }: { text: string; muted?: boolean }) {
+export const Markdown = memo(function Markdown({ text, muted = false, mentions = null }: { text: string; muted?: boolean; mentions?: MentionSplit | null }) {
   const blocks = useMemo(() => parseMarkdown(text), [text])
   // The address of the source that was tapped, while the list of sources is up.
   const [source, setSource] = useState<string | null>(null)
 
   return (
     <OpenSource.Provider value={setSource}>
-      <View style={styles.blocks}>
-        {blocks.map((block, index) => (
-          <BlockView after={blocks[index - 1]?.kind} block={block} key={index} muted={muted} />
-        ))}
-      </View>
+      <Mentions.Provider value={mentions}>
+        <View style={styles.blocks}>
+          {blocks.map((block, index) => (
+            <BlockView after={blocks[index - 1]?.kind} block={block} key={index} muted={muted} />
+          ))}
+        </View>
+      </Mentions.Provider>
       {source ? <SourcesSheet at={source} onClose={() => setSource(null)} sources={answerSources(blocks)} /> : null}
     </OpenSource.Provider>
   )
@@ -164,23 +174,25 @@ function Table({ table, colour }: { table: Extract<Block, { kind: 'table' }>; co
 
 function Spans({ spans }: { spans: readonly Span[] }) {
   const t = useTheme()
+  const split = useContext(Mentions)
+  const words = (text: string, key?: number) => (split ? <MentionText key={key} parts={split(text)} /> : text)
 
   return (
     <>
       {spans.map((span, index) => {
         switch (span.kind) {
           case 'text':
-            return span.text
+            return words(span.text, index)
           case 'strong':
             return (
               <Text key={index} style={styles.strong}>
-                {span.text}
+                {words(span.text)}
               </Text>
             )
           case 'em':
             return (
               <Text key={index} style={styles.em}>
-                {span.text}
+                {words(span.text)}
               </Text>
             )
           case 'code':
