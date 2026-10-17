@@ -270,30 +270,78 @@ def _following(room_id: str) -> bool:
         return room_id in _followers
 
 
-def _round(engine_id: str) -> list[dict]:
-    """The turns of the round that runs, or that ran last: which bot works, which one waits, which
-    one is done. In the order the engine gave them out.
+def _round(engine_id: str, state: Optional[dict] = None) -> dict:
+    """The round that runs, or that ran last: its turns (which bot works, which one waits, which one
+    is done, and how each one ended), what the engine waits for from the user, and why the round
+    ended. The turns are in the order the engine gave them out.
 
     No RPC of the gateway names the bot of a turn (``groups.state`` gives counts only), so this
-    reads the task list of the engine, and reads only. IF A HERMES UPDATE MOVES IT: the list is
-    empty, and the phone says "The bots answer in turn" as it did before. See LEDGER.md."""
+    reads the task list of the engine, and reads only. IF A HERMES UPDATE MOVES IT: there is no
+    turn, and the phone says "The bots answer in turn" as it did before. See LEDGER.md."""
+    empty = {"round": [], "actions": [], "round_end": None}
     try:
         from gateway.hosted_room_driver import list_tasks
         from gateway.hosted_rooms import default_db_path
 
         tasks = [task for task in list_tasks(default_db_path(), room_id=engine_id) if isinstance(task.get("payload"), dict)]
         if not tasks:
-            return []
+            return empty
         # A message of the user starts a discussion. Its turns name the place of that message in the log.
         last = str(tasks[-1]["payload"].get("source_event_seq"))
+        mine = [task for task in tasks if str(task["payload"].get("source_event_seq")) == last]
+        ends, end = _turn_ends(engine_id, int(last or 0))
         ms = lambda at: int(float(at) * 1000) if at else 0  # noqa: E731
-        return [
-            {"member": str(task["payload"].get("target_member_id") or ""), "status": str(task.get("status") or ""),
-             "started_at": ms(task.get("started_at")), "ended_at": ms(task.get("terminal_at"))}
-            for task in tasks if str(task["payload"].get("source_event_seq")) == last]
+        turns = []
+        for task in mine:
+            task_id = str(task["identity"].task_id)
+            turns.append({
+                "task_id": task_id, "member": str(task["payload"].get("target_member_id") or ""), "status": str(task.get("status") or ""),
+                "started_at": ms(task.get("started_at")), "ended_at": ms(task.get("terminal_at")), **ends.get(task_id, {})})
+        members = {turn["task_id"]: turn["member"] for turn in turns}
+        actions = []
+        for action in ((state or {}).get("driver_status") or {}).get("pending_actions") or []:
+            if not isinstance(action, dict) or str(action.get("task_id") or "") not in members:
+                continue
+            task_id = str(action["task_id"])
+            if action.get("kind") == "retry":
+                actions.append({"kind": "retry", "task_id": task_id, "member": members[task_id]})
+            elif action.get("kind") == "approval" and action.get("request_id"):
+                approval = action.get("approval") if isinstance(action.get("approval"), dict) else {}
+                asks = str(approval.get("description") or approval.get("command") or approval.get("message") or "").strip()
+                actions.append({
+                    "kind": "approval", "task_id": task_id, "member": str(action.get("member_id") or members[task_id]),
+                    "request_id": str(action["request_id"]), "execution_generation": int(action.get("execution_generation") or 0),
+                    "asks": asks[:600]})
+        return {"round": turns, "actions": actions, "round_end": end}
     except Exception:  # noqa: BLE001 - the room is readable without it
         logger.debug("group-rooms: the turns of %s cannot be read", engine_id, exc_info=True)
-        return []
+        return empty
+
+
+def _turn_ends(engine_id: str, source_seq: int) -> tuple[dict[str, dict], Optional[dict]]:
+    """How each turn of a discussion ended, by its task, and how the discussion ended: from the log
+    of the engine after the message that started it."""
+    ends: dict[str, dict] = {}
+    end, cursor = None, max(0, source_seq - 1)
+    while True:
+        page = _rpc("groups.log", {"room_id": engine_id, "since_seq": cursor, "limit": 200})
+        for event in page.get("events") or []:
+            payload = event.get("payload") if isinstance(event, dict) else None
+            if not isinstance(payload, dict):
+                continue
+            kind, task_id = str(event.get("kind") or ""), str(payload.get("task_id") or "")
+            if kind == "turn.settled" and task_id:
+                ends[task_id] = {"passed": bool(payload.get("passed"))}
+            elif kind in ("turn.failed", "turn.cancelled") and task_id:
+                ends[task_id] = {"reason": str(payload.get("reason_code") or payload.get("reason") or "")[:64], "error": str(payload.get("error") or "")[:300]}
+            elif kind == "room.activity" and int(event.get("seq") or 0) > source_seq:
+                end = {"status": str(payload.get("status") or ""), "reason": str(payload.get("reason_code") or "")}
+            elif kind == "message.user" and int(event.get("seq") or 0) > source_seq:
+                end = None  # A later message of the user: its discussion has no end yet.
+        moved = int(page.get("cursor") or 0)
+        if not page.get("has_more") or moved <= cursor:
+            return ends, end
+        cursor = moved
 
 
 def _engine_state(engine_id: str) -> Optional[dict]:
@@ -367,7 +415,7 @@ def read_room(room_id: str) -> dict:
                 record, _revision, _profiles = _read()
         # Between two members the engine rests for a moment: the follower says that the round goes on.
         shown = _shown(key, record["rooms"][_key(record, room_id)], working or _following(room_id))
-        return {**shown, "round": _round(engine_id) if state is not None else []}
+        return {**shown, **(_round(engine_id, state) if state is not None else {"round": [], "actions": [], "round_end": None})}
     return _guard(work)
 
 
@@ -527,6 +575,45 @@ def post_message(room_id: str, body: NewMessage) -> dict:
         sent = _rpc("groups.send", {"room_id": found["engine_id"], "event_id": message_id, "payload": {"text": text, "thread_id": re.sub(r"[^A-Za-z0-9._:-]+", "-", found["thread"])}})
         _follow(room_id, found["engine_id"], int((sent.get("event") or {}).get("seq") or 0))
         return shown
+    return _guard(work)
+
+
+class Approval(BaseModel):
+    task_id: str
+    member: str
+    request_id: str
+    execution_generation: int
+    # "once" lets the bot do what it asks for, this one time. "deny" refuses it.
+    choice: str
+
+
+def _engine_of(room_id: str) -> str:
+    record, _revision, _profiles = _read()
+    return _engine_id(record["rooms"][_key(record, room_id)])
+
+
+@router.post("/rooms/{room_id}/turns/{task_id}/retry")
+def retry_turn(room_id: str, task_id: str) -> dict:
+    """Run again a turn of which the engine does not know the end."""
+    def work():
+        engine_id = _engine_of(room_id)
+        _rpc("groups.retry", {"room_id": engine_id, "task_id": task_id})
+        _follow(room_id, engine_id, max(0, int((_rpc("groups.state", {"room_id": engine_id}).get("room") or {}).get("latest_seq") or 0) - 1))
+        return {"ok": True}
+    return _guard(work)
+
+
+@router.post("/rooms/{room_id}/approvals")
+def answer_approval(room_id: str, body: Approval) -> dict:
+    """Answer a bot that waits for a yes of the user before it does something."""
+    if body.choice not in ("once", "deny"):
+        raise HTTPException(status_code=400, detail="The answer is once or deny.")
+
+    def work():
+        _rpc("groups.approve", {
+            "room_id": _engine_of(room_id), "member_id": body.member, "task_id": body.task_id,
+            "execution_generation": body.execution_generation, "request_id": body.request_id, "choice": body.choice})
+        return {"ok": True}
     return _guard(work)
 
 

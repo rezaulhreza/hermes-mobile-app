@@ -8,7 +8,7 @@
 import { atom } from 'nanostores'
 
 import { type Room, roomRow, withRoom } from '@/core/bots'
-import { roundTurns, type Turn } from '@/core/rounds'
+import { NO_ROUND, type Round, type RoundAction, roundOf } from '@/core/rounds'
 
 import { $rooms } from './bots'
 import { currentApi } from './link'
@@ -20,8 +20,8 @@ const POLL_MS = 2000
 export const $roomsWritable = atom<boolean | null>(null)
 /** The id of the room in which the bots answer now. */
 export const $roomWorking = atom<string | null>(null)
-/** The turns of the round in the room on screen: which bot works, which one waits. Empty when the host gives none. */
-export const $roomRound = atom<Turn[]>([])
+/** The round in the room on screen: which bot works, which one waits, and what waits for the user. No turn when the host gives none. */
+export const $roomRound = atom<Round>(NO_ROUND)
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let watched: string | null = null
@@ -50,7 +50,7 @@ function take(answer: unknown): Room {
 
   // Only a read of the room has the turns. An answer to a write must not empty the list.
   if (watched === room.id && Array.isArray((answer as { round?: unknown }).round)) {
-    $roomRound.set(roundTurns(answer))
+    $roomRound.set(roundOf(answer))
   }
 
   if ((answer as { working?: unknown }).working === true) {
@@ -99,7 +99,7 @@ export function watchRoom(id: string): void {
 export function unwatchRoom(): void {
   watched = null
   $roomWorking.set(null)
-  $roomRound.set([])
+  $roomRound.set(NO_ROUND)
 
   if (timer) {
     clearTimeout(timer)
@@ -113,7 +113,7 @@ export async function sendToRoom(id: string, text: string, thread: string | null
   const key = `p${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
   // The turns on screen are of the message before this one.
-  $roomRound.set([])
+  $roomRound.set(NO_ROUND)
   take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key, ...(thread ? { thread } : { fresh: true }) }, timeoutMs: 60_000 }))
 
   if (watched === id && !timer) {
@@ -130,6 +130,26 @@ export async function readFullMessage(id: string, messageId: string): Promise<st
   }
 
   return answer.text
+}
+
+/** Run again a turn of which the engine does not know the end, and follow the room while the bot works. */
+export async function retryTurn(id: string, taskId: string): Promise<void> {
+  await api().request({ path: `${at(id)}/turns/${encodeURIComponent(taskId)}/retry`, method: 'POST' })
+  await readRoom(id)
+
+  if (watched === id && !timer) {
+    again(id)
+  }
+}
+
+/** Answer a bot that waits for a yes before it does something: this one time, or no. */
+export async function answerApproval(id: string, action: Extract<RoundAction, { kind: 'approval' }>, choice: 'once' | 'deny'): Promise<void> {
+  await api().request({
+    path: `${at(id)}/approvals`,
+    method: 'POST',
+    body: { task_id: action.taskId, member: action.member, request_id: action.requestId, execution_generation: action.generation, choice }
+  })
+  await readRoom(id)
 }
 
 export async function stopRoom(id: string): Promise<void> {

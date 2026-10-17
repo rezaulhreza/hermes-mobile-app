@@ -17,7 +17,7 @@ import { currentThread, type ThreadRow, threadRows, threadTitle } from '@/core/t
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomRound, $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, readFullMessage, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readFullMessage, retryTurn, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -49,7 +49,7 @@ export default function RoomScreen() {
 
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
-  const turns = useStore($roomRound)
+  const round = useStore($roomRound)
   const [draft, setDraft] = useState('')
   const field = useRef<TextInput>(null)
   // The thread the user chose for the next message, or a new thread (null). No choice: the newest thread while it is recent.
@@ -253,7 +253,7 @@ export default function RoomScreen() {
               ))}
             </View>
           ) : null}
-          <RoomActivity bots={byName} turns={turns} working={working} />
+          <RoomActivity bots={byName} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} round={round} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           {thread ? (
