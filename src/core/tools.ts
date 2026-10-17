@@ -177,7 +177,7 @@ export function finalAnswerKeys(items: readonly { kind: string; key: string; str
     const next = items.slice(index + 1).find(other => other.kind !== 'notice' && other.kind !== 'output')
 
     // The last row of a turn in flight can still grow into more work.
-    if (next ? next.kind === 'user' : !running) {
+    if (next ? next.kind === 'user' || next.kind === 'arrival' : !running) {
       keys.add(item.key)
     }
   })

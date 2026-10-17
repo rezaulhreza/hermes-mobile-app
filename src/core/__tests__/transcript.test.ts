@@ -12,7 +12,7 @@ const run = (events: unknown[], start = EMPTY_TRANSCRIPT) =>
   events.reduce<typeof EMPTY_TRANSCRIPT>((t, e) => reduceTranscript(t, e as GatewayEvent), start)
 
 const delta = (text: string) => ({ type: 'message.delta', payload: { text } })
-const shape = (t: typeof EMPTY_TRANSCRIPT) => t.items.map(i => (i.kind === 'tool' ? `tool:${i.name}:${i.state}` : `${i.kind}:${i.text}`))
+const shape = (t: typeof EMPTY_TRANSCRIPT) => t.items.map(i => (i.kind === 'tool' ? `tool:${i.name}:${i.state}` : i.kind === 'arrival' ? `arrival:${i.arrival.kind}` : `${i.kind}:${i.text}`))
 
 describe('transcript', () => {
   it('joins streamed deltas into one assistant message and settles it on complete', () => {

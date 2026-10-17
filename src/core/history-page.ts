@@ -25,6 +25,8 @@ export interface StoredMessage {
   /** What to show in the place of `content`, when the host made one (a summary of compacted history, a steer). */
   display_content?: unknown
   display_kind?: string | null
+  /** With `display_kind`: the short line the host wrote for a screen, in `display_text`. */
+  display_metadata?: unknown
   tool_calls?: unknown
   tool_call_id?: string | null
   tool_name?: string | null
@@ -165,7 +167,7 @@ export function pageMessages(rows: readonly StoredMessage[]): TranscriptMessage[
     }
 
     if (text.trim()) {
-      messages.push({ role, text, ...(typeof row.id === 'number' ? { row_id: row.id } : {}) })
+      messages.push({ role, text, ...(typeof row.id === 'number' ? { row_id: row.id } : {}), ...(row.display_metadata ? { display_metadata: row.display_metadata } : {}) })
     }
   }
 

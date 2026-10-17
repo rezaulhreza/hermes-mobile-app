@@ -7,6 +7,7 @@
  * `message.complete` that settles the turn.
  */
 
+import { type Arrival, arrivalOf } from './arrivals'
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
 import { type ToolDetail, toolDetail, toolInput, toolOutput, toolPicture } from './tools'
@@ -23,6 +24,8 @@ export type Delivery = 'queued' | 'steered' | 'redirected' | 'dropped'
 
 export type TranscriptItem =
   | { kind: 'user'; key: string; text: string; delivery?: Delivery; attached?: SentAttachment[] }
+  /** What the bot was given and the user did not write: the message of another bot, a schedule, the end of a background task. */
+  | { kind: 'arrival'; key: string; arrival: Arrival }
   | { kind: 'assistant'; key: string; text: string; streaming: boolean }
   | { kind: 'thinking'; key: string; text: string; streaming: boolean }
   | ({ kind: 'tool'; key: string; toolId: string; name: string; detail: string; state: 'running' | 'done'; durationS?: number } & ToolDetail)
@@ -52,7 +55,11 @@ export function transcriptFromHistory(
   for (const message of messages) {
     const text = messageText(message)
 
-    if (message.role === 'user' && text) {
+    const arrival = message.role === 'user' && text ? arrivalOf(text, displayText(message)) : null
+
+    if (arrival) {
+      transcript = push(transcript, key => ({ kind: 'arrival', key, arrival }))
+    } else if (message.role === 'user' && text) {
       const stored = splitStoredPrompt(text)
       const files = stored.attached.length ? { attached: stored.attached } : {}
 
@@ -326,6 +333,13 @@ function push(transcript: Transcript, make: (key: string) => TranscriptItem): Tr
     items: [...transcript.items, make(`i${transcript.nextKey}`)],
     nextKey: transcript.nextKey + 1
   }
+}
+
+/** The short line the host wrote for a screen, for a message that is not the words of the user. */
+function displayText(message: TranscriptMessage): string | null {
+  const line = (message.display_metadata as { display_text?: unknown } | null | undefined)?.display_text
+
+  return typeof line === 'string' ? line : null
 }
 
 function messageText(message: TranscriptMessage): string {

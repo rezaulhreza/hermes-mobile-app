@@ -23,6 +23,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Answer } from '@/components/answer'
+import { ArrivalRow } from '@/components/arrival'
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
@@ -277,7 +278,9 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   }, [linkState])
   const [botOpen, setBotOpen] = useState(false)
   // The one long conversation of the bot. The host finds it by its title, so the phone must not rename or remove it.
-  const botChat = bot && (!conversation?.title || conversation.title === BOT_CHAT_TITLE) ? bot : null
+  // "Bot Chat" is the name the host gives the chat of every bot, the main bot too: a person reads the name of the bot.
+  const titled = conversation?.title === BOT_CHAT_TITLE ? bots?.find(known => (params.profile ? known.name === params.profile : known.isDefault)) : undefined
+  const botChat = bot && !conversation?.title ? bot : (titled ?? null)
   // The strip is for what happens now: the agent works on the screen, or the user holds it. The user can put
   // it away; the chat's menu opens the view at any time. New screen work shows the strip again.
   const [hiddenAt, setHiddenAt] = useState<number | null>(null)
@@ -804,6 +807,9 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
           {item.delivery ? <Text style={[type.small, { color: t.muted }]}>{DELIVERY_LABEL[item.delivery]}</Text> : null}
         </View>
       )
+
+    case 'arrival':
+      return <ArrivalRow arrival={item.arrival} mentions={named} />
 
     case 'assistant':
       return final ? (
