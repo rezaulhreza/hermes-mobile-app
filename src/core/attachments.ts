@@ -40,6 +40,8 @@ export interface Attachment {
 /** An attachment as a sent message shows it. A message from stored history has the name only. */
 export interface SentAttachment {
   name: string
+  /** What a person reads in the place of the name, for a file whose name says nothing ("Pasted content"). */
+  title?: string
   kind: AttachmentKind
   /** The copy on the phone. A message sent from this phone, in this run of the app, has one. */
   uri?: string
@@ -224,7 +226,8 @@ const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$
 /**
  * A stored user message, as the user wrote it: the words, and the names of
  * the files that went with them. The app sends each attachment as a line of
- * its own under the words (see `promptWithAttachments`), so only such lines
+ * its own under the words (see `promptWithAttachments`), and the desktop app
+ * puts its lines over the words, so only such lines at one of the two ends
  * count. A reference inside a sentence stays in the sentence.
  */
 export function splitStoredPrompt(stored: string): { text: string; attached: SentAttachment[] } {
@@ -238,10 +241,7 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
     const held = HELD_LINE.exec(line)
 
     if (ref) {
-      const path = ref[2] ?? ref[3] ?? ref[4] ?? ref[5]
-      const name = path.split('/').pop() ?? ''
-
-      attached.unshift({ name, kind: ref[1] === 'image' ? 'image' : attachmentKind({ name }), path })
+      attached.unshift(referred(ref))
     } else if (PICTURE_MARK.test(line)) {
       // Nothing to show for it.
     } else if (held) {
@@ -253,5 +253,30 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
     lines.pop()
   }
 
-  return { text: lines.join('\n').trim(), attached }
+  // The desktop app: the files first, then the words.
+  const over: SentAttachment[] = []
+
+  while (lines.length) {
+    const line = lines[0].trim()
+    const ref = REF_LINE.exec(line)
+
+    if (ref) {
+      over.push(referred(ref))
+    } else if (line) {
+      break
+    }
+
+    lines.shift()
+  }
+
+  return { text: lines.join('\n').trim(), attached: [...over, ...attached] }
+}
+
+/** The file of a reference line. A text the desktop app saved from a long paste has the name the desktop app shows for it. */
+function referred(ref: RegExpExecArray): SentAttachment {
+  const path = ref[2] ?? ref[3] ?? ref[4] ?? ref[5]
+  const name = path.split('/').pop() ?? ''
+  const title = /^pasted_content_.*\.txt$/.test(name) ? { title: 'Pasted content' } : {}
+
+  return { name, ...title, kind: ref[1] === 'image' ? 'image' : attachmentKind({ name }), path }
 }

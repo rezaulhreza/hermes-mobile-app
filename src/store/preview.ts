@@ -38,13 +38,20 @@ export async function localCopy(item: SentAttachment): Promise<string> {
     return target.uri
   }
 
+  // No `session_id`: with one, the backend reads the path inside that session's working folder and answers 404.
+  const download = (path: string) => File.downloadFileAsync(`${api.workspace.baseUrl}/api/fs/download?path=${encodeURIComponent(path)}`, target, { headers: api.workspace.headers })
+
+  // The desktop app writes the path of a file with no "/" at its start.
+  const paths = /^[/~]/.test(item.path) ? [item.path] : [item.path, `/${item.path}`]
+
   try {
-    // No `session_id`: with one, the backend reads the path inside that session's working folder and answers 404.
-    await File.downloadFileAsync(`${api.workspace.baseUrl}/api/fs/download?path=${encodeURIComponent(item.path)}`, target, {
-      headers: api.workspace.headers
-    })
+    await paths.slice(1).reduce(
+      (tried, path) => tried.catch(() => download(path)),
+      download(paths[0])
+    )
   } catch {
-    throw new Error(`Could not get ${item.name} from the Hermes host.`)
+    // A file of an old message can be gone: the user or a bot moved or deleted it after the message.
+    throw new Error(`${item.name} is not on the Hermes host any more. It was moved or deleted after this message.`)
   }
 
   return target.uri

@@ -131,7 +131,7 @@ export function SentAttachments({ items, onOpen }: { items: readonly SentAttachm
           {pictures.map((item, index) => (
             <Pressable
               accessibilityHint="Opens the picture"
-              accessibilityLabel={item.name}
+              accessibilityLabel={item.title ?? item.name}
               accessibilityRole="imagebutton"
               key={`${item.uri ?? item.path}:${index}`}
               onPress={() => onOpen(items.indexOf(item))}
@@ -144,7 +144,7 @@ export function SentAttachments({ items, onOpen }: { items: readonly SentAttachm
       {files.map((item, index) => (
         <Pressable
           accessibilityHint="Opens a preview"
-          accessibilityLabel={item.name}
+          accessibilityLabel={item.title ?? item.name}
           accessibilityRole="button"
           hitSlop={6}
           key={`${item.name}:${index}`}
@@ -153,7 +153,7 @@ export function SentAttachments({ items, onOpen }: { items: readonly SentAttachm
         >
           <Feather color={t.muted} name={GLYPH_ICON[fileGlyph(item.name, item.kind)]} size={18} />
           <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.ink, fontWeight: '600' }]}>
-            {item.name}
+            {item.title ?? item.name}
           </Text>
           {item.size ? <Text style={[type.small, { color: t.muted }]}>{fileSize(item.size)}</Text> : null}
         </Pressable>

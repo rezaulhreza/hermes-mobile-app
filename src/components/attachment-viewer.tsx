@@ -178,7 +178,7 @@ function FileSheet({ item, onClose }: { item: SentAttachment; onClose: () => voi
           <Feather color={t.muted} name={GLYPH_ICON[fileGlyph(item.name, item.kind)]} size={22} />
           <View style={styles.fill}>
             <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
-              {item.name}
+              {item.title ?? item.name}
             </Text>
             {item.size ? <Text style={[type.small, { color: t.muted }]}>{fileSize(item.size)}</Text> : null}
           </View>

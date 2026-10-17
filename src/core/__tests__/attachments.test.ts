@@ -68,6 +68,20 @@ describe('splitStoredPrompt', () => {
     })
   })
 
+  it('reads the lines the desktop app puts over the words', () => {
+    const stored = '@file:Users/me/.hermes/composer-pastes/pasted_content_2026-10-11_c8.txt\n@file:`/Users/me/my notes.md`\n\nread this\n\n--- Attached Context ---\n\n📄 @file:Users/me/x.txt (9 tokens)'
+
+    expect(splitStoredPrompt(stored)).toEqual({
+      text: 'read this',
+      attached: [
+        { name: 'pasted_content_2026-10-11_c8.txt', title: 'Pasted content', kind: 'file', path: 'Users/me/.hermes/composer-pastes/pasted_content_2026-10-11_c8.txt' },
+        { name: 'my notes.md', kind: 'file', path: '/Users/me/my notes.md' }
+      ]
+    })
+    // A message that is only a file.
+    expect(splitStoredPrompt('@file:/up/a.pdf')).toEqual({ text: '', attached: [{ name: 'a.pdf', kind: 'pdf', path: '/up/a.pdf' }] })
+  })
+
   // A picture the backend holds is stored as an `@image:` line and a `[screenshot]` line.
   it('reads the pictures of a stored message, with where they are on the host', () => {
     const stored = 'What is in here both\n@image:/h/images/upload_1.jpg\n@image:/h/images/upload_2.jpg\n[screenshot]\n[screenshot]'
