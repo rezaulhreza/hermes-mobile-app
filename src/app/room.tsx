@@ -359,7 +359,7 @@ export default function RoomScreen() {
               ref={field}
               style={[type.body, styles.input, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
             >
-              <MentionText parts={roomMentionParts(draft, targets)} />
+              <MentionText parts={roomMentionParts(draft, targets)} typed />
             </TextInput>
             {working && !draft.trim() ? (
               <IconButton icon="square" label="Stop the bots" onPress={() => void stopRoom(id).catch(error => setFault(faultWords(error)))} />

@@ -9,11 +9,26 @@
  */
 
 import type { Bot, Room } from './bots'
+import { readableName } from './capabilities'
 
-/** A piece of a text: plain words, or a mention that reaches a bot. */
+/** What a reference brings to the agent: its kind picks the icon. */
+export type ReferenceKind = 'file' | 'folder' | 'url' | 'git' | 'plugin'
+
+/**
+ * What a mention stands for, in the words a person reads: a bot, all the bots
+ * of a group, or a thing the message refers to ("@file:notes.md").
+ */
+export type MentionTarget =
+  | { kind: 'bot'; /** The name of the profile. */ name: string; title: string }
+  | { kind: 'everyone'; title: string }
+  | { kind: 'reference'; type: ReferenceKind; title: string }
+
+/** A piece of a text: plain words, or a mention that reaches something. */
 export interface TextPart {
   text: string
   mention: boolean
+  /** What the mention stands for. Absent for plain words. */
+  target?: MentionTarget
 }
 
 interface Found {
@@ -23,12 +38,15 @@ interface Found {
   token: string
 }
 
-function partsOf(text: string, found: readonly Found[], known: (token: string) => boolean): TextPart[] {
+function partsOf<F extends Found>(text: string, found: readonly F[], targetOf: (found: F) => MentionTarget | null | undefined): TextPart[] {
   const parts: TextPart[] = []
   let last = 0
 
-  for (const { start, token } of found) {
-    if (!known(token)) {
+  for (const one of found) {
+    const { start, token } = one
+    const target = start >= last ? targetOf(one) : null
+
+    if (!target) {
       continue
     }
 
@@ -37,7 +55,7 @@ function partsOf(text: string, found: readonly Found[], known: (token: string) =
     }
 
     last = start + token.length + 1
-    parts.push({ text: text.slice(start, last), mention: true })
+    parts.push({ text: text.slice(start, last), mention: true, target })
   }
 
   if (last < text.length) {
@@ -101,11 +119,80 @@ function botForms(bots: readonly Bot[], active?: string): Map<string, Bot | null
   return byForm
 }
 
-function chatMentions(text: string): Found[] {
-  // A mention inside code is code.
-  const prose = text.replace(/```[\s\S]*?```|`[^`\n]*`/g, code => ' '.repeat(code.length))
+/** The words of a message with its code blanked out: a mention inside code is code. */
+const proseOf = (text: string) => text.replace(/```[\s\S]*?```|`[^`\n]*`/g, code => ' '.repeat(code.length))
 
-  return [...prose.matchAll(/(^|\s)@([a-z0-9][a-z0-9_-]*)/gi)].map(match => ({ start: match.index + match[1].length, token: match[2] }))
+function chatMentions(text: string): Found[] {
+  return [...proseOf(text).matchAll(/(^|\s)@([a-z0-9][a-z0-9_-]*)/gi)].map(match => ({ start: match.index + match[1].length, token: match[2] }))
+}
+
+const botTarget = (bot: Bot): MentionTarget => ({ kind: 'bot', name: bot.name, title: bot.title })
+
+// --- a reference ------------------------------------------------------------------------------
+
+/** The references Hermes itself reads. Every other "@word:" belongs to a plugin of the host. */
+const BUILT_IN = ['file', 'folder', 'git', 'url']
+
+/**
+ * A reference as the host reads it (`REFERENCE_PATTERN` and
+ * `_PLUGIN_REFERENCE_PATTERN` in `agent/context_references.py`): "@diff",
+ * "@staged", or "@kind:value" where the value has no space or is in quotes.
+ */
+const REFERENCE = /(^|[^\w/])@(?:(diff|staged)\b|([a-zA-Z][a-zA-Z0-9_-]*):((?:`[^`\n]+`|"[^"\n]+"|'[^'\n]+')(?::\d+(?:-\d+)?)?|\S+))/g
+const CLOSERS: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
+
+/** A value with no quotes ends before the full stop of its sentence, and before a bracket that was opened ahead of it. */
+function withoutTail(value: string): string {
+  let kept = value.replace(/[,.;!?]+$/, '')
+
+  while (kept && CLOSERS[kept[kept.length - 1]] && kept.split(kept[kept.length - 1]).length > kept.split(CLOSERS[kept[kept.length - 1]]).length) {
+    kept = kept.slice(0, -1)
+  }
+
+  return kept
+}
+
+/** The prefixes that plugins of the host answer to, from the rows the host offers for a lone "@" ("@issue:"). */
+export function referencePlugins(rows: readonly { text: string }[]): string[] {
+  return [...new Set(rows.flatMap(row => /^@([a-z][a-z0-9_-]*):$/i.exec(row.text)?.[1].toLowerCase() ?? []))].filter(prefix => !BUILT_IN.includes(prefix))
+}
+
+/** A reference in the words a person reads: the name of the file, the site, the plugin and what it was asked for. */
+function referenceTarget(simple: string | undefined, kind: string, value: string, plugins: readonly string[]): MentionTarget | null {
+  if (simple) {
+    return { kind: 'reference', type: 'git', title: simple === 'diff' ? 'Changes' : 'Staged changes' }
+  }
+
+  const ranged = /^(.+?):(\d+)(?:-(\d+))?$/.exec(value)
+  const bare = (ranged?.[1] ?? value).replace(/^([`"'])(.+)\1$/, '$2')
+
+  switch (kind) {
+    case 'file':
+    case 'folder': {
+      const name = bare.replace(/\/+$/, '').split('/').pop() || bare
+      const lines = ranged ? (ranged[3] && ranged[3] !== ranged[2] ? `, lines ${ranged[2]} to ${ranged[3]}` : `, line ${ranged[2]}`) : ''
+
+      return { kind: 'reference', type: kind, title: name + (kind === 'file' ? lines : '') }
+    }
+
+    case 'url':
+      return { kind: 'reference', type: 'url', title: /^(?:[a-z]+:\/\/)?(?:www\.)?([^/?#]+)/i.exec(bare)?.[1] ?? bare }
+
+    case 'git':
+      return { kind: 'reference', type: 'git', title: /^\d+$/.test(bare) && bare !== '1' ? `Last ${bare} commits` : 'Last commit' }
+
+    default:
+      return plugins.includes(kind.toLowerCase()) ? { kind: 'reference', type: 'plugin', title: `${readableName(kind)}: ${bare}` } : null
+  }
+}
+
+function references(text: string, plugins: readonly string[]): (Found & { target?: MentionTarget })[] {
+  return [...proseOf(text).matchAll(REFERENCE)].flatMap(match => {
+    const value = match[4] === undefined || /^[`"']/.test(match[4]) ? match[4] : withoutTail(match[4])
+    const target = value === '' ? null : referenceTarget(match[2], match[3] ?? '', value ?? '', plugins)
+
+    return target ? [{ start: match.index + match[1].length, token: match[2] ?? `${match[3]}:${value}`, target }] : []
+  })
 }
 
 /** The bots a message names, in the order it names them. `active` is the bot of the chat: it does not name itself. */
@@ -124,11 +211,24 @@ export function mentionedBots(text: string, bots: readonly Bot[], active?: strin
   return [...named]
 }
 
-/** A message of a normal chat in its parts, for the colour of the mentions that reach a bot. */
-export function chatMentionParts(text: string, bots: readonly Bot[], active?: string): TextPart[] {
+/**
+ * A message of a normal chat in its parts: the words, the bots it names, and
+ * the things it refers to. `plugins` are the prefixes the plugins of the host
+ * answer to; without it only the references of Hermes itself count. Null: no
+ * reference counts, as in the answer of a bot, which the host does not read
+ * for them. A reference wins over a bot of the same name ("@file:a" is a file).
+ */
+export function chatMentionParts(text: string, bots: readonly Bot[], active?: string, plugins: readonly string[] | null = []): TextPart[] {
   const byForm = botForms(bots, active)
+  const referred = plugins ? references(text, plugins) : []
+  const taken = new Set(referred.map(found => found.start))
+  const found: (Found & { target?: MentionTarget })[] = [...referred, ...chatMentions(text).filter(({ start }) => !taken.has(start))].sort((a, b) => a.start - b.start)
 
-  return partsOf(text, chatMentions(text), token => Boolean(byForm.get(token.toLowerCase())))
+  return partsOf(text, found, one => {
+    const bot = byForm.get(one.token.toLowerCase())
+
+    return one.target ?? (bot ? botTarget(bot) : null)
+  })
 }
 
 const NOTE_START = '[@mentions resolved from the Bot Mode roster'
@@ -158,6 +258,8 @@ export interface MentionChoice {
   text: string
   display: string
   meta: string
+  /** The name of the profile, when the row is a bot: the row shows its picture. */
+  bot?: string
 }
 
 /** The bots to offer for the word that is being typed ("@sc"). Nothing for a word that is a file reference. */
@@ -176,7 +278,7 @@ export function botChoices(bots: readonly Bot[], word: string, active?: string):
       const tag = byForm.get(botTag(bot).toLowerCase()) === bot ? botTag(bot) : botHandle(bot)
       const matches = [tag, botHandle(bot), bot.name, bot.title].some(form => form.toLowerCase().startsWith(typed))
 
-      return matches && byForm.get(tag.toLowerCase()) === bot ? [{ text: `@${tag}`, display: `@${tag}`, meta: `Bot · ${bot.title}` }] : []
+      return matches && byForm.get(tag.toLowerCase()) === bot ? [{ text: `@${tag}`, display: bot.title, meta: `@${tag}`, bot: bot.name }] : []
     })
 }
 
@@ -241,11 +343,15 @@ function roomMentions(text: string, handles: ReadonlySet<string>): Found[] {
   })
 }
 
-/** A message of a room in its parts, for the colour of the mentions the host follows. */
+/** A message of a room in its parts: the words, and the bots the host gives the message to. */
 export function roomMentionParts(text: string, targets: readonly RoomTarget[]): TextPart[] {
-  const handles = new Set(targets.map(target => target.handle.toLowerCase()))
+  const byHandle = new Map(targets.map(target => [target.handle.toLowerCase(), target]))
 
-  return partsOf(text, roomMentions(text, handles), token => isEveryone(token) || handles.has(token.toLowerCase()))
+  return partsOf(text, roomMentions(text, new Set(byHandle.keys())), ({ token }) => {
+    const target = byHandle.get(token.toLowerCase())
+
+    return isEveryone(token) ? { kind: 'everyone', title: EVERYONE.title } : target && { kind: 'bot', name: target.name, title: target.title }
+  })
 }
 
 /**
