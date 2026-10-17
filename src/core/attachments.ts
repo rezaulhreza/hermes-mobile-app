@@ -8,6 +8,8 @@
  * - any other file is saved on the host and the prompt names it (`@file:`).
  */
 
+import { withoutMentionNote } from './mentions'
+
 export type AttachmentKind = 'image' | 'pdf' | 'file'
 
 /** A file as a picker returns it. */
@@ -226,7 +228,8 @@ const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$
  * count. A reference inside a sentence stays in the sentence.
  */
 export function splitStoredPrompt(stored: string): { text: string; attached: SentAttachment[] } {
-  const lines = stored.replace(ATTACHED_CONTEXT, '').trimEnd().split('\n')
+  // The note that says which bots a mention means is for the agent too.
+  const lines = withoutMentionNote(stored.replace(ATTACHED_CONTEXT, '')).trimEnd().split('\n')
   const attached: SentAttachment[] = []
 
   while (lines.length) {

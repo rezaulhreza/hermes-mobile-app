@@ -261,6 +261,8 @@ export interface Room {
   name: string
   /** Profile names. */
   members: string[]
+  /** What the host calls a member in a mention ("@cos-bot"), by the name of its profile. Absent: the name itself. */
+  handles: Record<string, string>
   /** The newest messages that the host has a copy of. */
   messages: RoomMessage[]
   /** Earlier messages that only the desktop app has. */
@@ -300,10 +302,13 @@ export function roomRow(key: string, value: unknown): Room | null {
       : []
   })
 
+  const members = (Array.isArray(room.members) ? room.members : []).filter((member): member is { name: string; handle?: unknown } => typeof (member as { name?: unknown })?.name === 'string')
+
   return {
     id: typeof room.roomId === 'string' ? room.roomId : typeof room.room_id === 'string' ? room.room_id : key,
     name: room.name.trim(),
-    members: (Array.isArray(room.members) ? room.members : []).flatMap(member => (typeof (member as { name?: unknown })?.name === 'string' ? [(member as { name: string }).name] : [])),
+    members: members.map(member => member.name),
+    handles: Object.fromEntries(members.flatMap(member => (typeof member.handle === 'string' && member.handle ? [[member.name, member.handle]] : []))),
     messages,
     omitted: typeof room.omitted === 'number' ? room.omitted : 0
   }
@@ -341,7 +346,7 @@ export function groupRooms(profiles: readonly ProfileRow[]): Room[] {
 
   return [
     ...made.sort((a, b) => newestAt(b) - newestAt(a)),
-    ...[...named].sort(([a], [b]) => a.localeCompare(b)).map(([name, members]): Room => ({ id: `${UNMADE_ROOM}${name}`, name, members, messages: [], omitted: 0, unmade: true }))
+    ...[...named].sort(([a], [b]) => a.localeCompare(b)).map(([name, members]): Room => ({ id: `${UNMADE_ROOM}${name}`, name, members, handles: {}, messages: [], omitted: 0, unmade: true }))
   ]
 }
 

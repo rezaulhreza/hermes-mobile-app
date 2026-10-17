@@ -129,20 +129,21 @@ describe('sections and group chats of the Bots list', () => {
 
   it('reads the group chats from the main profile', () => {
     expect(groupRooms(profiles)).toEqual([
-      { id: 'r1', name: 'Launch', members: ['default', 'qa'], omitted: 4, messages: [{ id: 'a', from: 'me', mine: true, text: 'Go', at: 10 }, { id: 'b', from: 'qa', mine: false, text: 'Done', at: 20 }] }
+      { id: 'r1', name: 'Launch', members: ['default', 'qa'], handles: {}, omitted: 4, messages: [{ id: 'a', from: 'me', mine: true, text: 'Go', at: 10 }, { id: 'b', from: 'qa', mine: false, text: 'Done', at: 20 }] }
     ])
     expect(groupRooms([{ name: 'default', is_default: true }] as never[])).toEqual([])
   })
 })
 
 describe('a room read again', () => {
-  const room = (id: string, name: string) => ({ id, name, members: [], messages: [], omitted: 0 })
+  const room = (id: string, name: string) => ({ id, name, members: [], handles: {}, messages: [], omitted: 0 })
 
   it('reads the answer of the host for one room', () => {
-    expect(roomRow('id:r1', { room_id: 'r1', name: ' Launch ', members: [{ name: 'qa' }], log: [{ id: 'a', from: { kind: 'user', name: 'You' }, text: 'Go', at: 5 }] })).toEqual({
+    expect(roomRow('id:r1', { room_id: 'r1', name: ' Launch ', members: [{ name: 'qa', handle: 'qa-bot' }], log: [{ id: 'a', from: { kind: 'user', name: 'You' }, text: 'Go', at: 5 }] })).toEqual({
       id: 'r1',
       name: 'Launch',
       members: ['qa'],
+      handles: { qa: 'qa-bot' },
       messages: [{ id: 'a', from: 'You', mine: true, text: 'Go', at: 5 }],
       omitted: 0
     })
