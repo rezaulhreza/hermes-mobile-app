@@ -13,7 +13,7 @@ import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
-import { currentThread, type ThreadRow, threadRows, threadTitle } from '@/core/threads'
+import { currentThread, shownRows, threadFolds, type ThreadRow, threadRows, threadTitle } from '@/core/threads'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
@@ -29,9 +29,11 @@ import { useTheme } from '@/theme/use-theme'
  * the names, colours the ones the host follows and says who answers. While
  * the bots answer, a strip over the field names the bot that works now.
  *
- * The messages are in threads, a topic each. A message goes on with the
- * newest thread while that one is recent, and the field says so. The user
- * can start a new thread there, or reply in any older one.
+ * The messages are in threads, a topic each, as in a forum: the first
+ * message of a thread is its topic, and its replies fold under it. The
+ * newest thread is open, an older one opens on a tap. A message goes on with
+ * the newest thread while that one is recent, and the field says so. The
+ * user can start a new thread there, or reply in any older one.
  * A host without the `group-rooms` plugin shows the record and takes no
  * message.
  */
@@ -43,9 +45,12 @@ export default function RoomScreen() {
   const linkState = useStore($linkState)
   const byName = useMemo(() => botsByAnyName(bots ?? []), [bots])
   // The list is upside down: it opens at the newest message with only the rows on screen drawn.
-  const newestFirst = useMemo(() => threadRows(room?.messages ?? []).reverse(), [room?.messages])
+  const rows = useMemo(() => threadRows(room?.messages ?? []), [room?.messages])
+  const folds = useMemo(() => threadFolds(rows), [rows])
   // A line between two threads. A room with one thread needs none.
-  const several = useMemo(() => new Set(newestFirst.map(row => row.thread)).size > 1, [newestFirst])
+  const several = useMemo(() => new Set(rows.map(row => row.thread)).size > 1, [rows])
+  // The threads the user opened or folded by hand. The others follow the rule below.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({})
 
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
@@ -56,6 +61,11 @@ export default function RoomScreen() {
   const [choice, setChoice] = useState<{ thread: string | null } | null>(null)
   const [now, setNow] = useState(Date.now)
   const thread = choice ? choice.thread : currentThread(room?.messages ?? [], now)
+
+  // The newest thread is open, and so is the thread the next message goes to. An older thread is folded to its topic.
+  const newest = rows[rows.length - 1]?.thread
+  const isOpen = useCallback((id: string) => toggled[id] ?? (id === newest || id === thread), [toggled, newest, thread])
+  const newestFirst = useMemo(() => shownRows(rows, isOpen).reverse(), [rows, isOpen])
 
   // A thread stops being "recent" while the screen is open.
   useEffect(() => {
@@ -108,6 +118,8 @@ export default function RoomScreen() {
 
       setChoice({ thread: row.thread })
       setNow(Date.now())
+      // The replies of the thread are the context of the answer: they must be in view.
+      setToggled(known => ({ ...known, [row.thread]: true }))
 
       if (handle) {
         setDraft(text => (text.includes(`@${handle}`) ? text : `@${handle} ${text}`))
@@ -200,31 +212,64 @@ export default function RoomScreen() {
           initialNumToRender={10}
           inverted={newestFirst.length > 0}
           keyExtractor={row => row.message.id}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              {item.first && several ? (
-                <View style={styles.divider}>
-                  <View style={[styles.line, { backgroundColor: t.line }]} />
-                  <Text style={[type.small, { color: t.muted }]}>{item.message.at ? relativeTime(item.message.at / 1000) : 'Earlier'}</Text>
-                  <View style={[styles.line, { backgroundColor: t.line }]} />
+          renderItem={({ item }) => {
+            const fold = item.first ? folds.get(item.thread) : undefined
+            const open = isOpen(item.thread)
+
+            return (
+              <View style={styles.row}>
+                {item.first && several ? (
+                  <View style={styles.divider}>
+                    <View style={[styles.line, { backgroundColor: t.line }]} />
+                    <Text style={[type.small, { color: t.muted }]}>{item.message.at ? relativeTime(item.message.at / 1000) : 'Earlier'}</Text>
+                    <View style={[styles.line, { backgroundColor: t.line }]} />
+                  </View>
+                ) : null}
+                {/* A reply stands in from the topic, on a line down the side of its thread. */}
+                <View style={item.first ? undefined : [styles.reply, { borderLeftColor: t.line }]}>
+                  <Message
+                    bot={byName.get(item.message.from)}
+                    // A folded thread is its topic in a few lines. The whole message comes with the replies.
+                    folded={Boolean(fold) && !open}
+                    full={full[item.message.id]}
+                    marked={marked}
+                    message={item.message}
+                    onReadAll={readAll}
+                    onReply={writable && item.known ? () => reply(item, true) : undefined}
+                  />
                 </View>
-              ) : null}
-              <Message
-                bot={byName.get(item.message.from)}
-                full={full[item.message.id]}
-                marked={marked}
-                message={item.message}
-                onReadAll={readAll}
-                onReply={writable && item.known ? () => reply(item, true) : undefined}
-              />
-              {item.last && item.known && writable && item.thread !== thread ? (
-                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => reply(item)} style={styles.replyIn}>
-                  <Feather color={t.accent} name="corner-down-right" size={14} />
-                  <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>Reply in thread</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          )}
+                {fold ? (
+                  <Pressable
+                    accessibilityLabel={`${open ? 'Hide' : 'Show'} ${fold.replies} ${fold.replies > 1 ? 'replies' : 'reply'}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: open }}
+                    hitSlop={6}
+                    onPress={() => setToggled(known => ({ ...known, [item.thread]: !open }))}
+                    style={styles.fold}
+                  >
+                    <Feather color={t.muted} name={open ? 'chevron-down' : 'chevron-right'} size={16} />
+                    {open ? null : (
+                      <View style={styles.faces}>
+                        {fold.from.map(name =>
+                          byName.get(name) ? <BotAvatar bot={byName.get(name)!} key={name} size={20} t={t} /> : <View key={name || 'you'} style={[styles.face, { backgroundColor: t.soft }]} />
+                        )}
+                      </View>
+                    )}
+                    <Text style={[type.small, { color: t.ink, fontWeight: '600' }]}>
+                      {`${open ? 'Hide ' : ''}${fold.replies} ${fold.replies > 1 ? 'replies' : 'reply'}`}
+                    </Text>
+                    {open || !fold.lastAt ? null : <Text style={[type.small, { color: t.muted }]}>last {relativeTime(fold.lastAt / 1000)}</Text>}
+                  </Pressable>
+                ) : null}
+                {item.last && item.known && writable && item.thread !== thread ? (
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => reply(item)} style={styles.replyIn}>
+                    <Feather color={t.accent} name="corner-down-right" size={14} />
+                    <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>Reply in thread</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )
+          }}
           windowSize={7}
         />
       )}
@@ -303,9 +348,13 @@ interface MessageProps {
   onReadAll: (messageId: string) => Promise<void>
   /** Reply to the bot of this message in its thread. Absent when the room takes no reply. */
   onReply?: () => void
+  /** Show the start of the message only. */
+  folded?: boolean
 }
 
-function Message({ message, bot, marked, full, onReadAll, onReply }: MessageProps) {
+const FOLDED_LINES = 4
+
+function Message({ message, bot, marked, full, onReadAll, onReply, folded = false }: MessageProps) {
   const t = useTheme()
   const [reading, setReading] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
@@ -313,7 +362,7 @@ function Message({ message, bot, marked, full, onReadAll, onReply }: MessageProp
 
   // The record of the host holds the start of a long message. The rest is one request away.
   const more =
-    message.cut && full === undefined ? (
+    message.cut && full === undefined && !folded ? (
       <Pressable
         accessibilityRole="button"
         disabled={reading}
@@ -334,7 +383,7 @@ function Message({ message, bot, marked, full, onReadAll, onReply }: MessageProp
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
-        <Text style={[type.body, { color: t.ink }]}>
+        <Text numberOfLines={folded ? FOLDED_LINES : undefined} style={[type.body, { color: t.ink }]}>
           <MentionText parts={marked(text)} />
         </Text>
         {more}
@@ -357,7 +406,13 @@ function Message({ message, bot, marked, full, onReadAll, onReply }: MessageProp
             </Pressable>
           ) : null}
         </View>
-        <Markdown mentions={marked} text={text} />
+        {folded ? (
+          <Text numberOfLines={FOLDED_LINES} style={[type.body, { color: t.ink }]}>
+            <MentionText parts={marked(text.replace(/\s+/g, ' '))} />
+          </Text>
+        ) : (
+          <Markdown mentions={marked} text={text} />
+        )}
         {more}
       </View>
     </View>
@@ -370,6 +425,10 @@ const styles = StyleSheet.create({
   row: { gap: space.sm },
   divider: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
   line: { flex: 1, height: StyleSheet.hairlineWidth },
+  reply: { marginLeft: space.xs, paddingLeft: space.md, borderLeftWidth: 2 },
+  fold: { flexDirection: 'row', alignItems: 'center', gap: space.sm, alignSelf: 'flex-start', minHeight: 32 },
+  faces: { flexDirection: 'row', gap: 4 },
+  face: { width: 20, height: 20, borderRadius: 10 },
   replyIn: { flexDirection: 'row', alignItems: 'center', gap: space.xs, alignSelf: 'flex-start', paddingVertical: space.xs },
   inThread: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.xs },
   byline: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

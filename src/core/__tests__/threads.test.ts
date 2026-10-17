@@ -1,5 +1,5 @@
 import type { RoomMessage } from '../bots'
-import { currentThread, THREAD_GAP_MS, threadRows, threadTitle } from '../threads'
+import { currentThread, shownRows, THREAD_GAP_MS, threadFolds, threadRows, threadTitle } from '../threads'
 
 const message = (id: string, at: number, thread?: string, text = id): RoomMessage => ({ id, from: '', mine: false, text, at, ...(thread ? { thread } : {}) })
 const shape = (messages: RoomMessage[]) => threadRows(messages).map(row => `${row.message.id}:${row.thread}${row.first ? ':first' : ''}${row.last ? ':last' : ''}`)
@@ -17,6 +17,22 @@ describe('the threads of a group chat', () => {
 
   it('has no row for a room with no message', () => {
     expect(threadRows([])).toEqual([])
+  })
+
+  it('says in short what the replies of a thread are', () => {
+    const by = (id: string, at: number, thread: string, from: string): RoomMessage => ({ ...message(id, at, thread), from })
+    const folds = threadFolds(threadRows([by('a', 1, 't1', ''), by('b', 2, 't1', 'qa'), by('c', 3, 't1', 'ops'), { ...by('d', 4, 't1', 'You'), mine: true }, by('f', 4, 't1', 'qa'), by('e', 5, 't2', '')]))
+
+    expect(folds.get('t1')).toEqual({ replies: 4, from: ['qa', 'ops'], lastAt: 4 })
+    expect(folds.has('t2')).toBe(false)
+  })
+
+  it('shows only the first message of a thread that is not open', () => {
+    const rows = threadRows([message('a', 1, 't1'), message('b', 2, 't1'), message('c', 3, 't2'), message('d', 4, 't2')])
+    const shown = shownRows(rows, thread => thread === 't2')
+
+    expect(shown.map(row => `${row.message.id}${row.first ? ':first' : ''}${row.last ? ':last' : ''}`)).toEqual(['a:first:last', 'c:first', 'd:last'])
+    expect(shownRows(rows, () => true)).toEqual(rows)
   })
 
   it('goes on with the newest thread only while it is recent', () => {

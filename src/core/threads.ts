@@ -64,6 +64,44 @@ export function threadRows(messages: readonly RoomMessage[]): ThreadRow[] {
   })
 }
 
+/** A thread that is folded to its first message: what its replies are, in short. */
+export interface ThreadFold {
+  /** The messages after the first one. */
+  replies: number
+  /** The bots that wrote the replies, the newest first: profile names. Three at most. */
+  from: string[]
+  /** Unix milliseconds of the newest reply. */
+  lastAt: number
+}
+
+const FOLD_FACES = 3
+
+/** The replies of each thread in short, for the line that shows and hides them. A thread with no reply has none. */
+export function threadFolds(rows: readonly ThreadRow[]): Map<string, ThreadFold> {
+  const folds = new Map<string, ThreadFold>()
+
+  for (const row of rows) {
+    if (row.first) {
+      continue
+    }
+
+    const fold = folds.get(row.thread) ?? { replies: 0, from: [], lastAt: 0 }
+
+    folds.set(row.thread, {
+      replies: fold.replies + 1,
+      from: row.message.mine ? fold.from : [row.message.from, ...fold.from.filter(name => name !== row.message.from)].slice(0, FOLD_FACES),
+      lastAt: Math.max(fold.lastAt, row.message.at)
+    })
+  }
+
+  return folds
+}
+
+/** The rows on screen: a thread that is not open shows its first message only. */
+export function shownRows(rows: readonly ThreadRow[], open: (thread: string) => boolean): ThreadRow[] {
+  return rows.flatMap(row => (open(row.thread) ? [row] : row.first ? [{ ...row, last: true }] : []))
+}
+
 /** The thread a new message goes on with when the user chose none: the newest one, while it is recent. Null: a new thread. */
 export function currentThread(messages: readonly RoomMessage[], nowMs: number): string | null {
   const newest = messages[messages.length - 1]
