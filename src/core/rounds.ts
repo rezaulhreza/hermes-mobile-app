@@ -19,6 +19,8 @@ export interface Turn {
   endedAt: number
   /** Why the turn failed, in words. Empty when the host gave no reason. */
   why: string
+  /** The session of the host in which the bot does its work for the room. Empty when the host names none. */
+  session: string
 }
 
 /** What the engine waits for from the user. */
@@ -80,7 +82,7 @@ export function roundOf(answer: unknown): Round {
   const { round, actions, round_end } = (answer ?? {}) as { round?: unknown; actions?: unknown; round_end?: { status?: unknown; reason?: unknown } | null }
 
   const turns = (Array.isArray(round) ? round : []).flatMap((entry): Turn[] => {
-    const { task_id, member, status, started_at, ended_at, passed, reason, error } = (entry ?? {}) as Record<string, unknown>
+    const { task_id, member, status, started_at, ended_at, passed, reason, error, session } = (entry ?? {}) as Record<string, unknown>
     const state = STATES[String(status)] ?? 'waiting'
 
     return typeof member === 'string' && member
@@ -92,7 +94,8 @@ export function roundOf(answer: unknown): Round {
             startedAt: typeof started_at === 'number' ? started_at : 0,
             endedAt: typeof ended_at === 'number' ? ended_at : 0,
             // A reason the phone has no words for: the first line of the error of the host.
-            why: state === 'failed' ? (REASONS[text(reason)] ?? text(error).split('\n')[0].trim().slice(0, 120)) : ''
+            why: state === 'failed' ? (REASONS[text(reason)] ?? text(error).split('\n')[0].trim().slice(0, 120)) : '',
+            session: text(session)
           }
         ]
       : []
@@ -180,4 +183,16 @@ export function afterRound(round: Round, title: (member: string) => string): str
   const said = failed.length ? `${failed.join(' and ')} did not answer.` : ''
 
   return [said, round.capped ?? ''].filter(Boolean).join(' ') || null
+}
+
+/**
+ * The rows of one turn in the session of a bot: what came after the last
+ * message it was given. The engine gives a bot its turn as a message that
+ * starts with "[Discussion:", so the rows after the last such message are the
+ * work of the turn that runs, or that ran last.
+ */
+export function turnWork<Item extends { kind: string; text?: string }>(items: readonly Item[]): Item[] {
+  const given = items.map(item => item.kind === 'user').lastIndexOf(true)
+
+  return items.slice(given + 1)
 }

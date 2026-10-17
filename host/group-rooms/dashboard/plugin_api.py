@@ -270,6 +270,27 @@ def _following(room_id: str) -> bool:
         return room_id in _followers
 
 
+# The session in which a bot does its work for a room, by the engine room and the profile.
+_work_sessions: dict[tuple[str, str], str] = {}
+
+
+def _work_session(engine_id: str, profile: str) -> str:
+    """The id of the hidden session in which this bot works for the room, or "". The engine names
+    that session "Group: <engine room>" (``room_session_title`` in ``tui_gateway/hosted_room_driver.py``).
+    A client reads its rows to show what the bot does in a turn."""
+    known = _work_sessions.get((engine_id, profile))
+    if known:
+        return known
+    try:
+        rows = _rpc("session.list", {"profile": profile, "title": f"Group: {engine_id}", "include_hidden": True}).get("sessions") or []
+        found = str(rows[0].get("id") or "") if rows and isinstance(rows[0], dict) else ""
+    except Exception:  # noqa: BLE001 - the turn shows without it
+        found = ""
+    if found:
+        _work_sessions[(engine_id, profile)] = found
+    return found
+
+
 def _round(engine_id: str, state: Optional[dict] = None) -> dict:
     """The round that runs, or that ran last: its turns (which bot works, which one waits, which one
     is done, and how each one ended), what the engine waits for from the user, and why the round
@@ -294,8 +315,10 @@ def _round(engine_id: str, state: Optional[dict] = None) -> dict:
         turns = []
         for task in mine:
             task_id = str(task["identity"].task_id)
+            profile = str(task["payload"].get("target_profile") or "")
             turns.append({
                 "task_id": task_id, "member": str(task["payload"].get("target_member_id") or ""), "status": str(task.get("status") or ""),
+                "session": _work_session(engine_id, profile) if profile else "",
                 "started_at": ms(task.get("started_at")), "ended_at": ms(task.get("terminal_at")), **ends.get(task_id, {})})
         members = {turn["task_id"]: turn["member"] for turn in turns}
         actions = []

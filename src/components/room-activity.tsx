@@ -9,6 +9,7 @@ import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { BotAvatar } from './bot-sheet'
+import { RoundSheet } from './round-sheet'
 import { Button } from './ui'
 
 type Approval = Extract<RoundAction, { kind: 'approval' }>
@@ -24,10 +25,11 @@ interface RoomActivityProps {
 }
 
 /**
- * What the bots of a group chat do now: one line with the bot that works, and
- * under it, on a tap, every turn of the round with its state and its time.
- * What the round waits for from the user is always in view: a bot that asks
- * for a yes, and a turn that can run again.
+ * What the bots of a group chat do now: one line with the bot that works. A
+ * tap opens the round in full: every turn with its state and its time, and
+ * what the bot of a turn does in it. A host that does not say what a bot does
+ * shows the turns under the line. What the round waits for from the user is
+ * always in view: a bot that asks for a yes, and a turn that can run again.
  */
 export function RoomActivity({ round, working, bots, onRetry, onApproval }: RoomActivityProps) {
   const t = useTheme()
@@ -65,13 +67,15 @@ export function RoomActivity({ round, working, bots, onRetry, onApproval }: Room
   }
 
   const line = working || asks.length ? (roundLine(round, title) ?? 'The bots answer in turn.') : (after ?? 'A turn did not end. You can run it again.')
+  // The host says in which session a bot works: the sheet can show the work. An older host gives the turns only.
+  const detailed = turns.some(turn => turn.session)
   // A turn to run again is in the list of turns: it must be in view.
-  const shown = open || (retries.size > 0 && !working)
+  const shown = (open && !detailed) || (retries.size > 0 && !working)
 
   return (
     <View style={[styles.strip, { backgroundColor: t.paper, borderColor: t.line }]}>
       <Pressable
-        accessibilityHint={turns.length ? (shown ? 'Hides the turns of the round' : 'Shows the turns of the round') : undefined}
+        accessibilityHint={detailed ? 'Shows what each bot does' : turns.length ? (shown ? 'Hides the turns of the round' : 'Shows the turns of the round') : undefined}
         accessibilityLabel={line}
         accessibilityRole="button"
         accessibilityState={{ expanded: shown }}
@@ -87,7 +91,7 @@ export function RoomActivity({ round, working, bots, onRetry, onApproval }: Room
           <Feather color={after && !round.capped ? t.red : t.muted} name={round.capped && !retries.size ? 'pause-circle' : 'alert-circle'} size={16} />
         )}
         <Text style={[type.small, styles.fill, { color: t.ink }]}>{line}</Text>
-        {turns.length ? <Feather color={t.muted} name={shown ? 'chevron-down' : 'chevron-up'} size={18} /> : null}
+        {turns.length ? <Feather color={t.muted} name={detailed ? 'chevron-right' : shown ? 'chevron-down' : 'chevron-up'} size={18} /> : null}
       </Pressable>
 
       {asks.map(action => (
@@ -139,6 +143,7 @@ export function RoomActivity({ round, working, bots, onRetry, onApproval }: Room
         : null}
 
       {fault ? <Text style={[type.small, styles.fault, { color: t.red, borderTopColor: t.line }]}>{fault}</Text> : null}
+      {open && detailed ? <RoundSheet bots={bots} onClose={() => setOpen(false)} round={round} /> : null}
     </View>
   )
 }

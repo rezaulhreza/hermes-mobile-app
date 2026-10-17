@@ -1,4 +1,4 @@
-import { afterRound, NO_ROUND, roundLine, roundOf, turnTime, turnWords } from '../rounds'
+import { afterRound, NO_ROUND, roundLine, roundOf, turnTime, turnWords, turnWork } from '../rounds'
 
 const turn = (member: string, status: string, started_at = 0, ended_at = 0, extra: Record<string, unknown> = {}) => ({ task_id: `t-${member}`, member, status, started_at, ended_at, ...extra })
 const title = (member: string) => member.toUpperCase()
@@ -6,11 +6,11 @@ const round = (...turns: ReturnType<typeof turn>[]) => roundOf({ round: turns })
 
 describe('the turns of a round', () => {
   it('reads the turns of the host in the words of the phone', () => {
-    expect(roundOf({ round: [turn('a', 'settled', 1000, 12_000), turn('b', 'running', 13_000), turn('c', 'queued'), turn('d', 'new-state'), { status: 'running' }, null] }).turns).toEqual([
-      { taskId: 't-a', member: 'a', state: 'done', startedAt: 1000, endedAt: 12_000, why: '' },
-      { taskId: 't-b', member: 'b', state: 'working', startedAt: 13_000, endedAt: 0, why: '' },
-      { taskId: 't-c', member: 'c', state: 'waiting', startedAt: 0, endedAt: 0, why: '' },
-      { taskId: 't-d', member: 'd', state: 'waiting', startedAt: 0, endedAt: 0, why: '' }
+    expect(roundOf({ round: [turn('a', 'settled', 1000, 12_000, { session: 's-a' }), turn('b', 'running', 13_000), turn('c', 'queued'), turn('d', 'new-state'), { status: 'running' }, null] }).turns).toEqual([
+      { taskId: 't-a', member: 'a', state: 'done', startedAt: 1000, endedAt: 12_000, why: '', session: 's-a' },
+      { taskId: 't-b', member: 'b', state: 'working', startedAt: 13_000, endedAt: 0, why: '', session: '' },
+      { taskId: 't-c', member: 'c', state: 'waiting', startedAt: 0, endedAt: 0, why: '', session: '' },
+      { taskId: 't-d', member: 'd', state: 'waiting', startedAt: 0, endedAt: 0, why: '', session: '' }
     ])
   })
 
@@ -100,4 +100,12 @@ describe('what stays after a round', () => {
     expect(afterRound(roundOf({ round: [turn('a', 'settled')], round_end: { status: 'settled', reason: 'silent_round' } }), title)).toBeNull()
     expect(afterRound(NO_ROUND, title)).toBeNull()
   })
+})
+
+it('takes the work of a turn from the session of a bot: the rows after the last message it was given', () => {
+  const rows = [{ kind: 'user' }, { kind: 'tool' }, { kind: 'assistant' }, { kind: 'user' }, { kind: 'thinking' }, { kind: 'tool' }]
+
+  expect(turnWork(rows)).toEqual([{ kind: 'thinking' }, { kind: 'tool' }])
+  expect(turnWork([{ kind: 'tool' }])).toEqual([{ kind: 'tool' }])
+  expect(turnWork([])).toEqual([])
 })

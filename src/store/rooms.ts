@@ -8,7 +8,9 @@
 import { atom } from 'nanostores'
 
 import { type Room, roomRow, withRoom } from '@/core/bots'
-import { NO_ROUND, type Round, type RoundAction, roundOf } from '@/core/rounds'
+import { type HistoryPage, historyPagePath, pageMessages } from '@/core/history-page'
+import { NO_ROUND, type Round, type RoundAction, roundOf, turnWork } from '@/core/rounds'
+import { transcriptFromHistory, type TranscriptItem } from '@/core/transcript'
 
 import { $rooms } from './bots'
 import { currentApi } from './link'
@@ -130,6 +132,18 @@ export async function readFullMessage(id: string, messageId: string): Promise<st
   }
 
   return answer.text
+}
+
+/**
+ * What a bot did in its turn so far: its thoughts, the tools it used and the
+ * words of its answer. The host stores each row as the bot makes it, so a
+ * read of the session shows the work while it runs. Only a read: it takes no
+ * place in the session and cannot disturb the turn.
+ */
+export async function readTurnWork(member: string, session: string): Promise<TranscriptItem[]> {
+  const page = await api().request<HistoryPage>({ path: historyPagePath(session, 0), profile: member })
+
+  return turnWork(transcriptFromHistory(pageMessages(page.messages ?? [])).items)
 }
 
 /** Run again a turn of which the engine does not know the end, and follow the room while the bot works. */
