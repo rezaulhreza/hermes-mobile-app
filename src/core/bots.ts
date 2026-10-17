@@ -326,6 +326,11 @@ export function roomRow(key: string, value: unknown): Room | null {
 
   const members = (Array.isArray(room.members) ? room.members : []).filter((member): member is { name: string; handle?: unknown } => typeof (member as { name?: unknown })?.name === 'string')
 
+  // A record from an older plugin of the host can be out of order. With a time on every message, the time decides.
+  if (messages.every(message => message.at > 0)) {
+    messages.sort((a, b) => a.at - b.at)
+  }
+
   return {
     id: typeof room.roomId === 'string' ? room.roomId : typeof room.room_id === 'string' ? room.room_id : key,
     name: room.name.trim(),

@@ -104,6 +104,9 @@ def _fit(room: dict) -> None:
         if len(text) > MAX_TEXT:
             entry["text"] = text[: MAX_TEXT - len(TRUNCATED)] + TRUNCATED
             entry["truncated"] = True
+    # The newest messages are the ones to keep, so the log must be in the order of time. An older
+    # version of this plugin put answers back at the end: the sort also repairs such a record.
+    log.sort(key=lambda entry: int(entry.get("at") or 0))
     dropped = max(0, len(log) - MAX_MESSAGES)
     room["log"] = log[dropped:]
     if dropped:

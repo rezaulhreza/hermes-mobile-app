@@ -156,6 +156,13 @@ describe('a room read again', () => {
     expect(messages.map(message => [message.text, message.cut])).toEqual([['A long answer…', true], ['Short', undefined]])
   })
 
+  it('puts the messages in the order of time, and leaves a record with no times as it is', () => {
+    const ids = (log: unknown[]) => roomRow('id:r1', { name: 'Launch', log })!.messages.map(message => message.id)
+
+    expect(ids([{ id: 'c', text: 'x', at: 30 }, { id: 'a', text: 'x', at: 10 }, { id: 'b', text: 'x', at: 20 }])).toEqual(['a', 'b', 'c'])
+    expect(ids([{ id: 'c', text: 'x' }, { id: 'a', text: 'x', at: 10 }])).toEqual(['c', 'a'])
+  })
+
   it('keeps the thread of a message', () => {
     const { messages } = roomRow('id:r1', { name: 'Launch', log: [{ id: 'a', text: 'Go', at: 1, thread: 't1' }, { id: 'b', text: 'Old', at: 2, thread: '' }] })!
 
