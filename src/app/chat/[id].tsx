@@ -696,7 +696,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             sessionId={sessionId}
             visible={sheet === 'model'}
           />
-          <VoiceCallScreen items={transcript?.items ?? NO_ITEMS} sessionId={sessionId} title={conversation?.title ?? ''} />
+          <VoiceCallScreen items={transcript?.items ?? NO_ITEMS} sessionId={sessionId} title={botChat?.title ?? conversation?.title ?? ''} />
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           {teaching ? <TeachSheet bot={teachName} hasWork={(transcript?.items.length ?? 0) > 0} onClose={() => setTeaching(false)} onTeach={teach} /> : null}
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
