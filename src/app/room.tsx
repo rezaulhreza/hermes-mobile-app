@@ -334,7 +334,7 @@ export default function RoomScreen() {
               ))}
             </View>
           ) : null}
-          <RoomActivity bots={byName} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} onStop={() => stopRoom(id)} onStopTurn={taskId => stopTurn(id, taskId)} round={round} working={working} />
+          <RoomActivity bots={byName} marked={marked} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} onStop={() => stopRoom(id)} onStopTurn={taskId => stopTurn(id, taskId)} round={round} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           {thread ? (

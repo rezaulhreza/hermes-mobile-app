@@ -4,6 +4,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 
 import type { SentAttachment } from '@/core/attachments'
 import type { Bot } from '@/core/bots'
+import type { TextPart } from '@/core/mentions'
 import { duration, faultWords } from '@/core/format'
 import { type Round, type Turn, turnWords } from '@/core/rounds'
 import { hasToolDetail } from '@/core/tools'
@@ -25,6 +26,8 @@ const READ_MS = 2500
 interface RoundSheetProps {
   round: Round
   bots: ReadonlyMap<string, Bot>
+  /** Splits a text into plain words and the mentions the host follows, for their colour. */
+  marked: (text: string) => readonly TextPart[]
   /** Stop the bot that works and the turns that wait. */
   onStop: () => Promise<void>
   /** Stop one turn. The round goes on with the next bot. */
@@ -41,7 +44,7 @@ const live = (turn: Turn) => turn.state === 'working' || turn.state === 'stoppin
  * drawn as a chat draws them: the same tool row and tool sheet, the same
  * answer, the same picture viewer.
  */
-export function RoundSheet({ round, bots, onStop, onStopTurn, onClose }: RoundSheetProps) {
+export function RoundSheet({ round, bots, marked, onStop, onStopTurn, onClose }: RoundSheetProps) {
   const t = useTheme()
   const { turns } = round
   const [now, setNow] = useState(Date.now)
@@ -196,7 +199,7 @@ export function RoundSheet({ round, bots, onStop, onStopTurn, onClose }: RoundSh
                 <Text style={[type.small, { color: t.muted }]}>{turnLive ? 'It reads the thread. Nothing to show yet.' : 'Nothing was kept of this turn.'}</Text>
               ) : (
                 // The host stores a tool call before its result: with no result yet, the last tool of a live turn still runs.
-                items.map((item, index) => <WorkRow item={item} key={item.key} onOpen={setViewing} onTool={setTool} running={turnLive && index === items.length - 1} />)
+                items.map((item, index) => <WorkRow item={item} key={item.key} marked={marked} onOpen={setViewing} onTool={setTool} running={turnLive && index === items.length - 1} />)
               )}
             </View>
           ) : (
@@ -214,12 +217,13 @@ interface WorkRowProps {
   item: TranscriptItem
   /** The last step of a turn that runs. */
   running: boolean
+  marked: (text: string) => readonly TextPart[]
   onTool: (tool: ToolTarget) => void
   onOpen: (target: ViewerTarget) => void
 }
 
 /** One step of a bot in its turn, as a chat shows it. */
-function WorkRow({ item, running, onTool, onOpen }: WorkRowProps) {
+function WorkRow({ item, running, marked, onTool, onOpen }: WorkRowProps) {
   const t = useTheme()
   const [open, setOpen] = useState(false)
 
@@ -265,12 +269,12 @@ function WorkRow({ item, running, onTool, onOpen }: WorkRowProps) {
               {open ? '' : `  ${item.text.replace(/\s+/g, ' ').trim()}`}
             </Text>
           </Pressable>
-          {open ? <Markdown muted text={item.text} /> : null}
+          {open ? <Markdown mentions={marked} muted text={item.text} /> : null}
         </View>
       )
 
     case 'assistant':
-      return <Answer onOpen={onOpen} streaming={running} text={item.text} />
+      return <Answer mentions={marked} onOpen={onOpen} streaming={running} text={item.text} />
 
     case 'notice':
       return <Text style={[type.small, { color: item.tone === 'error' ? t.red : t.muted }]}>{item.text}</Text>

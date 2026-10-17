@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { Bot } from '@/core/bots'
+import type { TextPart } from '@/core/mentions'
 import { faultWords } from '@/core/format'
 import { afterRound, type Round, type RoundAction, roundLine, turnWords } from '@/core/rounds'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
@@ -20,6 +21,8 @@ interface RoomActivityProps {
   /** The bots answer now. After the round the strip stays only when there is something to say. */
   working: boolean
   bots: ReadonlyMap<string, Bot>
+  /** Splits a text into plain words and the mentions the host follows, for their colour in the sheet. */
+  marked: (text: string) => readonly TextPart[]
   onRetry: (taskId: string) => Promise<void>
   onStop: () => Promise<void>
   onStopTurn: (taskId: string) => Promise<void>
@@ -33,7 +36,7 @@ interface RoomActivityProps {
  * shows the turns under the line. What the round waits for from the user is
  * always in view: a bot that asks for a yes, and a turn that can run again.
  */
-export function RoomActivity({ round, working, bots, onRetry, onStop, onStopTurn, onApproval }: RoomActivityProps) {
+export function RoomActivity({ round, working, bots, marked, onRetry, onStop, onStopTurn, onApproval }: RoomActivityProps) {
   const t = useTheme()
   const [open, setOpen] = useState(false)
   const [now, setNow] = useState(Date.now)
@@ -58,7 +61,7 @@ export function RoomActivity({ round, working, bots, onRetry, onStop, onStopTurn
 
   if (!working && !after && !actions.length) {
     // The round ended while the user reads its sheet: the sheet stays until they close it.
-    return open && turns.some(turn => turn.taskId) ? <RoundSheet bots={bots} onClose={() => setOpen(false)} onStop={onStop} onStopTurn={onStopTurn} round={round} /> : null
+    return open && turns.some(turn => turn.taskId) ? <RoundSheet bots={bots} marked={marked} onClose={() => setOpen(false)} onStop={onStop} onStopTurn={onStopTurn} round={round} /> : null
   }
 
   const run = (key: string, work: () => Promise<void>) => {
@@ -146,7 +149,7 @@ export function RoomActivity({ round, working, bots, onRetry, onStop, onStopTurn
         : null}
 
       {fault ? <Text style={[type.small, styles.fault, { color: t.red, borderTopColor: t.line }]}>{fault}</Text> : null}
-      {open && detailed ? <RoundSheet bots={bots} onClose={() => setOpen(false)} onStop={onStop} onStopTurn={onStopTurn} round={round} /> : null}
+      {open && detailed ? <RoundSheet bots={bots} marked={marked} onClose={() => setOpen(false)} onStop={onStop} onStopTurn={onStopTurn} round={round} /> : null}
     </View>
   )
 }
