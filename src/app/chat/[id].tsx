@@ -585,7 +585,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               </Pressable>
             ))}
             <Text style={[type.small, styles.limit, { color: t.muted, borderTopColor: t.line }]}>
-              A file can be up to 100 MB. A large photo is made smaller before it is sent.
+              Files up to 100 MB.
             </Text>
             {/* Not a thing to attach: its own row under the line, in the list the user opens to give the bot something. */}
             <Pressable
