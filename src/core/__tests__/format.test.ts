@@ -1,4 +1,4 @@
-import { duration, fileSize, headLines, previewLine, relativeTime, statusWords } from '../format'
+import { clockWords, dateWords, dayWords, duration, fileSize, headLines, previewLine, readableDates, relativeTime, statusWords } from '../format'
 
 describe('previewLine', () => {
   it('shows words, not the marks of Markdown', () => {
@@ -73,5 +73,31 @@ describe('faultWords', () => {
   it('leaves other text as it is', () => {
     expect(faultWords(new Error('Not connected to a Hermes workspace.'))).toBe('Not connected to a Hermes workspace.')
     expect(faultWords('502: Bad Gateway')).toBe('Bad Gateway')
+  })
+})
+
+describe('a date as a person reads it', () => {
+  const now = new Date(2026, 9, 11, 12, 0)
+
+  it('says the day, the month and the time of day', () => {
+    expect(dayWords(new Date(2026, 10, 11), now)).toBe('11 Nov')
+    expect(dayWords(new Date(2025, 10, 11), now)).toBe('11 Nov 2025')
+    expect(clockWords(new Date(2026, 0, 1, 0, 5))).toBe('12:05 am')
+    expect(clockWords(new Date(2026, 0, 1, 12, 0))).toBe('12:00 pm')
+    expect(clockWords(new Date(2026, 0, 1, 20, 30))).toBe('8:30 pm')
+    expect(dateWords(new Date(2026, 10, 10, 9, 0), now)).toBe('10 Nov at 9:00 am')
+  })
+
+  it('reads the technical dates in a text of the host', () => {
+    expect(readableDates('Storage audit 2026-10-10', now)).toBe('Storage audit 10 Oct')
+    expect(readableDates('once at 2026-10-07 20:00', now)).toBe('once at 7 Oct at 8:00 pm')
+    expect(readableDates('Storage audit (read-only) · Oct 10 20:31', now)).toBe('Storage audit (read-only) · 10 Oct at 8:31 pm')
+    expect(readableDates('ran 2026-10-06T02:01:52.479250+01:00 and 2025-12-31T23:59:00Z', now)).toBe('ran 6 Oct at 2:01 am and 31 Dec 2025 at 11:59 pm')
+  })
+
+  it('leaves a number that only looks like a date', () => {
+    expect(readableDates('build 2026-13-45 and id 12026-10-07 and 2026-10-071', now)).toBe('build 2026-13-45 and id 12026-10-07 and 2026-10-071')
+    expect(readableDates('feat/backup-2026-10-07', now)).toBe('feat/backup-2026-10-07')
+    expect(readableDates('no date here', now)).toBe('no date here')
   })
 })

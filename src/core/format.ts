@@ -8,6 +8,55 @@ export function greeting(now: Date): string {
   return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** A day as a person reads it: "11 Nov". The year is there only when it is not this year: "11 Nov 2025". */
+export function dayWords(date: Date, now = new Date()): string {
+  const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`
+
+  return date.getFullYear() === now.getFullYear() ? day : `${day} ${date.getFullYear()}`
+}
+
+/** A time of day as a person reads it: "8:00 pm", "12:05 am". */
+export function clockWords(date: Date): string {
+  const hour = date.getHours()
+
+  return `${hour % 12 || 12}:${String(date.getMinutes()).padStart(2, '0')} ${hour < 12 ? 'am' : 'pm'}`
+}
+
+/** A day and a time: "11 Nov at 8:00 pm". */
+export function dateWords(date: Date, now = new Date()): string {
+  return `${dayWords(date, now)} at ${clockWords(date)}`
+}
+
+// "2026-10-07", "2026-10-07 20:00", "2026-10-07T20:00:00.25+01:00". The sign before it must not be a digit or a "-": that is a longer number.
+const TECHNICAL_DATE = /(^|[^\d-])(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?![\d-])/g
+
+const STAMP = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2})\b/g
+
+/**
+ * A text of the host with its dates as a person reads them: "once at
+ * 2026-10-07 20:00" is "once at 7 Oct at 8:00 pm". The time is the time as
+ * it is written: the host wrote it for its own clock, and no zone is changed.
+ * For a name, a title and a label. Not for the words of a message: there a
+ * date is what somebody wrote.
+ */
+export function readableDates(text: string, now = new Date()): string {
+  return text.replace(TECHNICAL_DATE, (whole: string, before: string, year: string, month: string, day: string, hour?: string, minute?: string) => {
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour ?? 0), Number(minute ?? 0))
+
+    // "2026-13-45" is not a date: a number that only looks like one stays as it is.
+    if (date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day) || Number(hour ?? 0) > 23 || Number(minute ?? 0) > 59) {
+      return whole
+    }
+
+    return before + (hour === undefined ? dayWords(date, now) : dateWords(date, now))
+  }).replace(STAMP, (whole: string, month: string, day: string, hour: string, minute: string) =>
+    // The stamp the host puts at the end of a title: "Oct 10 20:31".
+    Number(day) <= 31 && Number(hour) <= 23 && Number(minute) <= 59 ? `${Number(day)} ${month} at ${clockWords(new Date(2000, 0, 1, Number(hour), Number(minute)))}` : whole
+  )
+}
+
 /** A short age for a list row: "now", "12m", "3h", "5d", then a date. `at` is Unix seconds. */
 export function relativeTime(at: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor(now / 1000 - at))
@@ -28,7 +77,7 @@ export function relativeTime(at: number, now = Date.now()): string {
     return `${Math.floor(seconds / 86_400)}d`
   }
 
-  return new Date(at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  return dayWords(new Date(at * 1000), new Date(now))
 }
 
 /** "0.4s", "12s", "2m 5s" for a tool row. */

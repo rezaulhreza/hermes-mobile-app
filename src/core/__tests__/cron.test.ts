@@ -1,4 +1,4 @@
-import { scheduleLine, scheduleProblem, scheduleRows, scheduleRuns, untilWords } from '../cron'
+import { scheduleLine, scheduleProblem, scheduleRows, scheduleRuns, untilWords, whenWords } from '../cron'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 
@@ -25,11 +25,11 @@ describe('scheduleRows', () => {
   })
 
   it('says each one in a line', () => {
-    expect(scheduleLine(rows[0], NOW)).toBe('every 1h · Next in 1 h · the last run failed')
-    expect(scheduleLine(rows[1], NOW)).toBe('every 30m · Next in 5 min')
-    expect(scheduleLine(rows[2], NOW)).toBe('0 9 * * * · Next in 21 h')
-    expect(scheduleLine(rows[3], NOW)).toBe('0 10 * * * · Paused')
-    expect(scheduleLine(rows[4], NOW)).toBe('once at 2026-10-07 20:00 · Finished')
+    expect(scheduleLine(rows[0], NOW)).toBe('Every hour · Next in 1 h · the last run failed')
+    expect(scheduleLine(rows[1], NOW)).toBe('Every 30 minutes · Next in 5 min')
+    expect(scheduleLine(rows[2], NOW)).toBe('Every day at 9:00 am · Next in 21 h')
+    expect(scheduleLine(rows[3], NOW)).toBe('Every day at 10:00 am · Paused')
+    expect(scheduleLine(rows[4], NOW)).toBe('Once, 7 Oct at 8:00 pm · Finished')
   })
 
   it('reads the rest of a job', () => {
@@ -96,5 +96,35 @@ describe('runs, delivery and templates of a schedule', () => {
     expect(blueprintDefaults(blueprint)).toEqual({ what: '', time: '08:00', note: '' })
     expect(blueprintMissing(blueprint, blueprintDefaults(blueprint))?.name).toBe('what')
     expect(blueprintMissing(blueprint, { what: 'Water the plants', time: '08:00' })).toBeNull()
+  })
+})
+
+describe('when a schedule runs, in the words of a person', () => {
+  const now = new Date(2026, 9, 11, 12, 0)
+
+  it('reads the forms the host gives', () => {
+    expect(whenWords('every 5m', now)).toBe('Every 5 minutes')
+    expect(whenWords('every 360m', now)).toBe('Every 6 hours')
+    expect(whenWords('every 2h', now)).toBe('Every 2 hours')
+    expect(whenWords('every 1440m', now)).toBe('Every day')
+    expect(whenWords('once at 2026-10-07 20:00', now)).toBe('Once, 7 Oct at 8:00 pm')
+    expect(whenWords('once at 2027-01-02 09:05', now)).toBe('Once, 2 Jan 2027 at 9:05 am')
+  })
+
+  it('reads the cron fields a person uses', () => {
+    expect(whenWords('0 10 * * *', now)).toBe('Every day at 10:00 am')
+    expect(whenWords('30 0 * * *', now)).toBe('Every day at 12:30 am')
+    expect(whenWords('0 9 * * 1-5', now)).toBe('Weekdays at 9:00 am')
+    expect(whenWords('0 18 * * 1', now)).toBe('Every Monday at 6:00 pm')
+    expect(whenWords('0 18 * * 1,3', now)).toBe('Mon, Wed at 6:00 pm')
+    expect(whenWords('0 9 1 * *', now)).toBe('Day 1 of every month at 9:00 am')
+    expect(whenWords('*/15 * * * *', now)).toBe('Every 15 minutes')
+    expect(whenWords('0 */4 * * *', now)).toBe('Every 4 hours')
+  })
+
+  it('keeps a form it does not know', () => {
+    expect(whenWords('0 9 1 6 *', now)).toBe('0 9 1 6 *')
+    expect(whenWords('5,35 9-17 * * *', now)).toBe('5,35 9-17 * * *')
+    expect(whenWords('at sunrise', now)).toBe('at sunrise')
   })
 })

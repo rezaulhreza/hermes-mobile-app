@@ -4,6 +4,8 @@
  * how the last run went. This file has the rules with no network in them.
  */
 
+import { clockWords, readableDates } from './format'
+
 export interface Schedule {
   id: string
   name: string
@@ -107,12 +109,79 @@ export function untilWords(at: number, now: number): string {
   return hours < 48 ? `in ${hours} h` : `in ${Math.round(hours / 24)} days`
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const many = (count: number, one: string) => (count === 1 ? `Every ${one}` : `Every ${count} ${one}s`)
+
+/**
+ * When a schedule runs, in the words of a person. The host gives the text it
+ * takes: "every 360m", "0 10 * * *", "once at 2026-10-07 20:00". A form this
+ * function does not know stays as the host wrote it, with its dates made
+ * readable: a wrong guess about a schedule is worse than its raw text.
+ */
+export function whenWords(when: string, now = new Date()): string {
+  const text = when.trim()
+  const once = /^once (?:at|on) (.+)$/i.exec(text)
+
+  if (once) {
+    return `Once, ${readableDates(once[1], now)}`
+  }
+
+  const every = /^every (\d+) ?(m|min|minutes?|h|hours?|d|days?)$/i.exec(text)
+
+  if (every) {
+    const unit = every[2][0].toLowerCase()
+    const minutes = Number(every[1]) * (unit === 'd' ? 1440 : unit === 'h' ? 60 : 1)
+
+    return minutes % 1440 === 0 ? many(minutes / 1440, 'day') : minutes % 60 === 0 ? many(minutes / 60, 'hour') : many(minutes, 'minute')
+  }
+
+  const fields = text.split(/\s+/)
+
+  if (fields.length !== 5) {
+    return readableDates(text, now)
+  }
+
+  const [minute, hour, dayOfMonth, month, weekday] = fields
+  const step = (field: string) => /^\*\/(\d+)$/.exec(field)?.[1]
+  const whole = (field: string) => /^\d+$/.test(field)
+
+  if (step(minute) && [hour, dayOfMonth, month, weekday].every(field => field === '*')) {
+    return many(Number(step(minute)), 'minute')
+  }
+
+  if (whole(minute) && step(hour) && [dayOfMonth, month, weekday].every(field => field === '*')) {
+    return many(Number(step(hour)), 'hour')
+  }
+
+  if (!whole(minute) || !whole(hour) || Number(hour) > 23 || Number(minute) > 59 || month !== '*') {
+    return text
+  }
+
+  const at = `at ${clockWords(new Date(2000, 0, 1, Number(hour), Number(minute)))}`
+
+  if (dayOfMonth === '*' && weekday === '*') {
+    return `Every day ${at}`
+  }
+
+  if (dayOfMonth === '*' && weekday === '1-5') {
+    return `Weekdays ${at}`
+  }
+
+  if (dayOfMonth === '*' && /^[0-7](,[0-7])*$/.test(weekday)) {
+    const days = weekday.split(',').map(day => WEEKDAYS[Number(day)])
+
+    return days.length === 1 ? `Every ${days[0]} ${at}` : `${days.map(day => day.slice(0, 3)).join(', ')} ${at}`
+  }
+
+  return whole(dayOfMonth) && weekday === '*' ? `Day ${Number(dayOfMonth)} of every month ${at}` : text
+}
+
 /** The line under the name of a schedule. */
 export function scheduleLine(schedule: Schedule, now: number): string {
   const state =
     schedule.state === 'paused' ? 'Paused' : schedule.state === 'completed' ? 'Finished' : schedule.nextRunAt ? `Next ${untilWords(schedule.nextRunAt, now)}` : 'Waiting'
 
-  return [schedule.when, state, schedule.failed ? 'the last run failed' : ''].filter(Boolean).join(' · ')
+  return [whenWords(schedule.when, new Date(now)), state, schedule.failed ? 'the last run failed' : ''].filter(Boolean).join(' · ')
 }
 
 /** Schedules a person asks for most, as the text the host takes. */
@@ -254,7 +323,7 @@ export function scheduleRuns(result: unknown): ScheduleRun[] {
   return Array.isArray(runs)
     ? runs.flatMap((run: { id?: unknown; title?: unknown; preview?: unknown; started_at?: unknown }) =>
         typeof run?.id === 'string'
-          ? [{ id: run.id, hasChat: !run.id.startsWith(RUN_FILE_PREFIX), title: (text(run.title) || text(run.preview)).replace(/[#*]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 200), at: typeof run.started_at === 'number' ? run.started_at * 1000 : 0 }]
+          ? [{ id: run.id, hasChat: !run.id.startsWith(RUN_FILE_PREFIX), title: readableDates((text(run.title) || text(run.preview)).replace(/[#*]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 200)), at: typeof run.started_at === 'number' ? run.started_at * 1000 : 0 }]
           : []
       )
     : []

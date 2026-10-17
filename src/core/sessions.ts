@@ -6,7 +6,7 @@
  * RPC: only the REST row says if a conversation is pinned, archived or unread.
  */
 
-import { previewLine } from './format'
+import { previewLine, readableDates } from './format'
 import type { SessionActiveItem } from './gateway/gateway-contract.generated'
 
 /**
@@ -116,7 +116,8 @@ export function sessionPreview(row: SessionRow): string {
 }
 
 export function sessionTitle(row: SessionRow): string {
-  return row.title?.trim() || sessionPreview(row) || 'Untitled conversation'
+  // A title is a label: a date in it reads as a date, not as the host wrote it.
+  return readableDates(row.title?.trim() || sessionPreview(row)) || 'Untitled conversation'
 }
 
 /** What a conversation does now: Hermes works in it, or it waits for an answer of the user. */
