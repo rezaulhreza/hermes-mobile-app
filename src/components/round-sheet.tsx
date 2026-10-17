@@ -27,6 +27,8 @@ interface RoundSheetProps {
   bots: ReadonlyMap<string, Bot>
   /** Stop the bot that works and the turns that wait. */
   onStop: () => Promise<void>
+  /** Stop one turn. The round goes on with the next bot. */
+  onStopTurn: (taskId: string) => Promise<void>
   onClose: () => void
 }
 
@@ -39,7 +41,7 @@ const live = (turn: Turn) => turn.state === 'working' || turn.state === 'stoppin
  * drawn as a chat draws them: the same tool row and tool sheet, the same
  * answer, the same picture viewer.
  */
-export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
+export function RoundSheet({ round, bots, onStop, onStopTurn, onClose }: RoundSheetProps) {
   const t = useTheme()
   const { turns } = round
   const [now, setNow] = useState(Date.now)
@@ -49,11 +51,21 @@ export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
   const running = turns.some(live)
   const [work, setWork] = useState<{ taskId: string; items: TranscriptItem[] } | null>(null)
   const [fault, setFault] = useState<string | null>(null)
-  const [stopping, setStopping] = useState(false)
+  const [stopping, setStopping] = useState<'turn' | 'all' | null>(null)
+  const atWork = turns.find(live)
   const [tool, setTool] = useState<ToolTarget | null>(null)
   const [viewing, setViewing] = useState<ViewerTarget | null>(null)
   const [stopFault, setStopFault] = useState<string | null>(null)
   const title = (member: string) => bots.get(member)?.title ?? member
+
+  const stop = (what: 'turn' | 'all', work: () => Promise<void>) => {
+    setStopping(what)
+    setStopFault(null)
+    work()
+      .catch(error => setStopFault(faultWords(error)))
+      .finally(() => setStopping(null))
+  }
+
   const taskId = turn?.taskId
   const member = turn?.member
   const session = turn?.session
@@ -147,21 +159,24 @@ export function RoundSheet({ round, bots, onStop, onClose }: RoundSheetProps) {
 
           {running ? (
             <View style={styles.stop}>
-              {/* The engine stops a room as a whole: the bot at work, and every turn that waits. */}
-              <Button
-                busy={stopping}
-                icon="square"
-                label={turns.some(known => known.state === 'waiting') ? 'Stop this bot and the turns that wait' : 'Stop this bot'}
-                onPress={() => {
-                  setStopping(true)
-                  setStopFault(null)
-                  onStop()
-                    .catch(error => setStopFault(faultWords(error)))
-                    .finally(() => setStopping(false))
-                }}
-                tone="danger"
-              />
-              {stopFault ? <Text style={[type.small, { color: t.red }]}>{stopFault}</Text> : null}
+              <View style={styles.stops}>
+                {/* One bot: the round goes on with the next one. A host that names no task can only stop the room. */}
+                {atWork?.taskId ? (
+                  <Button
+                    busy={stopping === 'turn'}
+                    disabled={stopping !== null}
+                    icon="skip-forward"
+                    label={`Stop ${title(atWork.member)}`}
+                    onPress={() => stop('turn', () => onStopTurn(atWork.taskId))}
+                    style={styles.fill}
+                    tone="danger"
+                  />
+                ) : null}
+                <Button busy={stopping === 'all'} disabled={stopping !== null} icon="square" label="Stop all" onPress={() => stop('all', onStop)} style={styles.fill} tone={atWork?.taskId ? 'plain' : 'danger'} />
+              </View>
+              <Text style={[type.small, { color: stopFault ? t.red : t.muted }]}>
+                {stopFault ?? (atWork?.taskId ? `"Stop ${title(atWork.member)}" ends only its turn, and the next bot goes on. "Stop all" ends the round.` : 'This ends the round.')}
+              </Text>
             </View>
           ) : null}
 
@@ -273,6 +288,7 @@ const styles = StyleSheet.create({
   unknown: { width: 24, height: 24, borderRadius: 12 },
   words: { fontVariant: ['tabular-nums'] },
   stop: { gap: space.sm },
+  stops: { flexDirection: 'row', gap: space.sm },
   work: { gap: space.md },
   step: { gap: space.sm },
   stepHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },

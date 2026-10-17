@@ -219,16 +219,28 @@ def _copy_answers(room_id: str, engine_id: str, since: int) -> tuple[int, bool, 
     page = _rpc("groups.log", {"room_id": engine_id, "since_seq": since, "limit": 200})
     events = [event for event in page.get("events") or [] if isinstance(event, dict)]
     said = [event for event in events if event.get("kind") == "message.member"]
-    if said:
+    def missing(room: dict) -> list[dict]:
+        """The answers of ``said`` that the record does not have. An answer older than the oldest
+        message of a full record was dropped to make room: it must not come back at the end."""
+        log = [entry for entry in room.get("log") or [] if isinstance(entry, dict)]
+        have = {entry.get("id") for entry in log}
+        oldest = min((int(entry.get("at") or 0) for entry in log), default=0) if int(room.get("omitted") or 0) else 0
+        rows = []
+        for event in said:
+            payload = event.get("payload") or {}
+            at = int(float(event.get("created_at") or time.time()) * 1000)
+            if event.get("event_id") not in have and str(payload.get("text") or "").strip() and at >= oldest:
+                rows.append({
+                    "id": event["event_id"], "from": {"kind": "member", "name": str((event.get("actor") or {}).get("id") or payload.get("member_id"))},
+                    "text": str(payload["text"]), "at": at, "thread": str(payload.get("thread_id") or "")})
+        return rows
+
+    # A client reads an idle room every few seconds. The record is written only for a new answer.
+    record, _revision, _profiles = _read() if said else ({}, 0, {})
+    if said and missing(record["rooms"][_key(record, room_id)]):
         def add(record, _next, _profiles):
             room = record["rooms"][_key(record, room_id)]
-            have = {entry.get("id") for entry in room.get("log") or []}
-            for event in said:
-                payload = event.get("payload") or {}
-                if event.get("event_id") not in have and str(payload.get("text") or "").strip():
-                    room.setdefault("log", []).append({
-                        "id": event["event_id"], "from": {"kind": "member", "name": str((event.get("actor") or {}).get("id") or payload.get("member_id"))},
-                        "text": str(payload["text"]), "at": int(float(event.get("created_at") or time.time()) * 1000), "thread": str(payload.get("thread_id") or "")})
+            room.setdefault("log", []).extend(missing(room))
             _fit(room)
         _write(add)
     cursor = max([since, *(int(event.get("seq") or 0) for event in events)])
@@ -613,6 +625,46 @@ class Approval(BaseModel):
 def _engine_of(room_id: str) -> str:
     record, _revision, _profiles = _read()
     return _engine_id(record["rooms"][_key(record, room_id)])
+
+
+@router.post("/rooms/{room_id}/turns/{task_id}/stop")
+def stop_turn(room_id: str, task_id: str) -> dict:
+    """Stop one turn: the bot that works on it, or a turn that waits. The round goes on: the engine
+    counts a stopped turn as done and gives the next bot its turn. (``/stop`` of the room ends the
+    round.)
+
+    No RPC of the gateway stops one turn (``groups.stop`` stops the room), so this calls the engine
+    itself: the service of ``tui_gateway/methods_groups.py`` and its ``runtime.cancel``. IF A HERMES
+    UPDATE MOVES THEM: this route answers 502, and the stop of the room still works. See LEDGER.md."""
+    def work():
+        engine_id = _engine_of(room_id)
+        try:
+            from gateway.hosted_room_driver import list_tasks
+            from gateway.hosted_rooms import default_db_path
+            from tui_gateway.methods_groups import get_hosted_room_service
+
+            service = get_hosted_room_service()
+            runtime = getattr(service, "runtime", None)
+            if runtime is None or not callable(getattr(runtime, "cancel", None)):
+                raise Refused("This host cannot stop one turn. Stop the round.")
+            task = next((row for row in list_tasks(default_db_path(), room_id=engine_id) if str(row["identity"].task_id) == task_id), None)
+        except ImportError as exc:
+            raise Refused("This host cannot stop one turn. Stop the round.") from exc
+        if task is None:
+            raise HTTPException(status_code=404, detail="This turn is not on the host any more.")
+        if str(task.get("status") or "") in ("settled", "failed", "cancelled"):
+            return {"ok": True, "status": str(task["status"])}
+        try:
+            # The engine keeps this lock while it gives out a turn: the stop must not race it.
+            lock = getattr(service, "_policy_lock", None) or threading.Lock()
+            with lock:
+                result = runtime.cancel(task["identity"], cancel_id=f"phone-turn-{uuid.uuid4().hex[:8]}")
+            runtime.wakeup()
+        except Exception as exc:  # noqa: BLE001 - said to the client in words
+            raise Refused(f"The turn did not stop: {exc}") from exc
+        _follow(room_id, engine_id, max(0, int((_rpc("groups.state", {"room_id": engine_id}).get("room") or {}).get("latest_seq") or 0) - 1))
+        return {"ok": True, "status": str((result or {}).get("status") or "")}
+    return _guard(work)
 
 
 @router.post("/rooms/{room_id}/turns/{task_id}/retry")

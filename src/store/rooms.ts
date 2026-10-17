@@ -17,6 +17,8 @@ import { currentApi } from './link'
 
 const ROUTE = '/api/plugins/group-rooms'
 const POLL_MS = 2000
+// A round can start from another device while the room is on screen: an idle room is read at this pace.
+const IDLE_MS = 8000
 
 /** Whether the host can take a message for a room. Null: not asked yet. */
 export const $roomsWritable = atom<boolean | null>(null)
@@ -73,20 +75,31 @@ export async function checkRoomsWritable(): Promise<void> {
 }
 
 function again(id: string): void {
-  timer = setTimeout(() => {
-    timer = null
+  if (timer) {
+    clearTimeout(timer)
+  }
 
-    if (watched === id) {
-      void readRoom(id).catch(() => again(id))
-    }
-  }, POLL_MS)
+  timer = setTimeout(
+    () => {
+      timer = null
+
+      if (watched === id) {
+        void readRoom(id).catch(() => again(id))
+      }
+    },
+    $roomWorking.get() === id ? POLL_MS : IDLE_MS
+  )
 }
 
-/** Read one room from the host. While its bots answer, read it again every two seconds. */
+/**
+ * Read one room from the host, and read it again while it is on screen: every
+ * two seconds while its bots answer, and at a slow pace when nothing runs, so
+ * an answer or a round from another device shows by itself.
+ */
 async function readRoom(id: string): Promise<void> {
   take(await api().request({ path: at(id) }))
 
-  if (watched === id && $roomWorking.get() === id && !timer) {
+  if (watched === id) {
     again(id)
   }
 }
@@ -118,7 +131,7 @@ export async function sendToRoom(id: string, text: string, thread: string | null
   $roomRound.set(NO_ROUND)
   take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key, ...(thread ? { thread } : { fresh: true }) }, timeoutMs: 60_000 }))
 
-  if (watched === id && !timer) {
+  if (watched === id) {
     again(id)
   }
 }
@@ -146,12 +159,18 @@ export async function readTurnWork(member: string, session: string): Promise<Tra
   return turnWork(transcriptFromHistory(pageMessages(page.messages ?? [])).items)
 }
 
+/** Stop one turn: the bot that works on it, or a turn that waits. The round goes on with the next bot. */
+export async function stopTurn(id: string, taskId: string): Promise<void> {
+  await api().request({ path: `${at(id)}/turns/${encodeURIComponent(taskId)}/stop`, method: 'POST' })
+  await readRoom(id)
+}
+
 /** Run again a turn of which the engine does not know the end, and follow the room while the bot works. */
 export async function retryTurn(id: string, taskId: string): Promise<void> {
   await api().request({ path: `${at(id)}/turns/${encodeURIComponent(taskId)}/retry`, method: 'POST' })
   await readRoom(id)
 
-  if (watched === id && !timer) {
+  if (watched === id) {
     again(id)
   }
 }

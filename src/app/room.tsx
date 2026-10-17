@@ -17,7 +17,7 @@ import { currentThread, shownRows, threadFolds, type ThreadRow, threadRows, thre
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readFullMessage, retryTurn, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -298,7 +298,7 @@ export default function RoomScreen() {
               ))}
             </View>
           ) : null}
-          <RoomActivity bots={byName} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} onStop={() => stopRoom(id)} round={round} working={working} />
+          <RoomActivity bots={byName} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} onStop={() => stopRoom(id)} onStopTurn={taskId => stopTurn(id, taskId)} round={round} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           {thread ? (
