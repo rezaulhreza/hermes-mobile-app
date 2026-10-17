@@ -75,6 +75,8 @@ export class RelayEngine implements VoiceEngine {
   private loudRun = 0
   private turn: UserTurn = { duringPlayback: false, barged: false }
   private finishNow = false
+  /** A dictation: the user spoke while the engine wrote the part before down. */
+  private heldSpeech = false
   private busy = false
   private stream: WebSocket | null = null
   /** Live sessions in a row that the host refused. One refusal may be a slow provider; two means the host has no live words. */
@@ -103,7 +105,12 @@ export class RelayEngine implements VoiceEngine {
     private liveStt: boolean,
     private readonly events: EngineEvents,
     /** How many frames from before the start of a turn go with it. */
-    private readonly prerollFrames = PREROLL_FRAMES
+    private readonly prerollFrames = PREROLL_FRAMES,
+    /**
+     * A dictation, not Live voice: the user talks on after a pause, and nothing answers. What the user says
+     * while the words of the part before are written down is kept for the next part, and no voice is dialled.
+     */
+    private readonly dictation = false
   ) {}
 
   async start(): Promise<void> {
@@ -170,14 +177,26 @@ export class RelayEngine implements VoiceEngine {
   // ── hearing ──────────────────────────────────────────────────────────────────────────────────
 
   frame(pcm: Uint8Array, level: number): void {
-    if (!this.active || this.busy) {
+    if (!this.active) {
+      return
+    }
+
+    if (this.busy) {
+      // Live voice hears nothing while it writes a turn down. A dictation keeps what is said in that time.
+      if (this.dictation) {
+        this.preroll.push(pcm)
+        this.loudRun = level > SPEECH_LEVEL ? this.loudRun + FRAME_MS : 0
+        this.heldSpeech ||= this.loudRun >= START_MS
+      }
+
       return
     }
 
     if (!this.frames) {
       this.preroll.push(pcm)
 
-      if (this.preroll.length > this.prerollFrames) {
+      // Speech that was kept while the engine was busy stays whole: it is the start of this part.
+      if (this.preroll.length > this.prerollFrames && !this.heldSpeech) {
         this.preroll.shift()
       }
 
@@ -185,7 +204,7 @@ export class RelayEngine implements VoiceEngine {
 
       this.loudRun = level > (audible ? BARGE_LEVEL : SPEECH_LEVEL) ? this.loudRun + FRAME_MS : 0
 
-      if (this.loudRun >= (audible ? BARGE_MS : START_MS)) {
+      if (this.heldSpeech || this.loudRun >= (audible ? BARGE_MS : START_MS)) {
         this.begin(audible)
       }
 
@@ -216,6 +235,7 @@ export class RelayEngine implements VoiceEngine {
     this.preroll = []
     this.listen = { ...NEW_LISTEN, loudMs: this.loudRun, totalMs: this.loudRun }
     this.loudRun = 0
+    this.heldSpeech = false
     this.finishNow = false
     this.sentenceHeard = false
 
@@ -262,7 +282,7 @@ export class RelayEngine implements VoiceEngine {
 
       this.events.utterance(said, turn)
 
-      if (said && this.active && !this.bySentence) {
+      if (said && this.active && !this.bySentence && !this.dictation) {
         // Dial the voice now, while the agent thinks: the first sentence then has no wait for a socket.
         this.reply ??= this.openReply()
       }

@@ -84,7 +84,7 @@ import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions, markSessionRead } from '@/store/sessions'
-import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
+import { $call, $callEnded, $callMuted, $callSession, $dictation, $dictationWords, $reading, cancelDictation, dictate, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
 import { lineOf, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
@@ -146,10 +146,41 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     }
   }, [callEnded])
 
-  // The words go into the field, after what is there. The user reads them and sends: a wrong word costs nothing.
-  const speakDraft = () => {
+  // The user ended a dictation with the send button: the words go to the agent, not into the field.
+  const sendSpoken = useRef(false)
+  const typed = useRef('')
+
+  // The dictation that ends later needs the field as it is then, not as it was at its start.
+  useEffect(() => {
+    typed.current = draft
+  }, [draft])
+
+  /**
+   * Start a dictation, or end the one that runs. A pause does not end it: the user ends it. The words
+   * go into the field, after what is there, so the user reads them and sends. With `andSend` they go
+   * to the agent at once.
+   */
+  const speakDraft = (andSend = false) => {
+    sendSpoken.current = andSend
+
     dictate()
-      .then(words => words && setDraft(current => (current.trim() ? `${current.trimEnd()} ${words}` : words)))
+      .then(words => {
+        // The call that ended a dictation gets no words: the words come to the call that started it.
+        if (!words) {
+          return
+        }
+
+        const text = typed.current.trim() ? `${typed.current.trimEnd()} ${words}` : words
+
+        if (sendSpoken.current && sessionId) {
+          sendSpoken.current = false
+          setDraft('')
+          tap()
+          void sendDraft(sessionId, text).then(apply)
+        } else {
+          setDraft(text)
+        }
+      })
       .catch(say)
   }
   const previewUrl = useStore($previews)[sessionId ?? '']?.url
@@ -660,13 +691,14 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
                   // Live voice has the microphone: the same button turns it off and on.
                   <IconButton icon={callMuted ? 'mic-off' : 'mic'} label={callMuted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!callMuted)} />
                 ) : (
-                  <IconButton
-                    icon={DICTATION_BUTTON[dictation].icon}
-                    label={DICTATION_BUTTON[dictation].label}
-                    onPress={speakDraft}
-                  />
+                  <IconButton icon={DICTATION_BUTTON[dictation].icon} label={DICTATION_BUTTON[dictation].label} onPress={() => speakDraft()} />
                 )}
-                {call ? null : <IconButton icon="waveform" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />}
+                {call ? null : dictation === 'off' || dictation === 'starting' ? (
+                  <IconButton icon="waveform" label="Start Live voice" onPress={() => startCall(sessionId).catch(say)} />
+                ) : (
+                  // The short way: no look at the words, they go to the agent as they are.
+                  <IconButton filled icon="arrow-up" label="Send what I said" onPress={() => speakDraft(true)} />
+                )}
               </>
             ) : null}
             {running && !hasContent ? (
@@ -914,18 +946,19 @@ function waitingForm(requests: readonly AgentRequest[]): Extract<AgentRequest, {
   return only?.kind === 'clarify' ? only : null
 }
 
+// One button for the whole of a dictation: the words of a part are written down while the user talks on.
 const DICTATION_BUTTON = {
   off: { icon: 'mic', label: 'Dictate a message' },
   starting: { icon: 'x', label: 'Cancel dictation' },
   listening: { icon: 'check', label: 'Done talking' },
   hearing: { icon: 'check', label: 'Done talking' },
-  transcribing: { icon: 'loader', label: 'Writing it down' }
+  transcribing: { icon: 'check', label: 'Done talking' }
 } as const
 
 const DICTATION_LINE = {
   off: '',
   starting: 'Opening the microphone…',
-  listening: 'Listening. Talk now.',
+  listening: 'Listening. Take your time. Tap ✓ to see the words, or the arrow to send them.',
   hearing: 'Hearing you…',
   transcribing: 'Writing it down…'
 } as const
@@ -938,9 +971,13 @@ function DictationLine() {
   return (
     <View accessibilityLiveRegion="polite" style={[styles.dictation, { backgroundColor: t.greenBg }]}>
       <Feather color={t.green} name="mic" size={14} />
-      <Text numberOfLines={3} style={[type.small, styles.dictationWords, { color: words ? t.ink : t.muted }]}>
+      {/* A long dictation shows its newest words: the start is cut, not the end. */}
+      <Text ellipsizeMode="head" numberOfLines={3} style={[type.small, styles.dictationWords, { color: words ? t.ink : t.muted }]}>
         {words || DICTATION_LINE[state]}
       </Text>
+      <Pressable accessibilityLabel="Cancel dictation" accessibilityRole="button" hitSlop={10} onPress={cancelDictation}>
+        <Feather color={t.muted} name="x" size={16} />
+      </Pressable>
     </View>
   )
 }
