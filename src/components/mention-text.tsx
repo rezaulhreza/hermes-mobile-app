@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { MentionTarget, ReferenceKind, TextPart } from '@/core/mentions'
 import { $bots } from '@/store/bots'
+import { openBotChat } from '@/store/chat'
 import { fade, type Palette } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -23,7 +24,8 @@ const REFERENCE_ICON: Record<ReferenceKind, keyof typeof Feather.glyphMap> = {
  * A text with its mentions: the content of a `Text`. A mention is drawn as
  * what it stands for, the picture of the bot and the name a person reads, not
  * as the "@" word that was typed. Only a mention that reaches something is
- * drawn so: a name that stays plain is a name that nobody answers to.
+ * drawn so: a name that stays plain is a name that nobody answers to. A tap
+ * on a bot opens the chat with it.
  *
  * `typed` is for a message field. A field holds text only, and every letter
  * must keep its place under the cursor, so there the mention keeps its "@"
@@ -50,8 +52,17 @@ function MentionChip({ target, t }: { target: MentionTarget; t: Palette }) {
   const bot = target.kind === 'bot' ? bots?.find(known => known.name === target.name) : undefined
 
   return (
-    <View accessibilityLabel={target.title} accessible style={styles.line}>
-      <View style={[styles.chip, { backgroundColor: fade(t.ink, 0.1) }]}>
+    <View style={styles.line}>
+      <Pressable
+        accessibilityHint={bot ? 'Opens the chat with this bot' : undefined}
+        accessibilityLabel={target.title}
+        accessibilityRole={bot ? 'button' : 'text'}
+        disabled={!bot}
+        hitSlop={6}
+        // No chat can start: the chip stays as it is, and the Bots list says the fault when the user goes there.
+        onPress={() => bot && void openBotChat(bot).catch(() => undefined)}
+        style={({ pressed }) => [styles.chip, { backgroundColor: fade(t.ink, pressed ? 0.2 : 0.1) }]}
+      >
         {bot ? (
           <BotAvatar bot={bot} size={FACE} t={t} />
         ) : (
@@ -60,7 +71,7 @@ function MentionChip({ target, t }: { target: MentionTarget; t: Palette }) {
         <Text numberOfLines={1} style={[styles.name, { color: t.ink }]}>
           {target.title}
         </Text>
-      </View>
+      </Pressable>
     </View>
   )
 }

@@ -4,6 +4,7 @@
  * The stored id (the row in the session list) only opens a conversation.
  */
 
+import { router } from 'expo-router'
 import { atom, map } from 'nanostores'
 
 import type {
@@ -27,6 +28,7 @@ import { EMPTY_QUEUE, enqueue, pauseQueue, promoteQueued, type Queue, removeQueu
 import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
+import type { Bot } from '@/core/bots'
 import { mentionNote } from '@/core/mentions'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
 import {
@@ -91,6 +93,24 @@ export const $shownSession = atom<string | null>(null)
 /** The live session id of an open conversation, from its stored id. */
 export function liveSessionId(storedId: string): string | null {
   return Object.values($conversations.get()).find(conversation => conversation.storedId === storedId)?.sessionId ?? null
+}
+
+
+/**
+ * Open the chat of a bot as a screen: from its row on the Bots list, and from
+ * a place where the bot is named or wrote something. Nobody has talked to the
+ * bot yet: its conversation starts now.
+ */
+export async function openBotChat(bot: Pick<Bot, 'name' | 'title' | 'chatId'>): Promise<void> {
+  if (bot.chatId) {
+    router.push({ pathname: '/chat/[id]', params: { id: bot.chatId, title: bot.title, profile: bot.name } })
+
+    return
+  }
+
+  const { storedId } = await createConversation(bot.name)
+
+  router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1', profile: bot.name } })
 }
 
 /** Start a new conversation. With a `profile` it is a conversation with that bot. With a `cwd` the agent works in that folder of the host. */

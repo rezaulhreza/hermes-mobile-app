@@ -7,6 +7,7 @@ import type { Arrival } from '@/core/arrivals'
 import type { Bot } from '@/core/bots'
 import { chatMentionParts, type TextPart } from '@/core/mentions'
 import { $bots } from '@/store/bots'
+import { openBotChat } from '@/store/chat'
 import { MONO, type Palette, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -56,23 +57,41 @@ export function ArrivalRow({ arrival, mentions }: { arrival: Arrival; /** Splits
   const bot = bots?.find(known => known.name === arrival.handle || (known.isDefault && arrival.handle === 'hermes'))
 
   return (
-    <Sender face={bot ? <BotAvatar bot={bot} size={FACE} t={t} /> : <View style={[styles.face, { backgroundColor: t.soft }]} />} name={bot?.title ?? arrival.name} t={t} what="Bot">
+    <Sender
+      face={bot ? <BotAvatar bot={bot} size={FACE} t={t} /> : <View style={[styles.face, { backgroundColor: t.soft }]} />}
+      name={bot?.title ?? arrival.name}
+      // The face and the name of the sender open the chat with it.
+      onOpen={bot ? () => void openBotChat(bot).catch(() => undefined) : undefined}
+      t={t}
+      what="Bot"
+    >
       <Markdown mentions={mentions} text={arrival.text} />
     </Sender>
   )
 }
 
-function Sender({ face, name, what, t, children }: { face: React.ReactNode; name: string; /** What kind of sender it is, in one word. */ what: string; t: Palette; children: React.ReactNode }) {
+function Sender({ face, name, what, t, onOpen, children }: { face: React.ReactNode; name: string; /** What kind of sender it is, in one word. */ what: string; t: Palette; /** Opens the sender, when it is a bot the app knows. */ onOpen?: () => void; children: React.ReactNode }) {
   return (
-    <View accessibilityLabel={`${what}: ${name}`} style={styles.sender}>
-      {face}
+    <View style={styles.sender}>
+      <Pressable accessibilityElementsHidden disabled={!onOpen} hitSlop={6} onPress={onOpen}>
+        {face}
+      </Pressable>
       <View style={styles.fill}>
-        <View style={styles.byline}>
+        <Pressable
+          accessibilityHint={onOpen ? 'Opens the chat with this bot' : undefined}
+          accessibilityLabel={`${what}: ${name}`}
+          accessibilityRole={onOpen ? 'button' : 'text'}
+          disabled={!onOpen}
+          hitSlop={6}
+          onPress={onOpen}
+          style={styles.byline}
+        >
           <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.ink, fontWeight: '700' }]}>
             {name}
           </Text>
           <Text style={[styles.tag, { color: t.muted, borderColor: t.line }]}>{what}</Text>
-        </View>
+          {onOpen ? <Feather color={t.muted} name="chevron-right" size={14} /> : null}
+        </Pressable>
         <View style={[styles.card, { backgroundColor: t.paper, borderColor: t.line }]}>{children}</View>
       </View>
     </View>

@@ -13,7 +13,7 @@ import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { type Bot, botGroups, botMark, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
 import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
-import { createConversation } from '@/store/chat'
+import { openBotChat } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
 import { $liveSessions, refreshLiveSessions } from '@/store/sessions'
@@ -97,14 +97,7 @@ export default function Bots() {
     setOpening(bot.name)
 
     try {
-      if (bot.chatId) {
-        router.push({ pathname: '/chat/[id]', params: { id: bot.chatId, title: bot.title, profile: bot.name } })
-      } else {
-        // Nobody has talked to this bot yet: its conversation starts now.
-        const { storedId } = await createConversation(bot.name)
-
-        router.push({ pathname: '/chat/[id]', params: { id: storedId, live: '1', profile: bot.name } })
-      }
+      await openBotChat(bot)
     } catch (error) {
       say(error)
     } finally {
