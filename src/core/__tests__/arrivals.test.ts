@@ -1,6 +1,6 @@
 import { arrivalLine, arrivalOf } from '../arrivals'
 import { pageMessages } from '../history-page'
-import { transcriptFromHistory } from '../transcript'
+import { EMPTY_TRANSCRIPT, reduceTranscript, transcriptFromHistory } from '../transcript'
 
 describe('what comes into a chat and is not from the user', () => {
   it('is nothing for the words of the user', () => {
@@ -61,5 +61,17 @@ describe('what comes into a chat and is not from the user', () => {
 
     expect(items.map(item => item.kind)).toEqual(['user', 'arrival', 'assistant', 'arrival'])
     expect(items[3]).toMatchObject({ arrival: { title: 'Process Finished: run' } })
+  })
+
+  it('shows the line of Hermes when it saved a skill or a memory on its own', () => {
+    const after = reduceTranscript(EMPTY_TRANSCRIPT, { type: 'review.summary', session_id: 's', payload: { text: '💾 Self-improvement review: Skill created: weekly-report' } } as never)
+
+    expect(after.items).toEqual([{ kind: 'arrival', key: 'i0', arrival: { kind: 'event', title: 'Self-improvement review: Skill created: weekly-report', tone: 'saved', detail: '' } }])
+    expect(reduceTranscript(EMPTY_TRANSCRIPT, { type: 'review.summary', session_id: 's', payload: { text: ' 💾 ' } } as never).items).toEqual([])
+  })
+
+  it('keeps a bot that was removed readable', () => {
+    // The app no longer has the bot: the name it gave itself stays on the message.
+    expect(arrivalOf('Message from 🤖 Old Helper (@old-helper): done')).toMatchObject({ kind: 'bot', name: 'Old Helper', handle: 'old-helper' })
   })
 })

@@ -16,7 +16,7 @@ export type Arrival =
   /** A schedule ran and gave its output to the bot. */
   | { kind: 'schedule'; name: string; text: string }
   /** Something the host did in the background ended, or said how far it is. `detail` is the raw record, for a person who asks for it. */
-  | { kind: 'event'; title: string; tone: 'done' | 'failed' | 'info'; detail: string }
+  | { kind: 'event'; title: string; tone: 'done' | 'failed' | 'info' | 'saved'; detail: string }
 
 const FROM_BOT = /^Message from 🤖 (.+?) \(@([A-Za-z0-9_.-]+)\): ([\s\S]*)$/
 const SCHEDULE = /^\[Cronjob "([\s\S]+?)" output — scheduled job, not the user\.[^\]]*\]\s*([\s\S]*)$/
@@ -85,6 +85,18 @@ export function arrivalOf(stored: string, title?: string | null): Arrival | null
   }
 
   return null
+}
+
+/**
+ * The line Hermes writes after it looked at a turn again on its own and saved
+ * something: a skill it wrote, a memory it changed. The host sends it as an
+ * event (`review.summary`), with a picture sign at its start that the row
+ * does not need. Null when there are no words.
+ */
+export function reviewArrival(text: string): Arrival | null {
+  const words = text.trim().replace(/^[^\p{L}\p{N}]+/u, '')
+
+  return words ? { kind: 'event', title: words, tone: 'saved', detail: '' } : null
 }
 
 /** One line for a list: what arrived, in the words of the row. */

@@ -19,7 +19,7 @@ const FACE = 30
 /** A schedule can give a long report. Its first lines say what it is about. */
 const FOLDED_LINES = 4
 
-const EVENT_ICON = { done: 'check-circle', failed: 'alert-circle', info: 'activity' } as const
+const EVENT_ICON = { done: 'check-circle', failed: 'alert-circle', info: 'activity', saved: 'bookmark' } as const
 
 /**
  * Something the bot was given that the user did not write. It is not a

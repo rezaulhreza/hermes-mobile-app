@@ -7,7 +7,7 @@
  * `message.complete` that settles the turn.
  */
 
-import { type Arrival, arrivalOf } from './arrivals'
+import { type Arrival, arrivalOf, reviewArrival } from './arrivals'
 import { teachRequest } from './teach'
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
@@ -236,6 +236,14 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
 
     case 'message.complete':
       return completeTurn(transcript, (event as GatewayEvent<'message.complete'>).payload)
+
+    // Hermes looked at the turn again on its own and saved a skill or a memory. It says so in one line.
+    case 'review.summary': {
+      const text = (event.payload as { text?: unknown } | undefined)?.text
+      const arrival = typeof text === 'string' ? reviewArrival(text) : null
+
+      return arrival ? push(settleStream(transcript), key => ({ kind: 'arrival', key, arrival })) : transcript
+    }
 
     case 'error': {
       const payload = (event as GatewayEvent<'error'>).payload as { message?: unknown } | undefined
