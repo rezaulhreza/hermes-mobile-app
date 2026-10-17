@@ -15,6 +15,17 @@ Nothing else of the app goes into the Hermes checkout. This repository is the on
 change the patch or a plugin. Never edit the copy in the Hermes checkout or in
 `$HERMES_HOME/plugins/` by hand: change the source here, then apply or install it again.
 
+## After `hermes update`: the short way
+
+Run `host/setup.sh` in this repository, on the host. It applies the patch, installs the four
+plugins, writes the launch agent of the backend for the phone and restarts that backend, from
+the one Hermes install. It stops with a message when the patch does not apply: then do the
+steps below from step 3. `host/setup.sh --check` changes nothing and reports the state.
+
+`hermes update` restarts the backend for the phone itself, as a copy of its own. The launcher
+that `setup.sh` writes waits while that copy holds the port, so the two do not fight. The run of
+`setup.sh` after the update ends the copy and gives the port back to the launch agent.
+
 ## After `hermes update`: the steps
 
 1. Look at what the update did with the applied patch. `hermes update` stashes local changes

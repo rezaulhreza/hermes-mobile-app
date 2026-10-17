@@ -79,7 +79,12 @@ of them are in [`host/`](host):
 | Page preview of the host | `host/phone-preview/install.sh` |
 | One session fix: a chat open on the desktop does not refuse the phone | `host/patches/apply.sh /path/to/hermes` |
 
-Restart Hermes after each one. Without an add-on the app still works; the
+One command does all of them and starts the backend for the phone from your one
+Hermes install: `host/setup.sh`. Run it again after every `hermes update`.
+`host/setup.sh --check` changes nothing and says what state the host is in.
+You need no second checkout and no branch of Hermes: the app puts nothing else on a host.
+
+To do one by hand, restart Hermes after it. Without an add-on the app still works; the
 feature says what is missing. Details: [`host/patches/README.md`](host/patches/README.md).
 After a Hermes update, follow [`host/patches/LEDGER.md`](host/patches/LEDGER.md).
 
