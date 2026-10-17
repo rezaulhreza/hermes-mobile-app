@@ -83,6 +83,8 @@ One command does all of them and starts the backend for the phone from your one
 Hermes install: `host/setup.sh`. Run it again after every `hermes update`.
 `host/setup.sh --check` changes nothing and says what state the host is in.
 You need no second checkout and no branch of Hermes: the app puts nothing else on a host.
+How the parts run, where to change each one, and what to do when something is wrong:
+[`host/README.md`](host/README.md).
 
 To do one by hand, restart Hermes after it. Without an add-on the app still works; the
 feature says what is missing. Details: [`host/patches/README.md`](host/patches/README.md).

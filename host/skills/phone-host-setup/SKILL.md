@@ -46,6 +46,11 @@ launch agent.
 
 `{{REPO}}/host/setup.sh --check` prints the state of the host and changes nothing.
 
+## The whole picture
+
+`{{REPO}}/host/README.md` says how the parts run, where to change each one, and the first
+check for each sign of trouble. Read it before you change anything on this host.
+
 ## Rules
 
 - Never start a second Hermes backend for the phone, and never make a second checkout or a
