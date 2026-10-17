@@ -126,6 +126,11 @@ export function whenWords(when: string, now = new Date()): string {
     return `Once, ${readableDates(once[1], now)}`
   }
 
+  // A date and a time with nothing before it is one run too: the form the phone writes.
+  if (/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(text)) {
+    return `Once, ${readableDates(text, now)}`
+  }
+
   const every = /^every (\d+) ?(m|min|minutes?|h|hours?|d|days?)$/i.exec(text)
 
   if (every) {
@@ -182,42 +187,6 @@ export function scheduleLine(schedule: Schedule, now: number): string {
     schedule.state === 'paused' ? 'Paused' : schedule.state === 'completed' ? 'Finished' : schedule.nextRunAt ? `Next ${untilWords(schedule.nextRunAt, now)}` : 'Waiting'
 
   return [whenWords(schedule.when, new Date(now)), state, schedule.failed ? 'the last run failed' : ''].filter(Boolean).join(' · ')
-}
-
-/** Schedules a person asks for most, as the text the host takes. */
-export const SCHEDULE_CHOICES: readonly { label: string; value: string }[] = [
-  { label: 'Every 30 minutes', value: 'every 30m' },
-  { label: 'Every hour', value: 'every 1h' },
-  { label: 'Every day at 9:00', value: '0 9 * * *' },
-  { label: 'Weekdays at 9:00', value: '0 9 * * 1-5' },
-  { label: 'Every Monday at 9:00', value: '0 9 * * 1' }
-]
-
-const INTERVAL = /^every\s+\d+\s*(m|min|minutes?|h|hours?|d|days?)$/i
-const CRON_FIELD = /^[\d*/,\-A-Za-z]+$/
-
-/**
- * Why a new schedule cannot be saved, or null. The host checks the schedule
- * text itself; this catches an empty form and a text that is clearly not a
- * schedule, before a round trip.
- */
-export function scheduleProblem(prompt: string, when: string): string | null {
-  if (!prompt.trim()) {
-    return 'Write what the agent must do.'
-  }
-
-  const schedule = when.trim()
-
-  if (!schedule) {
-    return 'Choose when it runs.'
-  }
-
-  const fields = schedule.split(/\s+/)
-  const cron = fields.length === 5 && fields.every(field => CRON_FIELD.test(field))
-
-  return INTERVAL.test(schedule) || cron || /^(once\s+)?(at|in)\s+\S+/i.test(schedule) || /^\d{4}-\d{2}-\d{2}/.test(schedule)
-    ? null
-    : 'Write the time as “every 2h”, as five cron fields (“0 9 * * *”), or as a date and a time.'
 }
 
 const RUN_FILE_PREFIX = 'cron_output:'

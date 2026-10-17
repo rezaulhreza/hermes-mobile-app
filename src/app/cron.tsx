@@ -9,8 +9,10 @@ import { BotAvatar } from '@/components/bot-sheet'
 import { type Choice, ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { Markdown } from '@/components/markdown'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
-import { type Blueprint, blueprintDefaults, blueprintMissing, deliveryLabel, type Schedule, SCHEDULE_CHOICES, scheduleLine, scheduleProblem, type ScheduleRun } from '@/core/cron'
+import { WhenPicker } from '@/components/when-picker'
+import { type Blueprint, blueprintDefaults, blueprintMissing, deliveryLabel, type Schedule, scheduleLine, type ScheduleRun } from '@/core/cron'
 import { faultWords, relativeTime } from '@/core/format'
+import { parseWhen, type When, whenProblem, whenText } from '@/core/when'
 import { $bots } from '@/store/bots'
 import {
   $deliveryTargets,
@@ -170,11 +172,14 @@ function SheetFrame({ title, onClose, children }: { title: string; onClose: () =
 function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: number; onClose: () => void }) {
   const t = useTheme()
   const [prompt, setPrompt] = useState(schedule.prompt)
-  const [when, setWhen] = useState(schedule.when)
+  // The choices the text of the host stands for. A form the choices do not have opens as text.
+  const [when, setWhen] = useState(() => parseWhen(schedule.when))
   const [busy, setBusy] = useState<string | null>(null)
   const [runs, setRuns] = useState<ScheduleRun[] | null>(null)
-  const changed = prompt.trim() !== schedule.prompt || when.trim() !== schedule.when
-  const problem = changed ? scheduleProblem(prompt, when) : null
+  // The text of the choices is not always the text the host gave ("every 360m" is "every 6h"): compare what they mean.
+  const whenChanged = whenText(when) !== whenText(parseWhen(schedule.when))
+  const changed = prompt.trim() !== schedule.prompt || whenChanged
+  const problem = changed ? (prompt.trim() ? whenProblem(when, new Date(now)) : 'Write what the agent must do.') : null
   const delivery = useDelivery()
   const [delivering, setDelivering] = useState(false)
   // The whole text of one run, open over the sheet.
@@ -249,8 +254,17 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
       </View>
 
       <Field label="What the agent does" multiline onChangeText={setPrompt} style={styles.prompt} value={prompt} />
-      <Field error={problem} label="When" onChangeText={setWhen} value={when} />
-      <Button busy={busy === 'save'} disabled={!changed || Boolean(problem)} label="Save the changes" onPress={() => run('save', () => updateSchedule(schedule, { prompt: prompt.trim(), schedule: when.trim() }))} tone="primary" />
+      <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>When</Text>
+      <WhenPicker now={now} onChange={setWhen} showProblem={changed} value={when} />
+      {changed && problem && !prompt.trim() ? <Text style={[type.small, { color: t.red }]}>{problem}</Text> : null}
+      <Button
+        busy={busy === 'save'}
+        disabled={!changed || Boolean(problem)}
+        label="Save the changes"
+        // The time goes to the host only when the person changed it: a schedule keeps the text it has.
+        onPress={() => run('save', () => updateSchedule(schedule, { prompt: prompt.trim(), ...(whenChanged ? { schedule: whenText(when) } : {}) }))}
+        tone="primary"
+      />
 
       <Text style={[type.small, styles.heading, { color: t.muted }]}>Last runs</Text>
       {runs === null ? (
@@ -292,10 +306,13 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const [prompt, setPrompt] = useState('')
   const [name, setName] = useState('')
-  const [when, setWhen] = useState(SCHEDULE_CHOICES[2].value)
+  // Every day at 9:00 to start with: the schedule a person asks for most.
+  const [when, setWhen] = useState<When>({ kind: 'daily', hour: 9, minute: 0 })
   const [busy, setBusy] = useState(false)
   const [tried, setTried] = useState(false)
-  const problem = scheduleProblem(prompt, when)
+  // The clock of the sheet, for the earliest time a single run can have.
+  const [now] = useState(Date.now)
+  const problem = prompt.trim() ? whenProblem(when, new Date()) : 'Write what the agent must do.'
   const bots = useStore($bots) ?? []
   // The bot that does the work. The main bot with none chosen.
   const [owner, setOwner] = useState<string | null>(null)
@@ -321,7 +338,7 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
     }
 
     setBusy(true)
-    createSchedule(prompt, when, name, profile, deliver)
+    createSchedule(prompt, whenText(when), name, profile, deliver)
       .then(onClose, say)
       .finally(() => setBusy(false))
   }
@@ -342,24 +359,7 @@ function NewScheduleSheet({ onClose }: { onClose: () => void }) {
       <Field label="Name (optional)" onChangeText={setName} placeholder="Morning mail" value={name} />
 
       <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>When</Text>
-      <View style={styles.chips}>
-        {SCHEDULE_CHOICES.map(choice => {
-          const checked = choice.value === when
-
-          return (
-            <Pressable
-              accessibilityRole="radio"
-              accessibilityState={{ checked }}
-              key={choice.value}
-              onPress={() => setWhen(choice.value)}
-              style={[styles.chip, { backgroundColor: checked ? t.ink : t.paper, borderColor: checked ? t.ink : t.line }]}
-            >
-              <Text style={[type.small, { color: checked ? t.bg : t.ink }]}>{choice.label}</Text>
-            </Pressable>
-          )
-        })}
-      </View>
-      <Field error={tried && prompt.trim() ? problem : null} label="Or write it: “every 2h”, or cron fields" onChangeText={setWhen} value={when} />
+      <WhenPicker now={now} onChange={setWhen} showProblem={tried} value={when} />
 
       <ChoiceRow icon="send" label="The result goes to" onPress={() => setChoosing('deliver')} value={delivery.label(deliver)} />
       <Button busy={busy} icon="plus" label="Add the schedule" onPress={add} tone="primary" />
@@ -462,7 +462,5 @@ const styles = StyleSheet.create({
   error: { padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
   prompt: { minHeight: 96, textAlignVertical: 'top', paddingTop: space.md },
   heading: { fontWeight: '700', marginTop: space.sm },
-  run: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: { paddingHorizontal: space.md, minHeight: 36, justifyContent: 'center', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth }
+  run: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth }
 })

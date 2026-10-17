@@ -1,4 +1,4 @@
-import { scheduleLine, scheduleProblem, scheduleRows, scheduleRuns, untilWords, whenWords } from '../cron'
+import { scheduleLine, scheduleRows, scheduleRuns, untilWords, whenWords } from '../cron'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 
@@ -41,20 +41,6 @@ describe('scheduleRows', () => {
 it('says a time to go in words', () => {
   expect(untilWords(NOW - 5, NOW)).toBe('now')
   expect(untilWords(NOW + 3 * 86_400_000, NOW)).toBe('in 3 days')
-})
-
-describe('scheduleProblem', () => {
-  it('takes an interval, cron fields and a date', () => {
-    for (const when of ['every 30m', 'every 2 hours', '0 9 * * 1-5', '*/15 * * * *', 'at 2026-10-12 09:00', '2026-10-12T09:00']) {
-      expect(scheduleProblem('Do it', when)).toBeNull()
-    }
-  })
-
-  it('asks for the missing part', () => {
-    expect(scheduleProblem(' ', 'every 1h')).toBe('Write what the agent must do.')
-    expect(scheduleProblem('Do it', ' ')).toBe('Choose when it runs.')
-    expect(scheduleProblem('Do it', 'sometimes')).toContain('every 2h')
-  })
 })
 
 it('reads the run history', () => {
@@ -109,6 +95,7 @@ describe('when a schedule runs, in the words of a person', () => {
     expect(whenWords('every 1440m', now)).toBe('Every day')
     expect(whenWords('once at 2026-10-07 20:00', now)).toBe('Once, 7 Oct at 8:00 pm')
     expect(whenWords('once at 2027-01-02 09:05', now)).toBe('Once, 2 Jan 2027 at 9:05 am')
+    expect(whenWords('2026-10-12T19:00', now)).toBe('Once, 12 Oct at 7:00 pm')
   })
 
   it('reads the cron fields a person uses', () => {
