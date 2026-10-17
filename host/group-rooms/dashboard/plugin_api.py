@@ -325,6 +325,10 @@ class NewMessage(BaseModel):
     text: str
     # A key of the client for this message: a second post with the same key adds nothing.
     id: Optional[str] = None
+    # The thread the message goes on with. Without it, ``fresh`` starts a new thread, and a client
+    # that says neither gets the thread of the message before when that one is recent.
+    thread: Optional[str] = None
+    fresh: bool = False
 
 
 def _guard(work):
@@ -493,7 +497,9 @@ def post_message(room_id: str, body: NewMessage) -> dict:
         now = int(time.time() * 1000)
         if not any(entry.get("id") == message_id for entry in log):
             last = log[-1] if log else {}
-            thread = str(last.get("thread") or "") if now - int(last.get("at") or 0) < THREAD_GAP_MS else ""
+            thread = re.sub(r"[^A-Za-z0-9._:-]+", "-", body.thread or "")[:128]
+            if not thread and not body.fresh:
+                thread = str(last.get("thread") or "") if now - int(last.get("at") or 0) < THREAD_GAP_MS else ""
             found["thread"] = thread or f"t{_stamp(now)}-{uuid.uuid4().hex[:5]}"
             log.append({"id": message_id, "from": {"kind": "user", "name": "You"}, "text": text, "at": now, "thread": found["thread"]})
             _fit(room)

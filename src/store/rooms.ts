@@ -107,13 +107,14 @@ export function unwatchRoom(): void {
   }
 }
 
-export async function sendToRoom(id: string, text: string): Promise<void> {
+/** Send a message to a room. `thread` is the thread it goes on with; null starts a new thread. */
+export async function sendToRoom(id: string, text: string, thread: string | null): Promise<void> {
   // The key lets the host drop a second copy when the phone sends again after a lost answer.
   const key = `p${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
   // The turns on screen are of the message before this one.
   $roomRound.set([])
-  take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key }, timeoutMs: 60_000 }))
+  take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key, ...(thread ? { thread } : { fresh: true }) }, timeoutMs: 60_000 }))
 
   if (watched === id && !timer) {
     again(id)

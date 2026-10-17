@@ -256,6 +256,8 @@ export interface RoomMessage {
   at: number
   /** The host keeps only the start of this message in the record. The rest can be read from the host. */
   cut?: boolean
+  /** The thread the message belongs to. Absent for a message from before threads. */
+  thread?: string
 }
 
 /** What the host and the desktop app put at the end of a message they cut. */
@@ -300,7 +302,7 @@ export function roomRow(key: string, value: unknown): Room | null {
   }
 
   const messages = (Array.isArray(room.log) ? room.log : []).flatMap((entry, index): RoomMessage[] => {
-    const { id, from, text, at } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown }
+    const { id, from, text, at, thread } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown; thread?: unknown }
 
     if (typeof text !== 'string' || !text.trim()) {
       return []
@@ -316,7 +318,8 @@ export function roomRow(key: string, value: unknown): Room | null {
         mine: from?.kind === 'user',
         text: cut ? `${text.slice(0, -CUT_MARK.length).trimEnd()}…` : text,
         at: typeof at === 'number' ? at : 0,
-        ...(cut ? { cut: true } : {})
+        ...(cut ? { cut: true } : {}),
+        ...(typeof thread === 'string' && thread ? { thread } : {})
       }
     ]
   })

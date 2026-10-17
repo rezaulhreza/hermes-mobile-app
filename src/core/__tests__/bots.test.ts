@@ -156,6 +156,12 @@ describe('a room read again', () => {
     expect(messages.map(message => [message.text, message.cut])).toEqual([['A long answer…', true], ['Short', undefined]])
   })
 
+  it('keeps the thread of a message', () => {
+    const { messages } = roomRow('id:r1', { name: 'Launch', log: [{ id: 'a', text: 'Go', at: 1, thread: 't1' }, { id: 'b', text: 'Old', at: 2, thread: '' }] })!
+
+    expect(messages.map(message => message.thread)).toEqual(['t1', undefined])
+  })
+
   it('takes the place of its older copy, or goes first', () => {
     expect(withRoom([room('a', 'A'), room('b', 'B')], room('b', 'B2')).map(item => item.name)).toEqual(['A', 'B2'])
     expect(withRoom([room('a', 'A')], room('c', 'C')).map(item => item.name)).toEqual(['C', 'A'])

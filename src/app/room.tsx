@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -13,6 +13,7 @@ import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
+import { currentThread, type ThreadRow, threadRows, threadTitle } from '@/core/threads'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
@@ -27,6 +28,10 @@ import { useTheme } from '@/theme/use-theme'
  * A message that names bots ("@qa") goes to those bots only: the field offers
  * the names, colours the ones the host follows and says who answers. While
  * the bots answer, a strip over the field names the bot that works now.
+ *
+ * The messages are in threads, a topic each. A message goes on with the
+ * newest thread while that one is recent, and the field says so. The user
+ * can start a new thread there, or reply in any older one.
  * A host without the `group-rooms` plugin shows the record and takes no
  * message.
  */
@@ -38,12 +43,26 @@ export default function RoomScreen() {
   const linkState = useStore($linkState)
   const byName = useMemo(() => botsByAnyName(bots ?? []), [bots])
   // The list is upside down: it opens at the newest message with only the rows on screen drawn.
-  const newestFirst = useMemo(() => [...(room?.messages ?? [])].reverse(), [room?.messages])
+  const newestFirst = useMemo(() => threadRows(room?.messages ?? []).reverse(), [room?.messages])
+  // A line between two threads. A room with one thread needs none.
+  const several = useMemo(() => new Set(newestFirst.map(row => row.thread)).size > 1, [newestFirst])
 
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
   const turns = useStore($roomRound)
   const [draft, setDraft] = useState('')
+  const field = useRef<TextInput>(null)
+  // The thread the user chose for the next message, or a new thread (null). No choice: the newest thread while it is recent.
+  const [choice, setChoice] = useState<{ thread: string | null } | null>(null)
+  const [now, setNow] = useState(Date.now)
+  const thread = choice ? choice.thread : currentThread(room?.messages ?? [], now)
+
+  // A thread stops being "recent" while the screen is open.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+
+    return () => clearInterval(timer)
+  }, [])
   const targets = useMemo(() => (room ? roomTargets(room, byName) : []), [room, byName])
   // One function for every row: a row is drawn again only when its text changes.
   const marked = useCallback((text: string) => roomMentionParts(text, targets), [targets])
@@ -82,13 +101,32 @@ export default function RoomScreen() {
     return unwatchRoom
   }, [linkState, id])
 
+  /** Go on with the thread of a message. With a bot, the message starts with its name, so that bot answers. */
+  const reply = useCallback(
+    (row: ThreadRow, toBot = false) => {
+      const handle = toBot ? targets.find(target => target.name === byName.get(row.message.from)?.name)?.handle : undefined
+
+      setChoice({ thread: row.thread })
+      setNow(Date.now())
+
+      if (handle) {
+        setDraft(text => (text.includes(`@${handle}`) ? text : `@${handle} ${text}`))
+      }
+
+      field.current?.focus()
+    },
+    [targets, byName]
+  )
+
   const send = () => {
     const text = draft.trim()
 
     setSending(true)
     setFault(null)
     setDraft('')
-    sendToRoom(id, text)
+    sendToRoom(id, text, thread)
+      // The message is in its thread now, and that thread is the newest one.
+      .then(() => setChoice(null))
       .catch(error => {
         setDraft(text)
         setFault(faultWords(error))
@@ -161,8 +199,32 @@ export default function RoomScreen() {
           data={newestFirst}
           initialNumToRender={10}
           inverted={newestFirst.length > 0}
-          keyExtractor={message => message.id}
-          renderItem={({ item }) => <Message bot={byName.get(item.from)} full={full[item.id]} marked={marked} message={item} onReadAll={readAll} />}
+          keyExtractor={row => row.message.id}
+          renderItem={({ item }) => (
+            <View style={styles.row}>
+              {item.first && several ? (
+                <View style={styles.divider}>
+                  <View style={[styles.line, { backgroundColor: t.line }]} />
+                  <Text style={[type.small, { color: t.muted }]}>{item.message.at ? relativeTime(item.message.at / 1000) : 'Earlier'}</Text>
+                  <View style={[styles.line, { backgroundColor: t.line }]} />
+                </View>
+              ) : null}
+              <Message
+                bot={byName.get(item.message.from)}
+                full={full[item.message.id]}
+                marked={marked}
+                message={item.message}
+                onReadAll={readAll}
+                onReply={writable && item.known ? () => reply(item, true) : undefined}
+              />
+              {item.last && item.known && writable && item.thread !== thread ? (
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => reply(item)} style={styles.replyIn}>
+                  <Feather color={t.accent} name="corner-down-right" size={14} />
+                  <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>Reply in thread</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
           windowSize={7}
         />
       )}
@@ -194,14 +256,26 @@ export default function RoomScreen() {
           <RoomActivity bots={byName} turns={turns} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
+          {thread ? (
+            <View style={styles.inThread}>
+              <Feather color={t.muted} name="corner-down-right" size={14} />
+              <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+                In thread: <Text style={{ color: t.ink }}>{threadTitle(room.messages, thread) || 'earlier messages'}</Text>
+              </Text>
+              <Pressable accessibilityLabel="Start a new thread" accessibilityRole="button" hitSlop={10} onPress={() => setChoice({ thread: null })}>
+                <Feather color={t.muted} name="x" size={16} />
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.sendRow}>
             <TextInput
               accessibilityLabel="Message to the group"
               autoCapitalize={typed === null ? 'sentences' : 'none'}
               multiline
               onChangeText={setDraft}
-              placeholder="Say something to all of them, or @ one"
+              placeholder={thread ? 'Reply in the thread, or @ one' : room.messages.length ? 'Start a new thread, or @ one' : 'Say something to all of them, or @ one'}
               placeholderTextColor={t.muted}
+              ref={field}
               style={[type.body, styles.input, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
             >
               <MentionText parts={roomMentionParts(draft, targets)} />
@@ -227,9 +301,11 @@ interface MessageProps {
   /** The whole message, when the host cut it in the record and the user asked for the rest. */
   full?: string
   onReadAll: (messageId: string) => Promise<void>
+  /** Reply to the bot of this message in its thread. Absent when the room takes no reply. */
+  onReply?: () => void
 }
 
-function Message({ message, bot, marked, full, onReadAll }: MessageProps) {
+function Message({ message, bot, marked, full, onReadAll, onReply }: MessageProps) {
   const t = useTheme()
   const [reading, setReading] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
@@ -270,10 +346,17 @@ function Message({ message, bot, marked, full, onReadAll }: MessageProps) {
     <View style={styles.theirs}>
       {bot ? <BotAvatar bot={bot} size={30} t={t} /> : <View style={[styles.unknown, { backgroundColor: t.soft }]} />}
       <View style={styles.fill}>
-        <Text style={[type.small, { color: t.muted }]}>
-          <Text style={{ color: t.ink, fontWeight: '700' }}>{bot?.title ?? message.from}</Text>
-          {message.at ? `  ${relativeTime(message.at / 1000)}` : ''}
-        </Text>
+        <View style={styles.byline}>
+          <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+            <Text style={{ color: t.ink, fontWeight: '700' }}>{bot?.title ?? message.from}</Text>
+            {message.at ? `  ${relativeTime(message.at / 1000)}` : ''}
+          </Text>
+          {onReply ? (
+            <Pressable accessibilityLabel={`Reply to ${bot?.title ?? message.from}`} accessibilityRole="button" hitSlop={10} onPress={onReply}>
+              <Feather color={t.muted} name="corner-up-left" size={16} />
+            </Pressable>
+          ) : null}
+        </View>
         <Markdown mentions={marked} text={text} />
         {more}
       </View>
@@ -284,6 +367,12 @@ function Message({ message, bot, marked, full, onReadAll }: MessageProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { gap: space.sm },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
+  line: { flex: 1, height: StyleSheet.hairlineWidth },
+  replyIn: { flexDirection: 'row', alignItems: 'center', gap: space.xs, alignSelf: 'flex-start', paddingVertical: space.xs },
+  inThread: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.xs },
+  byline: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   list: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   note: { textAlign: 'center', paddingVertical: space.md },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
