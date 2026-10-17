@@ -270,6 +270,32 @@ def _following(room_id: str) -> bool:
         return room_id in _followers
 
 
+def _round(engine_id: str) -> list[dict]:
+    """The turns of the round that runs, or that ran last: which bot works, which one waits, which
+    one is done. In the order the engine gave them out.
+
+    No RPC of the gateway names the bot of a turn (``groups.state`` gives counts only), so this
+    reads the task list of the engine, and reads only. IF A HERMES UPDATE MOVES IT: the list is
+    empty, and the phone says "The bots answer in turn" as it did before. See LEDGER.md."""
+    try:
+        from gateway.hosted_room_driver import list_tasks
+        from gateway.hosted_rooms import default_db_path
+
+        tasks = [task for task in list_tasks(default_db_path(), room_id=engine_id) if isinstance(task.get("payload"), dict)]
+        if not tasks:
+            return []
+        # A message of the user starts a discussion. Its turns name the place of that message in the log.
+        last = str(tasks[-1]["payload"].get("source_event_seq"))
+        ms = lambda at: int(float(at) * 1000) if at else 0  # noqa: E731
+        return [
+            {"member": str(task["payload"].get("target_member_id") or ""), "status": str(task.get("status") or ""),
+             "started_at": ms(task.get("started_at")), "ended_at": ms(task.get("terminal_at"))}
+            for task in tasks if str(task["payload"].get("source_event_seq")) == last]
+    except Exception:  # noqa: BLE001 - the room is readable without it
+        logger.debug("group-rooms: the turns of %s cannot be read", engine_id, exc_info=True)
+        return []
+
+
 def _engine_state(engine_id: str) -> Optional[dict]:
     try:
         return _rpc("groups.state", {"room_id": engine_id})
@@ -336,7 +362,8 @@ def read_room(room_id: str) -> dict:
                 _copy_answers(room_id, engine_id, max(0, latest - 60))
                 record, _revision, _profiles = _read()
         # Between two members the engine rests for a moment: the follower says that the round goes on.
-        return _shown(key, record["rooms"][_key(record, room_id)], working or _following(room_id))
+        shown = _shown(key, record["rooms"][_key(record, room_id)], working or _following(room_id))
+        return {**shown, "round": _round(engine_id) if state is not None else []}
     return _guard(work)
 
 

@@ -8,6 +8,7 @@
 import { atom } from 'nanostores'
 
 import { type Room, roomRow, withRoom } from '@/core/bots'
+import { roundTurns, type Turn } from '@/core/rounds'
 
 import { $rooms } from './bots'
 import { currentApi } from './link'
@@ -19,6 +20,8 @@ const POLL_MS = 2000
 export const $roomsWritable = atom<boolean | null>(null)
 /** The id of the room in which the bots answer now. */
 export const $roomWorking = atom<string | null>(null)
+/** The turns of the round in the room on screen: which bot works, which one waits. Empty when the host gives none. */
+export const $roomRound = atom<Turn[]>([])
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let watched: string | null = null
@@ -44,6 +47,11 @@ function take(answer: unknown): Room {
   }
 
   $rooms.set(withRoom($rooms.get(), room))
+
+  // Only a read of the room has the turns. An answer to a write must not empty the list.
+  if (watched === room.id && Array.isArray((answer as { round?: unknown }).round)) {
+    $roomRound.set(roundTurns(answer))
+  }
 
   if ((answer as { working?: unknown }).working === true) {
     $roomWorking.set(room.id)
@@ -91,6 +99,7 @@ export function watchRoom(id: string): void {
 export function unwatchRoom(): void {
   watched = null
   $roomWorking.set(null)
+  $roomRound.set([])
 
   if (timer) {
     clearTimeout(timer)
@@ -102,6 +111,8 @@ export async function sendToRoom(id: string, text: string): Promise<void> {
   // The key lets the host drop a second copy when the phone sends again after a lost answer.
   const key = `p${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
+  // The turns on screen are of the message before this one.
+  $roomRound.set([])
   take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key }, timeoutMs: 60_000 }))
 
   if (watched === id && !timer) {

@@ -2,12 +2,13 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
 import { MentionText } from '@/components/mention-text'
+import { RoomActivity } from '@/components/room-activity'
 import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
@@ -15,7 +16,7 @@ import { faultWords, relativeTime } from '@/core/format'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, readFullMessage, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomWorking, checkRoomsWritable, forgetGroup, readFullMessage, sendToRoom, stopRoom, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -24,7 +25,8 @@ import { useTheme } from '@/theme/use-theme'
  * something to all of them. The host runs the round: it gives the message to
  * each member in turn and logs the answers in the record every client reads.
  * A message that names bots ("@qa") goes to those bots only: the field offers
- * the names, colours the ones the host follows and says who answers.
+ * the names, colours the ones the host follows and says who answers. While
+ * the bots answer, a strip over the field names the bot that works now.
  * A host without the `group-rooms` plugin shows the record and takes no
  * message.
  */
@@ -40,6 +42,7 @@ export default function RoomScreen() {
 
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
+  const turns = useStore($roomRound)
   const [draft, setDraft] = useState('')
   const targets = useMemo(() => (room ? roomTargets(room, byName) : []), [room, byName])
   // One function for every row: a row is drawn again only when its text changes.
@@ -145,12 +148,7 @@ export default function RoomScreen() {
             room.omitted ? <Text style={[type.small, styles.note, { color: t.muted }]}>{room.omitted} earlier messages are not kept on the host.</Text> : null
           }
           ListHeaderComponent={
-            working ? (
-              <View style={styles.working}>
-                <ActivityIndicator color={t.muted} size="small" />
-                <Text style={[type.small, styles.fill, { color: t.muted }]}>The bots answer in turn.</Text>
-              </View>
-            ) : writable === false ? (
+            writable === false ? (
               <View style={[styles.foot, { backgroundColor: t.soft }]}>
                 <Feather color={t.muted} name="monitor" size={16} />
                 <Text style={[type.small, styles.fill, { color: t.muted }]}>
@@ -193,6 +191,7 @@ export default function RoomScreen() {
               ))}
             </View>
           ) : null}
+          <RoomActivity bots={byName} turns={turns} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           <View style={styles.sendRow}>
@@ -294,7 +293,6 @@ const styles = StyleSheet.create({
   choiceIcon: { width: 26, textAlign: 'center' },
   sendRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   input: { flex: 1, minHeight: TOUCH, maxHeight: 140, paddingHorizontal: space.md, paddingTop: 11, paddingBottom: 11, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
-  working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   confirm: { gap: space.sm, alignSelf: 'stretch' },
   mine: { alignSelf: 'flex-end', maxWidth: '88%', padding: space.md, borderRadius: radius.lg, gap: space.xs },
   theirs: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
