@@ -218,17 +218,34 @@ export function roomChoices(targets: readonly RoomTarget[], typed: string): Room
   return [...targets, EVERYONE].filter(target => [target.handle, target.name, target.title].some(form => form.toLowerCase().startsWith(wanted)))
 }
 
-function roomMentions(text: string): Found[] {
-  return [...text.matchAll(/@([A-Za-z0-9][A-Za-z0-9._:-]*)/g)].map(match => ({ start: match.index, token: match[1] }))
-}
+const EVERYONE_NAMES = ['all', 'everyone']
+const isEveryone = (token: string) => EVERYONE_NAMES.includes(token.toLowerCase())
 
-const isEveryone = (token: string) => ['all', 'everyone'].includes(token.toLowerCase())
+/**
+ * The mentions in a message to a room, as the host reads them. A handle can
+ * hold "." and ":", so the host takes them as a part of the name. The word as
+ * it is written is tried first; only when it names nobody is one "." or ":"
+ * taken off its end and the rest tried again. So "@qa." at the end of a
+ * sentence reaches "qa", and a bot that is called "qa." keeps its name.
+ * Keep it the same as `resolve_mentions` of the host (host/patches).
+ */
+function roomMentions(text: string, handles: ReadonlySet<string>): Found[] {
+  return [...text.matchAll(/@([A-Za-z0-9][A-Za-z0-9._:-]*)/g)].map(match => {
+    let token = match[1]
+
+    while (!isEveryone(token) && !handles.has(token.toLowerCase()) && /[.:]$/.test(token)) {
+      token = token.slice(0, -1)
+    }
+
+    return { start: match.index, token }
+  })
+}
 
 /** A message of a room in its parts, for the colour of the mentions the host follows. */
 export function roomMentionParts(text: string, targets: readonly RoomTarget[]): TextPart[] {
   const handles = new Set(targets.map(target => target.handle.toLowerCase()))
 
-  return partsOf(text, roomMentions(text), token => isEveryone(token) || handles.has(token.toLowerCase()))
+  return partsOf(text, roomMentions(text, handles), token => isEveryone(token) || handles.has(token.toLowerCase()))
 }
 
 /**
@@ -238,7 +255,7 @@ export function roomMentionParts(text: string, targets: readonly RoomTarget[]): 
  */
 export function roomAnswerLine(text: string, targets: readonly RoomTarget[]): string | null {
   const byHandle = new Map(targets.map(target => [target.handle.toLowerCase(), target]))
-  const found = roomMentions(text)
+  const found = roomMentions(text, new Set(byHandle.keys()))
   const named = [...new Set(found.flatMap(({ token }) => byHandle.get(token.toLowerCase()) ?? []))]
   const everyone = found.some(({ token }) => isEveryone(token))
   // A word with "@" inside is an address, not a wrong name.

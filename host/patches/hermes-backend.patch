@@ -4,8 +4,36 @@ LOCAL PATCH (why), UPSTREAM CHECK (how to tell that upstream has it), ON CONFLIC
 (what to do). Read LEDGER.md in this folder after every `hermes update`.
 Apply with apply.sh. `git apply` ignores this text above the first diff.
 
+diff --git a/gateway/hosted_room_discussion.py b/gateway/hosted_room_discussion.py
+index 7eb152582907e86984acdbc803ee3d16085a8a3f..3c8d5f1f878d6bd3669c594414c352910e8a6521 100644
+--- a/gateway/hosted_room_discussion.py
++++ b/gateway/hosted_room_discussion.py
+@@ -306,9 +306,23 @@ def resolve_mentions(
+     by_handle = {member.handle.casefold(): member for member in members}
+     mentioned: set[str] = set()
+     everyone = False
++    # LOCAL PATCH (hermes-native): a mention at the end of a clause counts. The pattern takes "."
++    #   and ":" as a part of a handle, because a handle can hold them ("qa.bot", "name:device").
++    #   So "@qa." and "@qa:" named a handle that nobody has, and the member got no turn: a bot
++    #   that wrote "@product: wait for the list" called nobody. The word as it is written is tried
++    #   first, so a handle that ends in "." or ":" still wins; only when it names nobody is one
++    #   "." or ":" taken off its end and the rest tried again. Ledger: host/patches/LEDGER.md of
++    #   the hermes-native repository. The phone has the same rule in src/core/mentions.ts.
++    # UPSTREAM CHECK: on a stock checkout, `resolve_mentions(("@qa.",), members)` with a member
++    #   whose handle is "qa" returns that member. Then upstream has the fix: drop this hunk.
++    # ON CONFLICT: keep the upstream version of this function and put the loop over `handle` back
++    #   around its lookup of the handle. Nothing else of the function is changed.
++    known = {"all", "everyone", *by_handle}
+     for text in texts:
+         for match in _MENTION_RE.finditer(str(text or "")):
+             handle = match.group(1).casefold()
++            while handle not in known and handle[-1:] in (".", ":"):
++                handle = handle[:-1]
+             if handle in {"all", "everyone"}:
+                 everyone = True
+             elif handle in by_handle:
 diff --git a/tui_gateway/session_lifecycle.py b/tui_gateway/session_lifecycle.py
-index f8943fdc15969a3ef6ce5eec2f680103b0b9f446..78a95377be632264cf46a9f2fc372e43b4707b4c 100644
+index c8f9e589bc1f7275dc48b310bbb650216c2d8ff6..e098ce42077542cb650b4dc6686691b1d855a974 100644
 --- a/tui_gateway/session_lifecycle.py
 +++ b/tui_gateway/session_lifecycle.py
 @@ -226,9 +226,20 @@ def _release_hosted_room_turn_slot(session: dict) -> None:

@@ -6,7 +6,7 @@ after an update, and says what to do. Work through it from the top.
 
 A host that runs the phone app is stock Hermes plus:
 
-1. One small patch: `hermes-backend.patch` in this folder. It changes one function.
+1. One small patch: `hermes-backend.patch` in this folder. It changes two functions.
 2. Four plugins in `$HERMES_HOME/plugins/`: `phone-push`, `phone-preview`, `screen-remote`
    and `group-rooms`. Their source and `install.sh` are in `host/<name>/` of this repository.
 3. Some keys in `$HERMES_HOME/config.yaml` (see the last table).
@@ -19,8 +19,8 @@ change the patch or a plugin. Never edit the copy in the Hermes checkout or in
 
 1. Look at what the update did with the applied patch. `hermes update` stashes local changes
    before the pull and puts them back after it.
-   - `git -C <checkout> status --short` shows `tui_gateway/session_lifecycle.py` as modified:
-     the update put the patch back. Go to step 2.
+   - `git -C <checkout> status --short` shows `tui_gateway/session_lifecycle.py` and
+     `gateway/hosted_room_discussion.py` as modified: the update put the patch back. Go to step 2.
    - `git -C <checkout> stash list` has a new entry and the file is not modified: the update
      kept the patch aside. Do NOT drop, pop or reset anything. Go to step 2: `apply.sh`
      applies the patch again on the new code. Tell the owner about the stash entry: it holds
@@ -48,6 +48,7 @@ change the patch or a plugin. Never edit the copy in the Hermes checkout or in
 | Hunk | What it does | Why it cannot be a plugin | Upstream check | Drop when |
 |---|---|---|---|---|
 | `tui_gateway/session_lifecycle.py`, `_release_hosted_room_turn_slot` | Releases the session slot at the end of every turn, for every client. Stock releases it only for a hosted room. Without it, a chat that the Desktop has open refuses the phone ("opened by desktop ... ago"). | No plugin hook runs at the end of a turn, and the release must run under the session's `history_lock`. | `grep -n "ROOM_SESSION_SOURCE" tui_gateway/session_lifecycle.py` in a stock checkout. No source test in the end-of-turn release means upstream has it. | Upstream has no source test there. |
+| `gateway/hosted_room_discussion.py`, `resolve_mentions` | A mention at the end of a clause counts: `@qa.` and `@qa:` reach the member `qa`. The word as written is tried first, so a handle that holds or ends in `.` or `:` keeps its name. Stock takes the mark as a part of the name, and the member gets no turn. | The engine reads the text of a message itself. No plugin hook sits between a message and the choice of who answers. | On a stock checkout, `resolve_mentions(("@qa.",), members)` with a member whose handle is `qa`. It returns that member: upstream has it. | Upstream returns that member. |
 
 `BASE` names the Hermes commit on which the patch applies cleanly.
 

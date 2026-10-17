@@ -141,8 +141,19 @@ describe('a mention in a group chat', () => {
 
   it('marks what the host follows, and nothing else', () => {
     expect(marked(roomMentionParts('@COS-BOT and @scout, @all then @qa', targets))).toEqual(['@COS-BOT', '@all', '@qa'])
-    // The host reads the full stop as a part of the name.
-    expect(marked(roomMentionParts('ask @qa.', targets))).toEqual([])
+    // The end of a clause is not a part of the name: the colour stops before it.
+    expect(marked(roomMentionParts('ask @qa. Then @cos-bot: go, @everyone.', targets))).toEqual(['@qa', '@cos-bot', '@everyone'])
+    expect(roomMentionParts('ask @qa.', targets)).toEqual([{ text: 'ask ', mention: false }, { text: '@qa', mention: true }, { text: '.', mention: false }])
+    // Only "." and ":" at the end are taken off, never letters.
+    expect(marked(roomMentionParts('ask @qa.bye and me@example.com.', targets))).toEqual([])
+  })
+
+  it('lets a handle that holds or ends in a full stop keep its name', () => {
+    const dotted = [{ handle: 'qa', name: 'qa', title: 'QA' }, { handle: 'qa.', name: 'q2', title: 'QA two' }, { handle: 'qa.bot', name: 'q3', title: 'QA bot' }]
+
+    expect(marked(roomMentionParts('@qa.bot. and @qa. and @qa', dotted))).toEqual(['@qa.bot', '@qa.', '@qa'])
+    expect(roomAnswerLine('@qa. look', dotted)).toBe('Only QA two answers.')
+    expect(roomAnswerLine('@qa look', dotted)).toBe('Only QA answers.')
   })
 
   it('says who answers', () => {
@@ -152,6 +163,9 @@ describe('a mention in a group chat', () => {
     expect(roomAnswerLine('@qa and @cos-bot look', targets)).toBe('Only QA and CoS Bot answer.')
     expect(roomAnswerLine('@qa and @everyone', targets)).toBe('All bots answer.')
     expect(roomAnswerLine('@scout look', targets)).toBe('@scout is not a bot in this group. All bots answer.')
+    expect(roomAnswerLine('@qa: look', targets)).toBe('Only QA answers.')
+    expect(roomAnswerLine('thanks @qa.', targets)).toBe('Only QA answers.')
+    expect(roomAnswerLine('thanks @scot.', targets)).toBe('@scot is not a bot in this group. All bots answer.')
     expect(roomAnswerLine('@qa and @scout and @x', targets)).toBe('Only QA answers. @scout and @x are not bots in this group.')
   })
 })

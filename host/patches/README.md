@@ -1,7 +1,7 @@
 # The backend change for the app
 
-Almost all of the app works with stock Hermes and the four plugins in `host/`. One change must
-be in Hermes itself, in a place that a plugin cannot reach. It is in this folder as one small
+Almost all of the app works with stock Hermes and the four plugins in `host/`. Two changes must
+be in Hermes itself, in places that a plugin cannot reach. They are in this folder as one small
 patch, written by hand on stock Hermes.
 
 | File | What it is |
@@ -16,6 +16,7 @@ patch, written by hand on stock Hermes.
 | Part | What the app gets from it | File |
 |---|---|---|
 | Session slot release | A turn that ends gives its slot back, for every client, so a chat that the Desktop has open does not refuse the phone. | `tui_gateway/session_lifecycle.py` |
+| Mention at the end of a clause | In a group chat, `@qa.` and `@qa:` reach the bot `qa`. Stock Hermes takes the full stop or the colon as a part of the name, so the bot got no turn. | `gateway/hosted_room_discussion.py` |
 
 ## Install
 
