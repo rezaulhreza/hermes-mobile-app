@@ -284,8 +284,21 @@ function completeTurn(
 
   return {
     ...next,
-    // A tool still marked running when the turn ends was cut short; it is not running.
-    items: next.items.map(item => (item.kind === 'tool' && item.state === 'running' ? { ...item, state: 'done' } : item)),
+    items: next.items.map(item => {
+      // A tool still marked running when the turn ends was cut short; it is not running.
+      if (item.kind === 'tool' && item.state === 'running') {
+        return { ...item, state: 'done' }
+      }
+
+      // A message that joined the turn (steered, redirected) is part of it. Its label has no use when the turn ends.
+      if (item.kind === 'user' && (item.delivery === 'steered' || item.delivery === 'redirected')) {
+        const { delivery: _joined, ...settled } = item
+
+        return settled
+      }
+
+      return item
+    }),
     running: false,
     status: null
   }

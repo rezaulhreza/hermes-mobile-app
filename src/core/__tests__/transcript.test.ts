@@ -123,9 +123,21 @@ describe('transcript', () => {
       const t = run([{ type: 'message.complete', payload: { status: 'interrupted' } }], during('queued'))
 
       expect(t.items[2]).toMatchObject({ text: 'second', delivery: 'dropped' })
-      expect(run([{ type: 'message.complete', payload: { status: 'interrupted' } }], during('steered')).items[2]).toMatchObject({
-        delivery: 'steered'
-      })
+    })
+
+    it('clears the label of a steered or redirected message when the turn ends', () => {
+      for (const delivery of ['steered', 'redirected'] as const) {
+        for (const status of ['complete', 'interrupted']) {
+          const t = run([{ type: 'message.complete', payload: { status } }], during(delivery))
+
+          expect(t.items[2]).toMatchObject({ kind: 'user', text: 'second' })
+          expect(t.items[2]).not.toHaveProperty('delivery')
+        }
+      }
+    })
+
+    it('keeps the label of a steered message while the turn runs', () => {
+      expect(run([delta('On it')], during('steered')).items[2]).toMatchObject({ delivery: 'steered' })
     })
 
     it('moves a queued message below the rest of the turn when its own turn starts', () => {
@@ -155,11 +167,12 @@ describe('transcript', () => {
       ])
     })
 
-    it('keeps a steered message where it was sent', () => {
+    it('keeps a steered message where it was sent, with no label once the turn ends', () => {
       const t = run([delta('On it'), { type: 'message.complete', payload: { status: 'complete' } }], during('steered'))
 
       expect(shape(t)).toEqual(['user:first', 'assistant:Working', 'user:second', 'assistant:On it'])
-      expect(t.items[2]).toMatchObject({ delivery: 'steered' })
+      expect(t.items[2]).toMatchObject({ kind: 'user', text: 'second' })
+      expect(t.items[2]).not.toHaveProperty('delivery')
     })
   })
 
