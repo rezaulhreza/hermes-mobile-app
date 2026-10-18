@@ -134,6 +134,23 @@ def _window_capture(backend, pid: Optional[int], window_id: Optional[int], exact
     return _window_capture(backend, None, None, False, False)
 
 
+def _page_window(backend, pid: Optional[int], window_id: Optional[int]) -> Optional[tuple[int, int]]:
+    """The window to show instead of an untitled helper window. Chrome keeps thin untitled windows (a toolbar
+    strip, a bubble) in front of its page window, so the frontmost window shows no page. Another on-screen
+    window of the same app that has a title is the page. None when the window is fine."""
+    if pid is None or window_id is None:
+        return None
+    found = [w for w in backend.list_windows() if not w["off_screen"] and w["pid"] == pid]
+    current = next((w for w in found if w["window_id"] == window_id), None)
+    if current is None or current["title"]:
+        return None
+    titled = [w for w in found if w["title"]]
+    if not titled:
+        return None
+    best = max(titled, key=lambda w: w["z_index"])
+    return int(best["pid"]), int(best["window_id"])
+
+
 @router.get("/frame")
 def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id: Optional[str] = None,
           last: Optional[str] = None, whole: bool = False) -> dict[str, Any]:
@@ -146,6 +163,7 @@ def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id
         pid, window_id = _agent_target(session_id)
         followed = pid is not None and window_id is not None
     exact = not whole and pid is not None and window_id is not None
+    picked = exact and not followed  # the user chose this window: show it as it is
     with _tool()._backend_for_call(SESSION) as backend:
         if whole:
             # This is the plugin's own driver session: the window the agent works in is in the agent's session.
@@ -154,6 +172,10 @@ def frame(pid: Optional[int] = None, window_id: Optional[int] = None, session_id
         else:
             capture = _window_capture(backend, pid, window_id, exact, followed)
             target = {"pid": getattr(backend, "_active_pid", None), "window_id": getattr(backend, "_active_window_id", None)}
+            page = None if picked else _page_window(backend, target["pid"], target["window_id"])
+            if page:
+                capture = backend.capture(mode="vision", pid=page[0], window_id=page[1])
+                target = {"pid": page[0], "window_id": page[1]}
     if not capture.png_b64:
         raise HTTPException(status_code=404, detail=capture.note or "The window gave no picture. It may be closed.")
     if whole and _is_blank(capture.png_b64):
