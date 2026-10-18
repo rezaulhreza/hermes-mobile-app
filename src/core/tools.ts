@@ -20,6 +20,13 @@ function clip(text: string): string {
   return text.length > OUTPUT_LIMIT ? `${text.slice(0, OUTPUT_LIMIT)}\n… (${text.length - OUTPUT_LIMIT} more characters)` : text
 }
 
+// JSON for "nothing". The gateway sends `{}` as the text of a call with no arguments.
+const NOTHING = new Set(['', '{}', '[]', 'null', '""'])
+
+function isNothing(text: string): boolean {
+  return NOTHING.has(text.trim())
+}
+
 function asText(value: unknown): string {
   if (typeof value === 'string') {
     return value
@@ -44,7 +51,7 @@ export function toolInput(args: Record<string, unknown> | null | undefined, fall
   const entries = Object.entries(args ?? {}).filter(([, value]) => value !== null && value !== undefined && value !== '')
 
   if (!entries.length) {
-    return fallback?.trim() || undefined
+    return fallback && !isNothing(fallback) ? fallback.trim() : undefined
   }
 
   // A tool with one argument (a command, a path) needs no name in front of it.
@@ -66,7 +73,7 @@ export function toolInput(args: Record<string, unknown> | null | undefined, fall
 export function toolOutput(resultText: string | null | undefined, result?: unknown): string | undefined {
   const text = (resultText ?? '').trim() || asText(result).trim()
 
-  return text ? clip(text) : undefined
+  return isNothing(text) ? undefined : clip(text)
 }
 
 /**

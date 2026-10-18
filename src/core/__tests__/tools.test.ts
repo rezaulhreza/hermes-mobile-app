@@ -13,6 +13,11 @@ describe('toolInput', () => {
     expect(toolInput(null, ' ls ')).toBe('ls')
     expect(toolInput({}, null)).toBeUndefined()
   })
+
+  it('shows no input for a call with no arguments', () => {
+    expect(toolInput({}, '{}')).toBeUndefined()
+    expect(toolInput(undefined, ' {} ')).toBeUndefined()
+  })
 })
 
 describe('toolOutput', () => {
@@ -20,6 +25,13 @@ describe('toolOutput', () => {
     expect(toolOutput(' done ', { a: 1 })).toBe('done')
     expect(toolOutput(null, { a: 1 })).toBe('{\n  "a": 1\n}')
     expect(toolOutput('', null)).toBeUndefined()
+  })
+
+  it('shows no output for an empty result', () => {
+    expect(toolOutput('{}')).toBeUndefined()
+    expect(toolOutput(null, {})).toBeUndefined()
+    expect(toolOutput(null, [])).toBeUndefined()
+    expect(storedToolOutput('{}')).toBeUndefined()
   })
 
   it('cuts a very long output and says how much is left', () => {
