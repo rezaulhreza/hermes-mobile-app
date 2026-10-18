@@ -4,7 +4,7 @@ import { WebView } from 'react-native-webview'
 
 import { isLoopbackUrl, previewAddress } from '@/core/preview/browser'
 import { previewTarget } from '@/core/workspace'
-import { darkPageScript } from '@/core/preview/dark-page'
+import { pageThemeScript } from '@/core/preview/page-theme'
 import { currentApi } from '@/store/link'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -19,6 +19,7 @@ import { IconButton, Notice } from '../ui'
 export function PreviewPanel({ bottom }: { bottom: number }) {
   const t = useTheme()
   const scheme = useColorScheme()
+  const themeScript = useMemo(() => pageThemeScript(t, scheme === 'dark'), [t, scheme])
   const web = useRef<WebView>(null)
   const [typed, setTyped] = useState('')
   const [url, setUrl] = useState<string | null>(null)
@@ -88,7 +89,9 @@ export function PreviewPanel({ bottom }: { bottom: number }) {
             ref={web}
             // The session cookie of the app must reach the preview route.
             sharedCookiesEnabled
-            injectedJavaScript={scheme === 'dark' ? darkPageScript(t.bg, t.ink) : undefined}
+            // The WebView runs the script below only when it listens for messages.
+            onMessage={() => undefined}
+            injectedJavaScript={themeScript}
             source={source}
             style={{ backgroundColor: t.bg }}
           />

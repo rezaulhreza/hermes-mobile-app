@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
 import { hostFilePath, isLoopbackUrl, paneMessage, previewAddress, shortAddress } from '@/core/preview/browser'
-import { darkPageScript } from '@/core/preview/dark-page'
+import { pageThemeScript } from '@/core/preview/page-theme'
 import {
   $agentDriving,
   $humanControl,
@@ -48,6 +48,7 @@ interface Props {
 export function PreviewPane({ sessionId, open, onClose }: Props) {
   const t = useTheme()
   const scheme = useColorScheme()
+  const themeScript = useMemo(() => pageThemeScript(t, scheme === 'dark'), [t, scheme])
   const insets = useSafeAreaInsets()
   const { height } = useWindowDimensions()
   const preview = useStore($previews)[sessionId]
@@ -149,7 +150,7 @@ export function PreviewPane({ sessionId, open, onClose }: Props) {
           ref={web}
           // The session cookie of the app must reach the preview proxy.
           sharedCookiesEnabled
-          injectedJavaScript={scheme === 'dark' ? darkPageScript(t.bg, t.ink) : undefined}
+          injectedJavaScript={themeScript}
           source={source}
           style={{ backgroundColor: t.bg }}
         />

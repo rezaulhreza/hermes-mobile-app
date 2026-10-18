@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -21,7 +21,7 @@ import { WebView } from 'react-native-webview'
 
 import { fileGlyph, isMarkdown, previewMode, previewText, type SentAttachment } from '@/core/attachments'
 import { fileSize } from '@/core/format'
-import { darkPageScript } from '@/core/preview/dark-page'
+import { pageThemeScript } from '@/core/preview/page-theme'
 import { localCopy, readText } from '@/store/preview'
 import { lineOf, MONO, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -170,6 +170,7 @@ function Picture({ item, width, height, onClose }: { item: SentAttachment; width
 function FileSheet({ item, onClose }: { item: SentAttachment; onClose: () => void }) {
   const t = useTheme()
   const scheme = useColorScheme()
+  const themeScript = useMemo(() => pageThemeScript(t, scheme === 'dark'), [t, scheme])
   const insets = useSafeAreaInsets()
   const copy = useLocalCopy(item)
   const mode = previewMode(item.name, item.kind)
@@ -199,7 +200,9 @@ function FileSheet({ item, onClose }: { item: SentAttachment; onClose: () => voi
           <WebView
             allowFileAccess
             allowingReadAccessToURL={copy.uri}
-            injectedJavaScript={scheme === 'dark' ? darkPageScript(t.bg, t.ink) : undefined}
+            injectedJavaScript={themeScript}
+            // The WebView runs the script above only when it listens for messages.
+            onMessage={() => undefined}
             originWhitelist={['*']}
             source={{ uri: copy.uri }}
             style={[styles.fill, { backgroundColor: t.bg }]}
