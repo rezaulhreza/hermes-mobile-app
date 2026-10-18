@@ -751,7 +751,7 @@ const NO_ITEMS: TranscriptItem[] = []
 const END_SLACK = 160
 
 const ATTACH_SOURCES: { id: AttachSource; label: string; icon: IconName }[] = [
-  { id: 'photos', label: 'Photo library', icon: 'image' },
+  { id: 'photos', label: 'Photos and videos', icon: 'image' },
   { id: 'camera', label: 'Take a photo', icon: 'camera' },
   { id: 'files', label: 'Choose a file', icon: 'file' },
   { id: 'clipboard', label: 'Paste a picture', icon: 'clipboard' }

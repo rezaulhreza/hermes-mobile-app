@@ -44,8 +44,13 @@ function update(sessionId: string, change: (list: Attachment[]) => Attachment[])
   $attachments.setKey(sessionId, change($attachments.get()[sessionId] ?? []))
 }
 
-/** One picked photo. A photo larger than the model needs is made smaller first, so it uploads fast and fits the limit. */
+/** One picked photo or video. A photo larger than the model needs is made smaller first, so it uploads fast and fits the limit. */
 async function fitted(asset: ImagePicker.ImagePickerAsset, index: number): Promise<PickedFile> {
+  // A video goes up as the file it is: the picker gives its address and its size, and no bytes. It has no base64 to hold in memory.
+  if (asset.type === 'video') {
+    return { uri: asset.uri, name: asset.fileName || `video-${index + 1}.mov`, mimeType: asset.mimeType ?? 'video/quicktime', size: asset.fileSize }
+  }
+
   const name = asset.fileName || `photo-${index + 1}.jpg`
   const target = shrinkTarget(asset.width, asset.height)
 
@@ -89,7 +94,7 @@ async function pick(source: AttachSource): Promise<PickedFile[]> {
   if (source === 'photos') {
     return fromImages(
       await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ['images', 'videos'],
         allowsMultipleSelection: true,
         selectionLimit: PHOTO_LIMIT,
         quality: PHOTO_QUALITY,

@@ -47,7 +47,7 @@ const NO_FILES: Attachment[] = []
 
 // What a person can add to a message to the group. No paste: a pasted picture has no file to send.
 const ROOM_FILE_SOURCES: { id: AttachSource; label: string; icon: 'image' | 'camera' | 'file' }[] = [
-  { id: 'photos', label: 'Photo library', icon: 'image' },
+  { id: 'photos', label: 'Photos and videos', icon: 'image' },
   { id: 'camera', label: 'Take a photo', icon: 'camera' },
   { id: 'files', label: 'Choose a file', icon: 'file' }
 ]
