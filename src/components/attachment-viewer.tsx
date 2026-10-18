@@ -12,6 +12,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  useColorScheme,
   useWindowDimensions,
   View
 } from 'react-native'
@@ -20,6 +21,7 @@ import { WebView } from 'react-native-webview'
 
 import { fileGlyph, isMarkdown, previewMode, previewText, type SentAttachment } from '@/core/attachments'
 import { fileSize } from '@/core/format'
+import { darkPageScript } from '@/core/preview/dark-page'
 import { localCopy, readText } from '@/store/preview'
 import { lineOf, MONO, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -167,6 +169,7 @@ function Picture({ item, width, height, onClose }: { item: SentAttachment; width
 
 function FileSheet({ item, onClose }: { item: SentAttachment; onClose: () => void }) {
   const t = useTheme()
+  const scheme = useColorScheme()
   const insets = useSafeAreaInsets()
   const copy = useLocalCopy(item)
   const mode = previewMode(item.name, item.kind)
@@ -196,6 +199,7 @@ function FileSheet({ item, onClose }: { item: SentAttachment; onClose: () => voi
           <WebView
             allowFileAccess
             allowingReadAccessToURL={copy.uri}
+            injectedJavaScript={scheme === 'dark' ? darkPageScript(t.bg, t.ink) : undefined}
             originWhitelist={['*']}
             source={{ uri: copy.uri }}
             style={[styles.fill, { backgroundColor: t.bg }]}

@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
-import { Linking, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Linking, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 
 import { isLoopbackUrl, previewAddress } from '@/core/preview/browser'
 import { previewTarget } from '@/core/workspace'
+import { darkPageScript } from '@/core/preview/dark-page'
 import { currentApi } from '@/store/link'
 import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -17,6 +18,7 @@ import { IconButton, Notice } from '../ui'
  */
 export function PreviewPanel({ bottom }: { bottom: number }) {
   const t = useTheme()
+  const scheme = useColorScheme()
   const web = useRef<WebView>(null)
   const [typed, setTyped] = useState('')
   const [url, setUrl] = useState<string | null>(null)
@@ -86,6 +88,7 @@ export function PreviewPanel({ bottom }: { bottom: number }) {
             ref={web}
             // The session cookie of the app must reach the preview route.
             sharedCookiesEnabled
+            injectedJavaScript={scheme === 'dark' ? darkPageScript(t.bg, t.ink) : undefined}
             source={source}
             style={{ backgroundColor: t.bg }}
           />
