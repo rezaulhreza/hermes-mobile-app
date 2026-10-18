@@ -4,9 +4,10 @@ import { router } from 'expo-router'
 import { useMemo, useRef, useState } from 'react'
 // The plain swipeable, not the Reanimated one: with a hundred rows that one cost 2 MB a row.
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native'
+import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { BotAvatar } from '@/components/bot-sheet'
 import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/components/channel-filter'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { Button, IconButton, Notice } from '@/components/ui'
@@ -29,7 +30,7 @@ import {
 } from '@/core/sessions'
 import { listPaneWidth } from '@/core/layout'
 import { tap } from '@/native/haptics'
-import { $botAvatars, $bots, $defaultBot } from '@/store/bots'
+import { $bots, $defaultBot } from '@/store/bots'
 import { linkProblem } from '@/core/workspaces'
 import { createConversation } from '@/store/chat'
 import { $linkError, $linkState, type LinkState } from '@/store/link'
@@ -342,8 +343,8 @@ export default function Chats() {
  */
 function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { row: Row; bot?: string; botChat?: string; owner?: string; live?: LiveState; onActions: () => void; selected?: boolean }) {
   const t = useTheme()
-  // The picture of the bot that owns the conversation: the same one the Bots tab shows.
-  const picture = useStore($botAvatars)[owner ?? '']
+  // The bot that owns the conversation. Its picture is the same one the Bots tab shows: a photo, or its drawn avatar.
+  const ownerBot = useStore($bots)?.find(known => known.name === owner)
   const snippet = (row as SearchHit).snippet
   const preview = sessionPreview(row)
   const title = botChat ?? sessionTitle(row)
@@ -401,9 +402,12 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
       {selected === undefined ? null : <Feather accessibilityLabel={selected ? 'Selected' : 'Not selected'} color={selected ? t.accent : t.muted} name={selected ? 'check-circle' : 'circle'} size={22} />}
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
       {owner ? (
-        picture ? (
-          <Image accessibilityIgnoresInvertColors accessibilityLabel={bot ?? 'Main profile'} source={{ uri: picture }} style={styles.owner} />
+        ownerBot ? (
+          <View accessibilityLabel={bot ?? 'Main profile'}>
+            <BotAvatar bot={ownerBot} size={34} t={t} />
+          </View>
         ) : (
+          // A profile the list of bots does not know yet: its letters.
           <View accessibilityLabel={bot ?? 'Main profile'} style={[styles.owner, styles.initials, { backgroundColor: t.soft }]}>
             <Text style={[type.small, { color: t.muted, fontWeight: '700' }]}>{botInitials(bot ?? owner)}</Text>
           </View>
