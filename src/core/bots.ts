@@ -13,6 +13,14 @@ import type { LiveState } from './sessions'
 /** The title the host gives the one long conversation of a bot. It is plumbing: a person sees the bot's name. */
 export const BOT_CHAT_TITLE = 'Bot Chat'
 
+/**
+ * The bot whose Bot Chat a conversation is, or undefined for any other conversation.
+ * `profile` is the profile to name in a call: none for the main bot.
+ */
+export function botOfBotChat<T extends Pick<Bot, 'name' | 'isDefault'>>(title: string | null | undefined, profile: string | undefined, bots: readonly T[]): T | undefined {
+  return title?.trim() === BOT_CHAT_TITLE ? bots.find(bot => (profile ? bot.name === profile : bot.isDefault)) : undefined
+}
+
 export interface Bot {
   /** The name of the profile on the host: the id in every call. */
   name: string

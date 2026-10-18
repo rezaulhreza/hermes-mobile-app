@@ -11,7 +11,7 @@ import { ChannelSheet, FilterButton, ProfileSheet, ProjectSheet } from '@/compon
 import { SessionActionsSheet } from '@/components/session-actions'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { WorkingMark } from '@/components/working-mark'
-import { botInitials } from '@/core/bots'
+import { botInitials, botOfBotChat } from '@/core/bots'
 import { greeting, relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import {
@@ -125,6 +125,7 @@ export default function Chats() {
   const botTitles = useMemo(() => new Map((bots ?? []).map(bot => [bot.name, bot.title])), [bots])
   const shownBot = bots?.find(bot => bot.name === profile)
   const [choosingProfile, setChoosingProfile] = useState(false)
+  const actingBot = acting ? botOfBotChat(acting.title, rowProfile(acting), bots ?? []) : undefined
   // A project is a folder of the host. Its chats show alone, and a new chat works in that folder.
   const project = useStore($sessionProject)
   const projects = useStore($projects)
@@ -260,6 +261,8 @@ export default function Chats() {
         renderItem={({ item }) => (
           <SessionRow
             bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)}
+            // The host titles the one long chat of every bot "Bot Chat": a person reads the name of the bot.
+            botChat={botOfBotChat(item.title, rowProfile(item), bots ?? [])?.title}
             onActions={() => setActing(item)}
             // In the list of every profile, each row shows whose conversation it is.
             owner={profile ? undefined : (item.profile ?? undefined)}
@@ -308,7 +311,10 @@ export default function Chats() {
         canSelect
         onBranched={storedId => openChat({ id: storedId, profile: (acting && rowProfile(acting)) || undefined })}
         onClose={() => setActing(null)}
+        // The host finds the chat of a bot by its title, so the phone must not rename or remove it.
+        only={actingBot ? ['branch', 'export-text', 'export'] : undefined}
         row={acting}
+        shownTitle={actingBot?.title}
       />
     </SafeAreaView>
       {wide ? (
@@ -331,15 +337,18 @@ export default function Chats() {
 
 /**
  * `bot` names the owner of a row that is not the host's own profile, in the list of all profiles.
+ * `botChat` is the name of the bot when the row is that bot's own long chat.
  * `live` says that Hermes works in the conversation now, or that it waits for the user.
  */
-function SessionRow({ row, bot, owner, live, onActions, selected }: { row: Row; bot?: string; owner?: string; live?: LiveState; onActions: () => void; selected?: boolean }) {
+function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { row: Row; bot?: string; botChat?: string; owner?: string; live?: LiveState; onActions: () => void; selected?: boolean }) {
   const t = useTheme()
   // The picture of the bot that owns the conversation: the same one the Bots tab shows.
   const picture = useStore($botAvatars)[owner ?? '']
   const snippet = (row as SearchHit).snippet
   const preview = sessionPreview(row)
-  const title = sessionTitle(row)
+  const title = botChat ?? sessionTitle(row)
+  // The title of a bot's own chat names the bot already.
+  const named = botChat ? undefined : bot
   const at = row.last_active ?? row.started_at
 
   const swipe = useRef<Swipeable>(null)
@@ -417,10 +426,10 @@ function SessionRow({ row, bot, owner, live, onActions, selected }: { row: Row; 
               )
             )}
           </Text>
-        ) : bot || (row.title && preview) ? (
+        ) : named || (row.title && preview) ? (
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {bot ? <Text style={{ color: t.accent, fontWeight: '600' }}>{bot}</Text> : null}
-            {bot && row.title && preview ? '  ·  ' : ''}
+            {named ? <Text style={{ color: t.accent, fontWeight: '600' }}>{named}</Text> : null}
+            {named && row.title && preview ? '  ·  ' : ''}
             {row.title ? preview : ''}
           </Text>
         ) : null}

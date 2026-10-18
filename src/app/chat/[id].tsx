@@ -51,7 +51,7 @@ import { botChoices, chatMentionParts, withBotChoices } from '@/core/mentions'
 import { $referencePlugins, loadReferencePlugins } from '@/store/commands'
 import { answerSources } from '@/core/sources'
 import { type Attachment, sentAttachment, type SentAttachment } from '@/core/attachments'
-import { BOT_CHAT_TITLE } from '@/core/bots'
+import { botOfBotChat } from '@/core/bots'
 import { teachCommand } from '@/core/teach'
 import { activeTrigger, applyCompletion } from '@/core/composer'
 import { duration, headLines, statusWords } from '@/core/format'
@@ -287,7 +287,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const [botOpen, setBotOpen] = useState(false)
   // The one long conversation of the bot. The host finds it by its title, so the phone must not rename or remove it.
   // "Bot Chat" is the name the host gives the chat of every bot, the main bot too: a person reads the name of the bot.
-  const titled = conversation?.title === BOT_CHAT_TITLE ? bots?.find(known => (params.profile ? known.name === params.profile : known.isDefault)) : undefined
+  const titled = botOfBotChat(conversation?.title, params.profile, bots ?? [])
   const botChat = bot && !conversation?.title ? bot : (titled ?? null)
   // The strip is for what happens now: the agent works on the screen, or the user holds it. The user can put
   // it away; the chat's menu opens the view at any time. New screen work shows the strip again.

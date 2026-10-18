@@ -1,4 +1,4 @@
-import { botInitials, botMark, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
+import { botInitials, botMark, botOfBotChat, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
 
 const NOW = 10_000
 
@@ -231,5 +231,19 @@ describe('the marks of a bot on its row', () => {
     // The last message is not there yet while the bot writes it.
     expect(botMark(bot, { tip: 'working' }, { qa: 99 }).unread).toBe(false)
     expect(botMark(bot, { tip: 'waiting' }, { qa: 99 }).unread).toBe(true)
+  })
+})
+
+describe('botOfBotChat', () => {
+  it('finds the bot of a chat the host titled "Bot Chat"', () => {
+    expect(botOfBotChat('Bot Chat', 'writer', rows)?.title).toBe('Writer')
+    // A conversation of the host's own profile names no profile: the main bot.
+    expect(botOfBotChat(' Bot Chat ', undefined, rows)?.title).toBe('Manager')
+  })
+
+  it('finds none for any other conversation, and for a bot it does not know', () => {
+    expect(botOfBotChat('Fix the build', 'writer', rows)).toBeUndefined()
+    expect(botOfBotChat(null, 'writer', rows)).toBeUndefined()
+    expect(botOfBotChat('Bot Chat', 'gone', rows)).toBeUndefined()
   })
 })
