@@ -486,7 +486,8 @@ const styles = StyleSheet.create({
   },
   filters: { flexDirection: 'row', gap: space.sm },
   section: { fontWeight: '700', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
-  unread: { width: 8, height: 8, borderRadius: 4 },
+  // In the margin of the row, so an unread row keeps its picture and its title in line with the others.
+  unread: { position: 'absolute', left: space.xs, top: '50%', marginTop: -4, width: 8, height: 8, borderRadius: 4 },
   owner: { width: 34, height: 34, borderRadius: 17 },
   initials: { alignItems: 'center', justifyContent: 'center' },
   row: {
