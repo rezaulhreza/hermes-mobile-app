@@ -68,6 +68,11 @@ const TEXT_PREVIEW = /\.(txt|md|markdown|log|csv|tsv|env|ini|conf|lock)$/i
 export function previewMode(name: string, kind: AttachmentKind): PreviewMode {
   const glyph = fileGlyph(name, kind)
 
+  // The picture view cannot draw an SVG. The system web view can.
+  if (glyph === 'image' && /\.svg$/i.test(name)) {
+    return 'web'
+  }
+
   if (glyph === 'image') {
     return 'image'
   }
@@ -100,7 +105,7 @@ export type FileGlyph = 'image' | 'text' | 'video' | 'audio' | 'archive' | 'code
 
 const GLYPH_BY_EXTENSION: readonly [FileGlyph, RegExp][] = [
   ['text', /\.(pdf|txt|md|rtf|docx?|pages|csv|xlsx?|numbers|pptx?|key)$/i],
-  ['video', /\.(mp4|mov|m4v|webm|mkv|avi)$/i],
+  ['video', /\.(mp4|mov|m4v|webm|mkv|avi|mpe?g|3gp|3g2)$/i],
   ['audio', /\.(mp3|m4a|wav|aac|flac|ogg|opus)$/i],
   ['archive', /\.(zip|tar|gz|tgz|bz2|7z|rar)$/i],
   ['code', /\.(js|jsx|ts|tsx|py|rb|go|rs|swift|kt|java|c|h|cpp|cs|php|sh|json|ya?ml|toml|xml|html?|css|sql)$/i]
@@ -141,7 +146,8 @@ export function jpegName(name: string): string {
   return `${name.replace(/\.[^./]+$/, '')}.jpg`
 }
 
-const IMAGE_NAME = /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?)$/i
+// The pictures that Hermes reads: it opens HEIC and AVIF with its own decoders, and draws an SVG to a PNG first.
+const IMAGE_NAME = /\.(png|jpe?g|gif|webp|heic|heif|avif|bmp|tiff?|ico|svg)$/i
 
 export function attachmentKind(file: Pick<PickedFile, 'name' | 'mimeType'>): AttachmentKind {
   const mime = file.mimeType?.toLowerCase() ?? ''

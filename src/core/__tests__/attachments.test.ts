@@ -13,6 +13,9 @@ describe('attachmentKind', () => {
   it('reads the type first and falls back to the name', () => {
     expect(attachmentKind({ name: 'IMG_1.HEIC', mimeType: 'image/heic' })).toBe('image')
     expect(attachmentKind({ name: 'shot.PNG' })).toBe('image')
+    for (const name of ['a.avif', 'a.ico', 'logo.svg', 'a.tif', 'a.webp', 'a.heif']) {
+      expect(attachmentKind({ name })).toBe('image')
+    }
     expect(attachmentKind({ name: 'paper.pdf', mimeType: 'application/pdf' })).toBe('pdf')
     expect(attachmentKind({ name: 'Paper.PDF', mimeType: null })).toBe('pdf')
     expect(attachmentKind({ name: 'notes.md', mimeType: 'text/markdown' })).toBe('file')
@@ -111,6 +114,9 @@ describe('fileGlyph', () => {
     expect(fileGlyph('a.heic', 'image')).toBe('image')
     expect(fileGlyph('plan.pdf', 'pdf')).toBe('text')
     expect(fileGlyph('clip.MOV', 'file')).toBe('video')
+    for (const name of ['a.mpeg', 'a.mpg', 'a.3gp', 'a.webm', 'a.mkv', 'a.avi', 'a.m4v']) {
+      expect(fileGlyph(name, 'file')).toBe('video')
+    }
     expect(fileGlyph('app.tsx', 'file')).toBe('code')
     expect(fileGlyph('data.bin', 'file')).toBe('file')
   })
@@ -128,6 +134,9 @@ describe('sentAttachment', () => {
 describe('previewMode', () => {
   it('says how a phone can show each file', () => {
     expect(previewMode('a.jpg', 'image')).toBe('image')
+    expect(previewMode('logo.svg', 'image')).toBe('web')
+    expect(previewMode('a.avif', 'image')).toBe('image')
+    expect(previewMode('clip.mpg', 'file')).toBe('web')
     expect(previewMode('plan.pdf', 'pdf')).toBe('web')
     expect(previewMode('sheet.xlsx', 'file')).toBe('web')
     expect(previewMode('clip.mov', 'file')).toBe('web')
