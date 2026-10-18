@@ -24,6 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Answer } from '@/components/answer'
 import { ReadAloud } from '@/components/read-aloud'
+import { SelectText } from '@/components/select-text'
 import { ArrivalRow } from '@/components/arrival'
 import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
 import { TeachSheet } from '@/components/teach-sheet'
@@ -921,7 +922,7 @@ function waitingForm(requests: readonly AgentRequest[]): Extract<AgentRequest, {
   return only?.kind === 'clarify' ? only : null
 }
 
-/** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
+/** Copy, share and select for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
   const [copied, setCopied] = useState(false)
@@ -944,6 +945,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       <Pressable accessibilityLabel="Share the answer" accessibilityRole="button" hitSlop={10} onPress={() => void Share.share({ message: text }).catch(() => undefined)}>
         <Feather color={t.muted} name="share" size={15} />
       </Pressable>
+      <SelectText text={text} />
       <ReadAloud id={id} text={text} />
       {sources.length ? <SourcesButton onPress={() => setShowSources(true)} sources={sources} /> : null}
       {showSources ? <SourcesSheet onClose={() => setShowSources(false)} sources={sources} /> : null}
