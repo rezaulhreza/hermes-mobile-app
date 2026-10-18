@@ -97,10 +97,16 @@ function lineText(spans: readonly Span[]): string {
  */
 export function cardLines(lines: readonly (readonly Span[])[]): CardLine[] {
   const strong = lines.findIndex(line => line.length > 0 && line.every(span => span.kind === 'strong' || !span.text.trim()))
-  const title = strong === -1 ? 0 : strong
+  // A first line that starts with a link and goes on in words ("Name: price, shop") is a sentence, not a title: its link is the bold part.
+  const sentence = strong === -1 && lines[0]?.[0]?.kind === 'link' && lines[0].some(span => span.kind !== 'link' && span.text.trim())
+  const title = sentence ? -1 : strong === -1 ? 0 : strong
 
   return lines.map((spans, index) => {
     const words = lineText(spans)
+
+    if (sentence && index === 0) {
+      return { role: 'text', spans: spans.map(span => (span.kind === 'link' ? { ...span, bold: true } : span)) }
+    }
 
     if (PRICE.test(words)) {
       return { role: 'price', spans }

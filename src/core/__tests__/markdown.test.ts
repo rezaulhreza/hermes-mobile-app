@@ -106,6 +106,49 @@ describe("tables", () => {
   it("sizes a column by its longest cell, inside limits", () => {
     const table = parseMarkdown("| A | B |\n|---|---|\n| x | " + "long ".repeat(30) + "|")[0];
 
-    expect(table.kind === "table" && columnWidths(table)).toEqual([64, 240]);
+    expect(table.kind === "table" && columnWidths(table)).toEqual([64, 200]);
+  });
+});
+
+describe("marks around links and line break tags", () => {
+  it("keeps a link inside bold marks as a link", () => {
+    expect(parseSpans("**[Rug](https://shop.test/rug)** grey")).toEqual([
+      { kind: "link", text: "Rug", url: "https://shop.test/rug", bold: true },
+      { kind: "text", text: " grey" }
+    ]);
+  });
+
+  it("turns a br tag into a line break", () => {
+    expect(parseSpans("one<br>two<br/>three")).toEqual([{ kind: "text", text: "one\ntwo\nthree" }]);
+  });
+
+  it("keeps a br tag inside code", () => {
+    expect(parseSpans("`<br>`")).toEqual([{ kind: "code", text: "<br>" }]);
+  });
+
+  it("sizes a column by the longest line of its cells, links by their words", () => {
+    const table = parseMarkdown("| Item |\n|---|\n| **[Rug](https://shop.test/a/very/long/address/for/a/rug)**<br>Grey |")[0];
+
+    expect(table.kind === "table" && columnWidths(table)).toEqual([64]);
+  });
+});
+
+describe("a picture after its words", () => {
+  const kinds = (text: string) => parseMarkdown(text).map((block) => block.kind);
+
+  it("pairs each picture with the words above it when that is the pattern", () => {
+    const blocks = parseMarkdown("One line.\n\n![a](https://p.test/a.jpg)\n\nTwo line.\n\n![b](https://p.test/b.jpg)\n\n**Total**");
+
+    expect(blocks.map((block) => block.kind)).toEqual(["card", "card", "paragraph"]);
+    expect(blocks[0]?.kind === "card" && blocks[0].picture.url).toBe("https://p.test/a.jpg");
+    expect(blocks[1]?.kind === "card" && blocks[1].lines[0]?.[0]).toEqual({ kind: "text", text: "Two line." });
+  });
+
+  it("keeps a picture before its words as it was", () => {
+    expect(kinds("![a](https://p.test/a.jpg)\n\nOne line.\n\n![b](https://p.test/b.jpg)\n\nTwo line.")).toEqual(["card", "card"]);
+  });
+
+  it("keeps a picture after an introduction that ends with a colon", () => {
+    expect(kinds("Here they are:\n\n![a](https://p.test/a.jpg)\n\nOne line.\n\n![b](https://p.test/b.jpg)\n\nTwo line.")).toEqual(["paragraph", "card", "card"]);
   });
 });

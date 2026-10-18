@@ -71,6 +71,14 @@ describe('a result with a picture', () => {
     expect(card.kind === 'card' && cardLines(card.lines).map(line => line.role)).toEqual(['title', 'price', 'label', 'text'])
   })
 
+  it('bolds only the link of a line that starts with a link and goes on in words', () => {
+    const [card] = parseMarkdown('![Rug](https://i.com/r.png)\n[Rug, grey](https://shop.test/r): £29, IKEA.')
+    const lines = card.kind === 'card' ? cardLines(card.lines) : []
+
+    expect(lines.map(line => line.role)).toEqual(['text'])
+    expect(lines[0]?.spans[0]).toMatchObject({ kind: 'link', bold: true })
+  })
+
   it('takes the paragraph under a picture that stands alone', () => {
     const blocks = parseMarkdown('![A](https://i.com/a.png)\n\nThe first one.\n\nAnother paragraph.')
 

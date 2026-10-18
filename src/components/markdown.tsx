@@ -13,6 +13,7 @@ import { InfoCardView } from './info-card'
 import { MentionText } from './mention-text'
 import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
+const THUMB = 56
 const HEADING_SIZE = { 1: 22, 2: 19, 3: 17 } as const
 
 /** Splits the words of an answer into plain text and the mentions that reach a bot. */
@@ -150,15 +151,28 @@ function Table({ table, colour }: { table: Extract<Block, { kind: 'table' }>; co
 
   const row = (cells: readonly (readonly Span[])[], key: number | string, head: boolean) => (
     <View key={key} style={[styles.tableRow, { borderTopColor: t.line }, head ? { backgroundColor: t.soft } : styles.tableLine]}>
-      {cells.map((cell, column) => (
-        <Text
-          key={column}
-          selectable
-          style={[type.small, styles.cell, { width: widths[column], color: colour, textAlign: table.align[column] }, head && styles.strong]}
-        >
-          <Spans spans={cell} />
-        </Text>
-      ))}
+      {cells.map((cell, column) => {
+        const picture = cell.find(span => span.kind === 'image')
+
+        // A cell that holds only a picture shows the picture, not its words.
+        if (picture && cell.every(span => span.kind === 'image' || !span.text.trim())) {
+          return (
+            <View key={column} style={[styles.cell, { width: widths[column] }]}>
+              <Image accessibilityLabel={picture.text} resizeMode="cover" source={{ uri: picture.url }} style={[styles.thumb, { backgroundColor: t.soft }]} />
+            </View>
+          )
+        }
+
+        return (
+          <Text
+            key={column}
+            selectable
+            style={[type.small, styles.cell, { width: widths[column], color: colour, textAlign: table.align[column] }, head && styles.strong]}
+          >
+            <Spans spans={cell} />
+          </Text>
+        )
+      })}
     </View>
   )
 
@@ -205,8 +219,8 @@ function Spans({ spans }: { spans: readonly Span[] }) {
             // The colour of the words around it: the dotted line and the arrow say "link".
             return (
               <Text accessibilityRole="link" key={index} onPress={() => void Linking.openURL(span.url)}>
-                <Text style={styles.link}>{span.text}</Text>
-                <Text style={styles.arrow}>{'\u2009\u2197'}</Text>
+                <Text style={[styles.link, span.bold && styles.strong]}>{span.text}</Text>
+                <Text style={styles.arrow}>{'\u202F\u2197'}</Text>
               </Text>
             )
           case 'source':
@@ -244,7 +258,8 @@ const styles = StyleSheet.create({
   table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexGrow: 0 },
   tableRow: { flexDirection: 'row' },
   tableLine: { borderTopWidth: StyleSheet.hairlineWidth },
-  cell: { paddingHorizontal: space.md, paddingVertical: space.sm }
+  cell: { paddingHorizontal: space.md, paddingVertical: space.sm },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radius.sm }
 })
 
 const CODE_COLOUR: Record<CodeTokenKind, keyof Palette> = { plain: 'ink', comment: 'muted', string: 'green', number: 'purple', keyword: 'accent' }

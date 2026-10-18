@@ -17,7 +17,8 @@ export type Span =
   | { readonly kind: "strong"; readonly text: string }
   | { readonly kind: "em"; readonly text: string }
   | { readonly kind: "code"; readonly text: string }
-  | { readonly kind: "link"; readonly text: string; readonly url: string }
+  // `bold` is set when the link stands inside bold marks.
+  | { readonly kind: "link"; readonly text: string; readonly url: string; readonly bold?: boolean }
   // A mark for the page a sentence comes from: a link with no words of its
   // own, a bare address, or links alone in brackets. `text` is the name shown.
   | { readonly kind: "source"; readonly text: string; readonly links: readonly SourceLink[] }
@@ -294,15 +295,29 @@ function splitLines(spans: readonly Span[]): Span[][] {
  */
 function withPictures(blocks: readonly Block[]): Block[] {
   const out: Block[] = [];
+  const alone = (block: Block | undefined) => pictureOf(block)?.lines.length === 0;
+  const first = blocks.findIndex((block) => alone(block));
+  const before = blocks[first - 1];
+  // Words that come first and the picture after them, again and again: each picture is for the words above it.
+  const trailing =
+    first > 0 &&
+    before?.kind === "paragraph" &&
+    !spansText(before.spans).trim().endsWith(":") &&
+    blocks[first + 1]?.kind === "paragraph" &&
+    alone(blocks[first + 2]);
 
   for (const block of blocks) {
-    const first = block.kind === "paragraph" || block.kind === "item" ? block.spans.find((span) => span.text.trim().length > 0) : undefined;
+    const found = pictureOf(block);
     const last = out[out.length - 1];
 
-    if ((block.kind === "paragraph" || block.kind === "item") && first?.kind === "image") {
-      const picture = { alt: first.text, url: first.url };
-      const lines = splitLines(block.spans.filter((span) => span !== first));
-      out.push(lines.length > 0 ? { kind: "card", picture, lines } : { kind: "image", picture });
+    if (found) {
+      const { picture, lines } = found;
+
+      if (lines.length === 0 && trailing && last?.kind === "paragraph") {
+        out[out.length - 1] = { kind: "card", picture, lines: splitLines(last.spans) };
+      } else {
+        out.push(lines.length > 0 ? { kind: "card", picture, lines } : { kind: "image", picture });
+      }
     } else if (block.kind === "paragraph" && last?.kind === "image") {
       out[out.length - 1] = { kind: "card", picture: last.picture, lines: splitLines(block.spans) };
     } else {
@@ -311,6 +326,17 @@ function withPictures(blocks: readonly Block[]): Block[] {
   }
 
   return out;
+}
+
+/** The picture a paragraph or an item starts with, and the lines of words after it. */
+function pictureOf(block: Block | undefined): { picture: { alt: string; url: string }; lines: Span[][] } | null {
+  if (block?.kind !== "paragraph" && block?.kind !== "item") {
+    return null;
+  }
+
+  const image = block.spans.find((span) => span.text.trim().length > 0);
+
+  return image?.kind === "image" ? { picture: { alt: image.text, url: image.url }, lines: splitLines(block.spans.filter((span) => span !== image)) } : null;
 }
 
 function depthOf(indent: string): number {
@@ -347,6 +373,26 @@ export function parseSpans(source: string): Span[] {
   return parseMarks(source);
 }
 
+// A line break written as a tag is a line break. The tag is not said.
+function breaks(text: string): string {
+  return text.replace(/<br\s*\/?>/gi, "\n");
+}
+
+// Bold or italic words can hold a link: `**[name](url)**`. The link stays a link and takes the mark.
+function marked(inner: string, kind: "strong" | "em"): Span[] {
+  if (!/\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)/i.test(inner)) {
+    return [{ kind, text: breaks(inner) }];
+  }
+
+  return parseMarks(inner).map((span): Span => {
+    if (span.kind === "text") {
+      return { kind, text: span.text };
+    }
+
+    return span.kind === "link" ? { ...span, bold: kind === "strong" } : span;
+  });
+}
+
 function parseMarks(source: string): Span[] {
   const spans: Span[] = [];
   let last = 0;
@@ -354,15 +400,15 @@ function parseMarks(source: string): Span[] {
   for (const match of source.matchAll(INLINE)) {
     const at = match.index ?? 0;
     if (at > last) {
-      spans.push({ kind: "text", text: source.slice(last, at) });
+      spans.push({ kind: "text", text: breaks(source.slice(last, at)) });
     }
 
     if (match[1] !== undefined) {
       spans.push({ kind: "code", text: match[1] });
     } else if (match[2] !== undefined || match[3] !== undefined) {
-      spans.push({ kind: "strong", text: match[2] ?? match[3] ?? "" });
+      spans.push(...marked(match[2] ?? match[3] ?? "", "strong"));
     } else if (match[4] !== undefined || match[5] !== undefined) {
-      spans.push({ kind: "em", text: match[4] ?? match[5] ?? "" });
+      spans.push(...marked(match[4] ?? match[5] ?? "", "em"));
     } else if (match[6] !== undefined && match[7] !== undefined) {
       // Only a web address opens. Any other scheme reads as the text it was.
       if (/^https?:\/\//i.test(match[7])) {
@@ -389,7 +435,7 @@ function parseMarks(source: string): Span[] {
   }
 
   if (last < source.length) {
-    spans.push({ kind: "text", text: source.slice(last) });
+    spans.push({ kind: "text", text: breaks(source.slice(last)) });
   }
 
   return spans;
@@ -402,7 +448,9 @@ export function spansText(spans: readonly Span[]): string {
 const CELL_CHAR_WIDTH = 8;
 const CELL_PADDING = 24;
 const COLUMN_MIN = 64;
-const COLUMN_MAX = 240;
+const COLUMN_MAX = 200;
+// A column of pictures is as wide as a picture and its padding.
+const PICTURE_COLUMN = 56 + 24;
 
 /**
  * The width of each column of a table, in points. A phone cannot fit every
@@ -411,8 +459,12 @@ const COLUMN_MAX = 240;
  */
 export function columnWidths(table: Extract<Block, { kind: "table" }>): number[] {
   return table.header.map((cell, column) => {
-    const longest = Math.max(spansText(cell).length, ...table.rows.map((row) => spansText(row[column] ?? []).length));
+    // A cell with line breaks is as wide as its longest line.
+    const widest = (spans: readonly Span[]) => Math.max(0, ...spansText(spans).split("\n").map((line) => line.length));
+    const longest = Math.max(widest(cell), ...table.rows.map((row) => widest(row[column] ?? [])));
 
-    return Math.min(COLUMN_MAX, Math.max(COLUMN_MIN, longest * CELL_CHAR_WIDTH + CELL_PADDING));
+    const pictures = [cell, ...table.rows.map((row) => row[column] ?? [])].some((spans) => spans.some((span) => span.kind === "image"));
+
+    return pictures ? PICTURE_COLUMN : Math.min(COLUMN_MAX, Math.max(COLUMN_MIN, longest * CELL_CHAR_WIDTH + CELL_PADDING));
   });
 }
