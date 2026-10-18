@@ -135,7 +135,8 @@ function withoutMarkdown(text: string): string {
 
 /** One readable line for a list row, from text that may be Markdown or pasted terminal output. */
 export function previewLine(text: string): string {
-  return withoutMarkdown(text).replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim()
+  // A row is a label: a date in it reads as a date.
+  return readableDates(withoutMarkdown(text).replace(TERMINAL_DECORATION, ' ').replace(/\s+/g, ' ').trim())
 }
 
 /** The first lines of a long text, and how many lines were left out. */

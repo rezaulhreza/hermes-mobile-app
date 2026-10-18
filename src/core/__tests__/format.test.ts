@@ -1,6 +1,10 @@
 import { clockWords, dateWords, dayWords, duration, fileSize, headLines, previewLine, readableDates, relativeTime, statusWords } from '../format'
 
 describe('previewLine', () => {
+  it('reads a date in a row as a date', () => {
+    expect(previewLine('Checked production (server time 2020-10-11 00:59 UTC)')).toBe('Checked production (server time 11 Oct 2020 at 12:59 am UTC)')
+  })
+
   it('shows words, not the marks of Markdown', () => {
     expect(previewLine('**Load Test** The bridge was *two* years older')).toBe('Load Test The bridge was two years older')
     expect(previewLine('## Plan\n\n- first `step`\n- second\n\n> a quote\n1. one')).toBe('Plan first step second a quote one')
