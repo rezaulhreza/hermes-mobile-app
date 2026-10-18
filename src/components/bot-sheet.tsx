@@ -9,9 +9,9 @@ import { defaultLook } from '@/core/avatars'
 import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSectionId } from '@/core/bots'
 import { type Capability, capabilityCount } from '@/core/capabilities'
 import { faultWords } from '@/core/format'
-import { modelLabel } from '@/core/models'
+import { isReasoningLevel, modelLabel, REASONING_LABEL, REASONING_LEVELS, reasoningLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, setBotLook, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection, setDefaultBot } from '@/store/bots'
+import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, setBotLook, deleteBot, describeBot, fileBot, loadBotReasoning, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotReasoning, setBotSection, setDefaultBot } from '@/store/bots'
 import { readSkills } from '@/store/capabilities'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
@@ -19,6 +19,7 @@ import { useTheme } from '@/theme/use-theme'
 
 import { AvatarSheet } from './avatar-sheet'
 import { BotFace } from './bot-face'
+import { ChoiceSheet } from './choice'
 import { Button, Field, IconButton } from './ui'
 
 const say = (error: unknown) => Alert.alert('That did not work', faultWords(error))
@@ -70,6 +71,9 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   const [name, setName] = useState(bot.name)
   const [busy, setBusy] = useState<string | null>(null)
   const [choosingModel, setChoosingModel] = useState(false)
+  // Null until the host said it: the list of bots does not carry the level.
+  const [reasoning, setReasoning] = useState<string | null>(null)
+  const [choosingReasoning, setChoosingReasoning] = useState(false)
   const [filing, setFiling] = useState(false)
   // The host counts the skills a bot has, not the skills that are on: the row reads the list for that.
   const [skills, setSkills] = useState<Capability[]>()
@@ -78,6 +82,10 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
 
   useEffect(() => {
     readSkills(bot.name).then(setSkills, () => undefined)
+  }, [bot.name])
+
+  useEffect(() => {
+    loadBotReasoning(bot.name).then(setReasoning, () => undefined)
   }, [bot.name])
 
   useEffect(() => {
@@ -166,6 +174,40 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
             setChoosingModel(false)
             run('model', () => setBotModel(bot.name, provider, model))
           }}
+        />
+      ) : null}
+
+      <Pressable
+        accessibilityHint="Opens the list of levels"
+        accessibilityLabel={`Reasoning: ${reasoning === null ? 'not read yet' : reasoningLabel(reasoning)}`}
+        accessibilityRole="button"
+        disabled={reasoning === null}
+        onPress={() => setChoosingReasoning(true)}
+        style={({ pressed }) => [styles.setting, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+      >
+        <Feather color={t.muted} name="zap" size={20} />
+        <View style={styles.fill}>
+          <Text style={[type.small, { color: t.muted }]}>Reasoning</Text>
+          <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+            {reasoning === null ? ' ' : reasoningLabel(reasoning)}
+          </Text>
+        </View>
+        {busy === 'reasoning' || reasoning === null ? <ActivityIndicator color={t.muted} /> : <Feather color={t.muted} name="chevron-right" size={18} />}
+      </Pressable>
+      {choosingReasoning ? (
+        <ChoiceSheet
+          choices={REASONING_LEVELS.map(level => ({ id: level, label: REASONING_LABEL[level] }))}
+          current={reasoning}
+          footer={<Text style={[type.small, { color: t.muted }]}>How hard this bot thinks before it answers. A higher level is slower and costs more. A chat that is open keeps its level until its next start.</Text>}
+          onClose={() => setChoosingReasoning(false)}
+          onPick={level => {
+            setChoosingReasoning(false)
+
+            if (isReasoningLevel(level)) {
+              run('reasoning', () => setBotReasoning(bot.name, level).then(() => setReasoning(level)))
+            }
+          }}
+          title="Reasoning of this bot"
         />
       ) : null}
 

@@ -1,4 +1,4 @@
-import { filterSections, modelLabel, modelSections, sessionModelValue } from '../models'
+import { configReasoning, filterSections, modelLabel, modelSections, reasoningLabel, sessionModelValue } from '../models'
 
 const options = {
   provider: 'anthropic',
@@ -39,4 +39,19 @@ it('filters by model or by provider name', () => {
 it('builds a switch that applies to this conversation only', () => {
   expect(sessionModelValue({ model: 'deepseek/deepseek-v4', provider: 'openrouter' })).toBe('deepseek/deepseek-v4 --provider openrouter --session')
   expect(modelLabel('deepseek/deepseek-v4')).toBe('deepseek-v4')
+})
+
+it('reads the reasoning level of a profile from its config', () => {
+  expect(configReasoning({ agent: { reasoning_effort: ' High ' } })).toBe('high')
+  // YAML `false` is "no reasoning" on the host.
+  expect(configReasoning({ agent: { reasoning_effort: false } })).toBe('none')
+  expect(configReasoning({ agent: {} })).toBe('')
+  expect(configReasoning({})).toBe('')
+  expect(configReasoning(null)).toBe('')
+})
+
+it('names a level, and shows one the phone does not offer as the host wrote it', () => {
+  expect(reasoningLabel('xhigh')).toBe('Max')
+  expect(reasoningLabel('ultra')).toBe('ultra')
+  expect(reasoningLabel('')).toBe('The default of the host')
 })

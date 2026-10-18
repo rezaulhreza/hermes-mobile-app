@@ -91,3 +91,29 @@ export function sessionModelValue(choice: Pick<ModelChoice, 'model' | 'provider'
 export function isReasoningLevel(value: unknown): value is ReasoningLevel {
   return typeof value === 'string' && (REASONING_LEVELS as readonly string[]).includes(value)
 }
+
+/** The name of a level as a person reads it. */
+export const REASONING_LABEL: Record<ReasoningLevel, string> = {
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Max'
+}
+
+/**
+ * The reasoning level the config of a profile sets (`agent.reasoning_effort`).
+ * Empty when it sets none: the host then uses its default. YAML can hold
+ * `false` for "no reasoning": the host reads that as "none".
+ */
+export function configReasoning(config: unknown): string {
+  const agent = (config as { agent?: unknown } | null)?.agent
+  const value = (agent as { reasoning_effort?: unknown } | null | undefined)?.reasoning_effort
+
+  return value === false ? 'none' : typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+/** A level as a person reads it. The host knows more levels than the phone offers: one of those shows as the host wrote it. */
+export function reasoningLabel(level: string): string {
+  return isReasoningLevel(level) ? REASONING_LABEL[level] : level || 'The default of the host'
+}

@@ -6,6 +6,7 @@ import { atom, map } from 'nanostores'
 
 import { type Look, lookMeta } from '@/core/avatars'
 import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type ReadMarks, type Room } from '@/core/bots'
+import { configReasoning, type ReasoningLevel } from '@/core/models'
 import type { ProfilesCreateResult, ProfilesGetAssetResult, ProfilesListResult } from '@/core/gateway/gateway-contract.generated'
 
 import { readCached, writeCached } from './cache'
@@ -293,6 +294,16 @@ export function setBotSection(name: string, section: BotSection | null): Promise
 export async function setBotModel(name: string, provider: string, model: string): Promise<void> {
   await api().request({ path: `/api/profiles/${encodeURIComponent(name)}/model`, method: 'PUT', body: { provider, model }, timeoutMs: 60_000 })
   await loadBots()
+}
+
+/** The reasoning level of this bot, as its config holds it. Empty when the config sets none. */
+export async function loadBotReasoning(name: string): Promise<string> {
+  return configReasoning(await api().request({ path: `/api/config?profile=${encodeURIComponent(name)}` }))
+}
+
+/** How hard this bot thinks. The host puts the level into the config of the bot: a chat that is open keeps its level until its next start. */
+export async function setBotReasoning(name: string, level: ReasoningLevel): Promise<void> {
+  await api().request({ path: `/api/config?profile=${encodeURIComponent(name)}`, method: 'PUT', body: { config: { agent: { reasoning_effort: level } } }, timeoutMs: 60_000 })
 }
 
 const PICTURE_SIDE = 256

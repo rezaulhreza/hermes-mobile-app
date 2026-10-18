@@ -19,22 +19,14 @@ import {
   type ModelChoice,
   type ModelSection,
   modelSections,
-  REASONING_LEVELS,
-  type ReasoningLevel
+  REASONING_LABEL,
+  REASONING_LEVELS
 } from '@/core/models'
 import { loadModelOptions, setReasoning, switchModel } from '@/store/chat'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { IconButton, Notice } from './ui'
-
-const LEVEL_LABEL: Record<ReasoningLevel, string> = {
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Max'
-}
 
 interface Props {
   sessionId: string
@@ -126,7 +118,7 @@ export function ModelSheet({ sessionId, reasoning, visible, initialQuery = '', o
                   style={[styles.level, on && { backgroundColor: t.paper }]}
                 >
                   <Text style={[type.small, { color: on ? t.ink : t.muted, fontWeight: on ? '700' : '500' }]}>
-                    {LEVEL_LABEL[option]}
+                    {REASONING_LABEL[option]}
                   </Text>
                 </Pressable>
               )
