@@ -24,12 +24,12 @@ import type {
 import { type Attachment, promptWithAttachments, type SentAttachment, sentAttachment } from '@/core/attachments'
 import { phoneAction, type PhoneAction, phoneBlock, phoneCompletions } from '@/core/commands'
 import { HISTORY_PAGE, type HistoryPage, historyPagePath, oldestRowId, pageMessages, rowsBefore } from '@/core/history-page'
-import { EMPTY_QUEUE, enqueue, pauseQueue, promoteQueued, type Queue, removeQueued, resumeQueue, takeNext } from '@/core/queue'
+import { EMPTY_QUEUE, enqueue, leaveQueue, pauseQueue, promoteQueued, type Queue, type QueuedMessage, removeQueued, resumeQueue, takeNext } from '@/core/queue'
 import { SESSION_SOURCE } from '@/core/sessions'
 import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import type { Bot } from '@/core/bots'
-import { mentionNote } from '@/core/mentions'
+import { mentionNote, withoutMentionNote } from '@/core/mentions'
 import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
 import {
   type Delivery,
@@ -176,6 +176,15 @@ export async function resumeConversation(storedId: string, title = '', profile?:
     ...(whole || !rows ? {} : { history: { offset: rows.length, oldestId: oldestRowId(rows), more: rows.length >= HISTORY_PAGE, loading: false } })
   })
   seedTodos(result.session_id, result.todo_state)
+
+  // The messages that waited on the phone when this chat closed.
+  const left = leftQueues.get(result.stored_session_id || storedId) ?? leftQueues.get(storedId)
+
+  if (left) {
+    leftQueues.delete(result.stored_session_id || storedId)
+    leftQueues.delete(storedId)
+    patch(result.session_id, c => ({ ...c, queue: left }))
+  }
 
   return result.session_id
 }
@@ -741,16 +750,53 @@ export async function loadToolOutput(storedId: string, toolId: string, profile?:
   return storedToolOutput((await pending).find(message => message.role === 'tool' && message.tool_call_id === toolId)?.content)
 }
 
+/** The queues of chats that closed with messages that could not go to the host, by stored id. A chat takes its queue back when it opens. */
+const leftQueues = new Map<string, Queue>()
+
+/**
+ * Give the messages that wait on the phone to the queue of the host, in
+ * their order: the host sends them after the turn that runs, with no phone
+ * there. A message the host does not take is kept for the next time the chat
+ * opens. Never throws.
+ */
+async function handOverQueue(sessionId: string, storedId: string | undefined, items: readonly QueuedMessage[]): Promise<void> {
+  for (const [index, item] of items.entries()) {
+    try {
+      await rpc<PromptSubmitResult>('prompt.submit', { session_id: sessionId, text: item.text, surface: 'mobile', queued: true, ...(item.voiceContext ? { voice_context: item.voiceContext } : {}) })
+    } catch {
+      if (storedId) {
+        // The note for the agent is on the text already. It is taken out when the message shows.
+        leftQueues.set(storedId, { items: items.slice(index).map(rest => ({ ...rest, text: withoutMentionNote(rest.text) })), paused: true, nextId: items.length })
+      }
+
+      return
+    }
+  }
+}
+
 /**
  * Forget a conversation whose screen closed. Its rows are on the host; the
  * screen resumes it by its stored id the next time. Without this, each open
  * of a chat left one more copy of its rows in the store.
  */
 export function closeConversation(sessionId: string): void {
-  const storedId = $conversations.get()[sessionId]?.storedId
+  const conversation = $conversations.get()[sessionId]
+  const storedId = conversation?.storedId
 
   if (storedId) {
     storedMessages.delete(storedId)
+  }
+
+  // The messages that still wait on the phone must not go with the screen.
+  const left = leaveQueue(conversation?.queue, conversation?.transcript.running ?? false)
+
+  if (left.keep && storedId) {
+    leftQueues.set(storedId, left.keep)
+  }
+
+  if (left.handOver.length) {
+    // The words for the agent need the conversation, which is gone after this call.
+    void handOverQueue(sessionId, storedId, left.handOver.map(item => ({ ...item, text: forAgent(sessionId, item.text) })))
   }
 
   $conversations.setKey(sessionId, undefined as unknown as Conversation)
@@ -759,6 +805,7 @@ export function closeConversation(sessionId: string): void {
 
 export function clearConversations(): void {
   storedMessages.clear()
+  leftQueues.clear()
   $conversations.set({})
 }
 

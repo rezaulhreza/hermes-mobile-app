@@ -57,3 +57,22 @@ export function takeNext(queue: Queue, running: boolean): { send: QueuedMessage 
 
   return { send: queue.items[0], queue: { ...queue, items: queue.items.slice(1) } }
 }
+
+/**
+ * What to do with the queue when the screen of its chat closes. The queue is
+ * on the phone, and the phone sends its messages one at a time while the chat
+ * is open. A chat that is closed sends nothing, so a queue that was left
+ * there was lost.
+ *
+ * While a turn runs, the messages go to the queue of the host (`handOver`):
+ * the host sends them after the turn with no phone there. A queue that waits
+ * for the user (they stopped the turn), or a queue with no turn to wait for,
+ * is kept for the next time the chat opens (`keep`).
+ */
+export function leaveQueue(queue: Queue | undefined, running: boolean): { handOver: QueuedMessage[]; keep: Queue | null } {
+  if (!queue?.items.length) {
+    return { handOver: [], keep: null }
+  }
+
+  return running && !queue.paused ? { handOver: queue.items, keep: null } : { handOver: [], keep: queue }
+}

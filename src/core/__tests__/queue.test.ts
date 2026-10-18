@@ -1,4 +1,4 @@
-import { EMPTY_QUEUE, enqueue, pauseQueue, promoteQueued, removeQueued, resumeQueue, takeNext } from '../queue'
+import { EMPTY_QUEUE, enqueue, leaveQueue, pauseQueue, promoteQueued, removeQueued, resumeQueue, takeNext } from '../queue'
 
 const two = enqueue(enqueue(EMPTY_QUEUE, 'first'), 'second', 'spoken before')
 
@@ -49,3 +49,22 @@ describe('the queue of messages on the phone', () => {
     expect(enqueue(removeQueued(two, 'q1'), 'third').items.map(item => item.id)).toEqual(['q0', 'q2'])
   })
 })
+
+describe('a queue when its chat closes', () => {
+  const queue = enqueue(enqueue(EMPTY_QUEUE, 'first'), 'second')
+
+  it('goes to the host while a turn runs', () => {
+    expect(leaveQueue(queue, true)).toEqual({ handOver: queue.items, keep: null })
+  })
+
+  it('is kept when it waits for the user, or when no turn runs', () => {
+    expect(leaveQueue({ ...queue, paused: true }, true)).toEqual({ handOver: [], keep: { ...queue, paused: true } })
+    expect(leaveQueue(queue, false)).toEqual({ handOver: [], keep: queue })
+  })
+
+  it('is nothing when it is empty', () => {
+    expect(leaveQueue(EMPTY_QUEUE, true)).toEqual({ handOver: [], keep: null })
+    expect(leaveQueue(undefined, true)).toEqual({ handOver: [], keep: null })
+  })
+})
+
