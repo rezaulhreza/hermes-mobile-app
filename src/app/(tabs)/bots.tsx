@@ -2,18 +2,21 @@ import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { AvatarSheet } from '@/components/avatar-sheet'
+import { BotFace } from '@/components/bot-face'
 import { BotAvatar as Avatar, BotSheet, SectionSheet, SheetFrame } from '@/components/bot-sheet'
 import { ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { NewRoomSheet } from '@/components/room-sheets'
 import { WorkingMark } from '@/components/working-mark'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { messageWords } from '@/core/attachments'
-import { type Bot, botGroups, botMark, botNameProblem, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
+import { defaultLook, type Look } from '@/core/avatars'
+import { type Bot, botGroups, botMark, botNameProblem, botSlug, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
-import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
+import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, pickBotPicture, setBotLook, setBotPicture, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
 import { openBotChat } from '@/store/chat'
 import { $linkState } from '@/store/link'
 import { $roomsWritable, checkRoomsWritable } from '@/store/rooms'
@@ -326,10 +329,17 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
   const [choosing, setChoosing] = useState(false)
   const [busy, setBusy] = useState(false)
   const problem = name ? botNameProblem(name, bots.map(bot => bot.name)) : null
+  // The avatar of the new bot: a look the user chose, or a photo. With neither, the look that comes from its name.
+  const [look, setLook] = useState<Look | null>(null)
+  const [photo, setPhoto] = useState<string | null>(null)
+  const [avatar, setAvatar] = useState(false)
+  const shown = look ?? defaultLook(botSlug(name))
 
   const add = () => {
     setBusy(true)
     createBot(name, description, like)
+      // The bot is there. Its avatar is a second step: a fault in it must not say that the bot was not made.
+      .then(made => (photo ? setBotPicture(made, photo) : look ? setBotLook(made, look) : undefined)?.catch(say))
       .then(onClose, say)
       .finally(() => setBusy(false))
   }
@@ -337,6 +347,14 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
   return (
     <SheetFrame onClose={onClose} title="Add a bot">
       <Text style={[type.small, { color: t.muted }]}>A bot is an agent of its own on your Hermes host, with its own role, memory and skills.</Text>
+      <Pressable accessibilityHint="Opens the choice of an avatar or a photo" accessibilityLabel="Avatar" accessibilityRole="button" onPress={() => setAvatar(true)} style={[styles.avatarRow, { backgroundColor: t.paper, borderColor: t.line }]}>
+        {photo ? <Image accessibilityIgnoresInvertColors source={{ uri: photo }} style={styles.avatarPhoto} /> : <BotFace look={shown} size={48} />}
+        <View style={styles.fill}>
+          <Text style={[type.small, { color: t.muted }]}>Avatar</Text>
+          <Text style={[type.label, { color: t.ink }]}>{photo ? 'A photo' : look ? 'The one you chose' : 'From its name'}</Text>
+        </View>
+        <Feather color={t.muted} name="chevron-right" size={18} />
+      </Pressable>
       <Field autoCapitalize="words" error={problem} label="Name" onChangeText={setName} placeholder="Researcher" value={name} />
       <Field label="Role" multiline onChangeText={setDescription} placeholder="What this bot is for, in a sentence" style={styles.role} value={description} />
 
@@ -348,6 +366,28 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
           onClose={() => setChoosing(false)}
           onPick={picked => (setLike(picked || null), setChoosing(false))}
           title="Start as a copy of"
+        />
+      ) : null}
+
+      {avatar ? (
+        <AvatarSheet
+          busy={false}
+          onClose={() => setAvatar(false)}
+          onPhoto={() =>
+            void pickBotPicture().then(data => {
+              if (data) {
+                setPhoto(data)
+                setAvatar(false)
+              }
+            }, say)
+          }
+          onUse={chosen => {
+            setLook(chosen)
+            setPhoto(null)
+            setAvatar(false)
+          }}
+          photo={photo}
+          start={shown}
         />
       ) : null}
 
@@ -365,6 +405,8 @@ const styles = StyleSheet.create({
   empty: { padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', textAlign: 'center' },
   addSection: { marginTop: space.md },
   shrink: { flexShrink: 1 },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  avatarPhoto: { width: 48, height: 48, borderRadius: 24 },
   unread: { position: 'absolute', top: -3, right: -3, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },

@@ -5,17 +5,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { defaultLook } from '@/core/avatars'
 import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSectionId } from '@/core/bots'
 import { type Capability, capabilityCount } from '@/core/capabilities'
 import { faultWords } from '@/core/format'
 import { modelLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection, setDefaultBot } from '@/store/bots'
+import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, setBotLook, deleteBot, describeBot, fileBot, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotSection, setDefaultBot } from '@/store/bots'
 import { readSkills } from '@/store/capabilities'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
+import { AvatarSheet } from './avatar-sheet'
+import { BotFace } from './bot-face'
 import { Button, Field, IconButton } from './ui'
 
 const say = (error: unknown) => Alert.alert('That did not work', faultWords(error))
@@ -26,6 +29,9 @@ export function BotAvatar({ bot, size, t }: { bot: Bot; size: number; t: Palette
 
   return picture ? (
     <Image accessibilityIgnoresInvertColors source={{ uri: picture }} style={shape} />
+  ) : bot.look ? (
+    // No photo: the drawn avatar of the bot, the same one the desktop app draws.
+    <BotFace look={bot.look} size={size} />
   ) : (
     <View style={[shape, styles.initials, { backgroundColor: bot.isDefault ? t.accentBg : t.soft }]}>
       {/* In a small circle the letters are small too. */}
@@ -101,18 +107,17 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
       }
     ])
 
+  // The choice of an avatar, open over this sheet.
+  const [avatar, setAvatar] = useState(false)
+  const picture = useStore($botAvatars)[bot.name]
+
   return (
     <SheetFrame onClose={onClose} title={bot.title}>
       <View style={styles.who}>
-        <Pressable
-          accessibilityHint="Opens your photos to choose a picture"
-          accessibilityLabel={`Picture of ${bot.title}`}
-          accessibilityRole="button"
-          onPress={() => run('picture', () => chooseBotPicture(bot.name))}
-        >
+        <Pressable accessibilityHint="Opens the choice of an avatar or a photo" accessibilityLabel={`Avatar of ${bot.title}`} accessibilityRole="button" onPress={() => setAvatar(true)}>
           <BotAvatar bot={bot} size={64} t={t} />
           <View style={[styles.camera, { backgroundColor: t.ink }]}>
-            {busy === 'picture' ? <ActivityIndicator color={t.bg} size="small" /> : <Feather color={t.bg} name="camera" size={12} />}
+            {busy === 'picture' ? <ActivityIndicator color={t.bg} size="small" /> : <Feather color={t.bg} name="edit-2" size={12} />}
           </View>
         </Pressable>
         <View style={styles.fill}>
@@ -272,6 +277,16 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
           <Button busy={busy === 'delete'} icon="trash-2" label="Delete this bot" onPress={remove} tone="danger" />
         </>
       )}
+      {avatar ? (
+        <AvatarSheet
+          busy={busy === 'picture'}
+          onClose={() => setAvatar(false)}
+          onPhoto={() => run('picture', () => chooseBotPicture(bot.name).then(() => setAvatar(false)))}
+          onUse={look => run('picture', () => setBotLook(bot.name, look).then(() => setAvatar(false)))}
+          photo={picture || null}
+          start={bot.look ?? defaultLook(bot.name)}
+        />
+      ) : null}
     </SheetFrame>
   )
 }

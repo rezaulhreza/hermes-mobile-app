@@ -6,6 +6,7 @@
  */
 
 import type { ProfileRow } from './gateway/gateway-contract.generated'
+import { type Look, lookOf } from './avatars'
 import { previewLine } from './format'
 import type { LiveState } from './sessions'
 
@@ -21,6 +22,8 @@ export interface Bot {
   model: string
   /** The profile the host itself runs as. It cannot be deleted. */
   isDefault: boolean
+  /** Its drawn avatar, for when it has no photo. Null for a shape the phone cannot draw: its letters show then. */
+  look: Look | null
   /** The stored id of its Bot Chat. Null for a bot nobody has talked to. */
   chatId: string | null
   /** The id the Bot Chat had first. The host can name the chat by it after it made the chat shorter. */
@@ -101,6 +104,7 @@ export function botRows(profiles: readonly ProfileRow[], nowS: number): Bot[] {
         working: workerAt > 0 && nowS - workerAt < WORKING_WINDOW_S,
         skillCount: row.skill_count ?? 0,
         hasAvatar: Boolean(row.has_avatar),
+        look: lookOf(row.name, metaOf(row)),
         ...filing(metaOf(row)),
         formerNames: Array.isArray(row.previous_names) ? row.previous_names.filter((name): name is string => typeof name === 'string') : []
       }

@@ -4,6 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { atom, map } from 'nanostores'
 
+import { type Look, lookMeta } from '@/core/avatars'
 import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type ReadMarks, type Room } from '@/core/bots'
 import type { ProfilesCreateResult, ProfilesGetAssetResult, ProfilesListResult } from '@/core/gateway/gateway-contract.generated'
 
@@ -188,7 +189,7 @@ export interface BotFiling {
   hidden?: boolean
 }
 
-async function writeBotFiling(name: string, change: BotFiling): Promise<void> {
+async function writeBotFiling(name: string, change: BotFiling | ReturnType<typeof lookMeta>): Promise<void> {
   const known = metas.get(name)
 
   await rpc('profiles.configure', {
@@ -296,13 +297,28 @@ export async function setBotModel(name: string, provider: string, model: string)
 
 const PICTURE_SIDE = 256
 
-/** Choose a photo of the phone as the picture of a bot. Resolves with no change when the user chooses nothing. */
-export async function chooseBotPicture(name: string): Promise<void> {
+/**
+ * Give a bot a drawn avatar: a shape and a colour. The choice goes into the
+ * record of the bot, where the desktop app reads it, and the photo of the
+ * bot goes away, because a photo wins over a drawn avatar on every screen.
+ */
+export async function setBotLook(name: string, look: Look): Promise<void> {
+  await writeBotFiling(name, lookMeta(look))
+  await rpc('profiles.set_asset', { name, asset: 'avatar', clear: true }, 60_000)
+  // The desktop app can send a picture of the shape later: the phone must ask for it then.
+  asked.delete(name)
+  $botAvatars.setKey(name, '')
+  writeCached('avatars', $botAvatars.get())
+  await loadBots()
+}
+
+/** Choose a photo of the phone, made small, as a `data:` address. Null when the user chooses nothing. */
+export async function pickBotPicture(): Promise<string | null> {
   const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1 })
   const asset = picked.canceled ? null : picked.assets[0]
 
   if (!asset) {
-    return
+    return null
   }
 
   // A picture of a list row: small on the host and on every phone that reads it.
@@ -316,12 +332,24 @@ export async function chooseBotPicture(name: string): Promise<void> {
     throw new Error('The phone could not read this picture.')
   }
 
-  const data = `data:image/jpeg;base64,${small.base64}`
+  return `data:image/jpeg;base64,${small.base64}`
+}
 
+/** Make a picture the photo of a bot. */
+export async function setBotPicture(name: string, data: string): Promise<void> {
   await rpc('profiles.set_asset', { name, asset: 'avatar', data }, 60_000)
   $botAvatars.setKey(name, data)
   writeCached('avatars', $botAvatars.get())
   await loadBots()
+}
+
+/** Choose a photo of the phone as the picture of a bot. Resolves with no change when the user chooses nothing. */
+export async function chooseBotPicture(name: string): Promise<void> {
+  const data = await pickBotPicture()
+
+  if (data) {
+    await setBotPicture(name, data)
+  }
 }
 
 /** The bot's own instructions (its SOUL.md). */
