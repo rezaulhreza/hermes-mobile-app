@@ -14,6 +14,7 @@ import { useTheme } from '@/theme/use-theme'
 import { BotAvatar } from './bot-sheet'
 import { Markdown } from './markdown'
 import { MentionText } from './mention-text'
+import { ReadAloud } from './read-aloud'
 
 const FACE = 30
 /** A schedule can give a long report. Its first lines say what it is about. */
@@ -66,6 +67,9 @@ export function ArrivalRow({ arrival, mentions }: { arrival: Arrival; /** Splits
       what="Bot"
     >
       <Markdown mentions={mentions} text={arrival.text} />
+      <View style={styles.read}>
+        <ReadAloud id={`arrival:${arrival.handle}:${arrival.text.length}:${arrival.text.slice(0, 24)}`} text={arrival.text} />
+      </View>
     </Sender>
   )
 }
@@ -145,6 +149,7 @@ function EventLine({ arrival, bots, t }: { arrival: Extract<Arrival, { kind: 'ev
 const styles = StyleSheet.create({
   fill: { flex: 1, gap: space.xs },
   shrink: { flexShrink: 1 },
+  read: { alignSelf: 'flex-start', marginTop: space.xs },
   sender: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, maxWidth: '94%' },
   face: { width: FACE, height: FACE, borderRadius: FACE / 2, alignItems: 'center', justifyContent: 'center' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 20 },

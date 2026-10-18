@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
 import { Markdown } from '@/components/markdown'
+import { ReadAloud } from '@/components/read-aloud'
 import { AttachmentViewer, type ViewerTarget } from '@/components/attachment-viewer'
 import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
@@ -519,6 +520,7 @@ function Message({ message, bot, marked, full, onReadAll, onOpen, onReply, folde
             <Text style={{ color: t.ink, fontWeight: '700' }}>{bot?.title ?? message.from}</Text>
             {message.at ? `  ${relativeTime(message.at / 1000)}` : ''}
           </Text>
+          <ReadAloud id={`room:${message.id}`} size={16} text={text} />
           {onReply ? (
             <Pressable accessibilityLabel={`Reply to ${bot?.title ?? message.from}`} accessibilityRole="button" hitSlop={10} onPress={onReply}>
               <Feather color={t.muted} name="corner-up-left" size={16} />

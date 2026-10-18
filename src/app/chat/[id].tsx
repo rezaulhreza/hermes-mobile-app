@@ -23,6 +23,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Answer } from '@/components/answer'
+import { ReadAloud } from '@/components/read-aloud'
 import { ArrivalRow } from '@/components/arrival'
 import { DictationButton, DictationLine, SendSpokenButton, useDictation } from '@/components/dictation'
 import { TeachSheet } from '@/components/teach-sheet'
@@ -85,7 +86,7 @@ import { $requests, answerRequest } from '@/store/requests'
 import { tap } from '@/native/haptics'
 import { $screenHold } from '@/store/screen'
 import { $sessions, markSessionRead } from '@/store/sessions'
-import { $call, $callEnded, $callMuted, $callSession, $reading, endCall, readAloud, setCallMuted, startCall } from '@/store/voice'
+import { $call, $callEnded, $callMuted, $callSession, endCall, setCallMuted, startCall } from '@/store/voice'
 import { lineOf, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useKeyboardOpen } from '@/theme/use-keyboard'
 import { useTheme } from '@/theme/use-theme'
@@ -923,7 +924,6 @@ function waitingForm(requests: readonly AgentRequest[]): Extract<AgentRequest, {
 /** Copy and share for an answer. Small and quiet: they are there when wanted, and not a toolbar. */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const t = useTheme()
-  const reading = useStore($reading) === id
   const [copied, setCopied] = useState(false)
   const sources = useMemo(() => answerSources(parseMarkdown(text)), [text])
   const [showSources, setShowSources] = useState(false)
@@ -944,14 +944,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       <Pressable accessibilityLabel="Share the answer" accessibilityRole="button" hitSlop={10} onPress={() => void Share.share({ message: text }).catch(() => undefined)}>
         <Feather color={t.muted} name="share" size={15} />
       </Pressable>
-      <Pressable
-        accessibilityLabel={reading ? 'Stop reading' : 'Read the answer aloud'}
-        accessibilityRole="button"
-        hitSlop={10}
-        onPress={() => void readAloud(id, text).catch(() => undefined)}
-      >
-        <Feather color={reading ? t.accent : t.muted} name={reading ? 'square' : 'volume-2'} size={15} />
-      </Pressable>
+      <ReadAloud id={id} text={text} />
       {sources.length ? <SourcesButton onPress={() => setShowSources(true)} sources={sources} /> : null}
       {showSources ? <SourcesSheet onClose={() => setShowSources(false)} sources={sources} /> : null}
     </View>
