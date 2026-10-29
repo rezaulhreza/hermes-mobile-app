@@ -275,6 +275,8 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   // The bot this chat belongs to, when it is a chat of a bot.
   const bots = useStore($bots)
   const bot = bots?.find(known => known.name === params.profile && !known.isDefault)
+  // The bot whose picture the header shows: the bot of this chat, or the main bot.
+  const headBot = bot ?? bots?.find(known => (params.profile ? known.name === params.profile : known.isDefault))
   // The bot of this chat: every other bot can be named in a message ("@qa").
   const self = botOfChat(params.profile)
   const plugins = useStore($referencePlugins) ?? []
@@ -449,42 +451,42 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={[styles.header, { borderBottomColor: t.line }]}>
         {embedded ? null : <IconButton icon="chevron-left" label="Back" onPress={leave} />}
-        <Pressable
-          accessibilityHint="Opens rename, pin, branch, export, archive and delete"
-          accessibilityLabel="Conversation actions"
-          accessibilityRole="button"
-          disabled={!conversation}
-          onPress={() => setActing(true)}
-          style={styles.fill}
-        >
-          <View style={styles.titleRow}>
-            {/* The chat of a bot: its picture and its name, not the name of its chat. */}
-            {bot ? <BotAvatar bot={bot} size={30} t={t} /> : null}
-            <Text numberOfLines={1} style={[type.label, styles.pillText, { color: t.ink }]}>
+        {/* The bot of the chat, the main bot included: its picture, as on the Bots tab. */}
+        {headBot ? <BotAvatar bot={headBot} size={34} t={t} /> : null}
+        <View style={styles.headText}>
+          <Pressable
+            accessibilityHint="Opens rename, pin, branch, export, archive and delete"
+            accessibilityLabel="Conversation actions"
+            accessibilityRole="button"
+            disabled={!conversation}
+            onPress={() => setActing(true)}
+          >
+            <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
               {botChat ? botChat.title : conversation?.title || params.title || 'New chat'}
             </Text>
-            {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
-          </View>
-        </Pressable>
-        {sessionId ? <IconButton icon="message-square" label="Side chat" onPress={() => setSideOpen(true)} /> : null}
-        {conversation?.info.model ? (
-          <Pressable
-            accessibilityHint="Changes the model and the reasoning level"
-            accessibilityLabel={`Model: ${modelLabel(conversation.info.model)}`}
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={() => {
-              setModelQuery('')
-              setSheet('model')
-            }}
-            style={[styles.pill, { backgroundColor: t.soft }]}
-          >
-            <Text numberOfLines={1} style={[type.small, styles.pillText, { color: t.ink }]}>
-              {modelLabel(conversation.info.model)}
-            </Text>
-            <Feather color={t.muted} name="chevron-down" size={14} />
           </Pressable>
-        ) : null}
+          {conversation?.info.model ? (
+            // One quiet line: whose chat it is and its model. A tap changes the model.
+            <Pressable
+              accessibilityHint="Changes the model and the reasoning level"
+              accessibilityLabel={`Model: ${modelLabel(conversation.info.model)}`}
+              accessibilityRole="button"
+              hitSlop={{ top: 4, bottom: 8 }}
+              onPress={() => {
+                setModelQuery('')
+                setSheet('model')
+              }}
+              style={styles.subline}
+            >
+              <Text numberOfLines={1} style={[type.small, styles.shrink, { color: t.muted }]}>
+                {[headBot && headBot.title !== botChat?.title ? headBot.title : null, modelLabel(conversation.info.model)].filter(Boolean).join(' · ')}
+              </Text>
+              <Feather color={t.muted} name="chevron-down" size={12} />
+            </Pressable>
+          ) : null}
+        </View>
+        {sessionId ? <IconButton icon="message-square" label="Side chat" onPress={() => setSideOpen(true)} /> : null}
+        {conversation ? <IconButton icon="more-horizontal" label="More" onPress={() => setActing(true)} /> : null}
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
@@ -529,7 +531,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             </SayToAgent.Provider>
             {awayFromEnd ? (
               <View style={styles.toEnd}>
-                <IconButton icon="arrow-down" label="Go to the newest message" onPress={toEnd} />
+                <IconButton icon="arrow-down" label="Go to the newest message" onPress={toEnd} soft />
               </View>
             ) : null}
           </View>
@@ -649,13 +651,14 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               icon={adding ? 'x' : 'plus'}
               label={adding ? 'Close the attachment list' : 'Add a photo or a file'}
               onPress={() => setAdding(value => !value)}
+              soft
             />
             <TextInput
               accessibilityLabel="Message"
               autoCapitalize={draft.startsWith('/') || draft.startsWith('@') ? 'none' : 'sentences'}
               multiline
               onChangeText={setDraft}
-              placeholder={running ? 'Queue or steer' : 'Message, / or @'}
+              placeholder={`Message ${headBot?.title ?? 'Hermes'}`}
               placeholderTextColor={t.muted}
               // An empty field is one line high. iOS keeps the height of the text that was sent until the next key.
               style={[styles.input, type.body, { color: t.ink }, !draft && styles.inputEmpty]}
@@ -828,18 +831,18 @@ function UserBubble({ text, attached, waiting, teach, onOpen }: { text: string; 
           tap()
           void Clipboard.setStringAsync(text).then(() => setCopied(true))
         }}
-        style={[styles.bubble, { backgroundColor: t.soft }, waiting && styles.waiting]}
+        style={[styles.bubble, { backgroundColor: t.ink }, waiting && styles.waiting]}
       >
         {attached?.length ? <SentAttachments items={attached} onOpen={index => onOpen({ items: attached, index })} /> : null}
         {teach ? (
           <View style={styles.teach}>
-            <Feather color={t.accent} name="book-open" size={13} />
-            <Text style={[type.small, { color: t.accent, fontWeight: '700' }]}>Teach</Text>
+            <Feather color={t.bg} name="book-open" size={13} />
+            <Text style={[type.small, { color: t.bg, fontWeight: '700' }]}>Teach</Text>
           </View>
         ) : null}
         {text ? (
-          <Text style={[type.body, { color: t.ink }]}>
-            <MentionText parts={chatMentionParts(text, bots ?? [], self, plugins ?? [])} />
+          <Text style={[type.body, { color: t.bg }]}>
+            <MentionText parts={chatMentionParts(text, bots ?? [], self, plugins ?? [])} tint={t.bg} />
           </Text>
         ) : null}
       </Pressable>
@@ -1037,27 +1040,20 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    paddingHorizontal: space.md,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
     paddingBottom: space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth
   },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    maxWidth: 150,
-    minHeight: 32,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill
-  },
-  pillText: { fontWeight: '600', flexShrink: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headText: { flex: 1, minWidth: 0, paddingLeft: space.sm, gap: 1 },
+  subline: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', maxWidth: '100%' },
+  shrink: { flexShrink: 1 },
   working: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm },
   statusText: { flexShrink: 1 },
   transcript: { padding: space.lg, gap: space.lg, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   sent: { alignSelf: 'flex-end', alignItems: 'flex-end', maxWidth: '88%', gap: space.xs },
-  bubble: { padding: space.md, borderRadius: radius.lg, gap: space.sm },
+  // A sent message: ink, with a small corner where it points to its sender.
+  bubble: { paddingHorizontal: space.md, paddingVertical: space.sm + 2, borderRadius: radius.lg - 4, borderBottomRightRadius: 4, gap: space.sm },
   teach: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   chips: { gap: space.sm, paddingHorizontal: space.xs, paddingBottom: space.sm },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },

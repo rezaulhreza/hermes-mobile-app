@@ -31,7 +31,7 @@ const REFERENCE_ICON: Record<ReferenceKind, keyof typeof Feather.glyphMap> = {
  * must keep its place under the cursor, so there the mention keeps its "@"
  * word and has the accent colour.
  */
-export function MentionText({ parts, typed = false }: { parts: readonly TextPart[]; typed?: boolean }) {
+export function MentionText({ parts, typed = false, tint }: { parts: readonly TextPart[]; typed?: boolean; tint?: string }) {
   const t = useTheme()
 
   return parts.map((part, index) =>
@@ -40,7 +40,8 @@ export function MentionText({ parts, typed = false }: { parts: readonly TextPart
     ) : part.target && !typed ? (
       <MentionChip key={index} t={t} target={part.target} />
     ) : (
-      <Text key={index} style={{ color: t.accent, fontWeight: '600' }}>
+      // `tint` is for a ground the accent does not read on, such as the ink of a sent message.
+      <Text key={index} style={{ color: tint ?? t.accent, fontWeight: '600' }}>
         {part.text}
       </Text>
     )

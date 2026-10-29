@@ -38,7 +38,7 @@ export function WorkStrip({ sessionId, storedId }: { sessionId: string; storedId
 
   return (
     <>
-      <Pressable accessibilityHint="Shows the plan and the agents" accessibilityLabel="Plan and agents" accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.strip, { backgroundColor: t.soft }]}>
+      <Pressable accessibilityHint="Shows the plan and the agents" accessibilityLabel="Plan and agents" accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.strip, { backgroundColor: t.paper, borderColor: t.line }]}>
         <Feather color={t.accent} name="list" size={16} />
         <View style={styles.fill}>
           <Text numberOfLines={1} style={[type.small, { color: t.ink, fontWeight: '700' }]}>
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   strong: { fontWeight: '700' },
   struck: { textDecorationLine: 'line-through' },
-  strip: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginHorizontal: space.md, marginBottom: space.xs, paddingHorizontal: space.md, minHeight: TOUCH, borderRadius: radius.md },
+  strip: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginHorizontal: space.md, marginBottom: space.xs, paddingHorizontal: space.md, minHeight: TOUCH, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, paddingLeft: space.lg, borderBottomWidth: StyleSheet.hairlineWidth },
   body: { padding: space.lg, gap: space.lg },
   group: { gap: space.sm },
