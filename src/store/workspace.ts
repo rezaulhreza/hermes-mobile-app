@@ -123,6 +123,27 @@ export async function hostHome(): Promise<string | null> {
   return null
 }
 
+/**
+ * The terminal can open with no folder chosen: it then starts in the home
+ * folder of the host. A terminal that is open already keeps its folder.
+ */
+export async function ensureTerminal(): Promise<void> {
+  if ($terminal.get()) {
+    return
+  }
+
+  const cwd = $root.get() ?? (await hostHome())
+
+  if (!cwd) {
+    throw new Error('The host did not say where its home folder is.')
+  }
+
+  // A folder chosen while the home folder was read wins.
+  if (!$terminal.get()) {
+    $terminal.set({ cwd, entries: [], running: false })
+  }
+}
+
 /** Work in this folder. The Files panel shows it, the terminal starts in it. */
 export function openRoot(path: string): void {
   $root.set(path)
