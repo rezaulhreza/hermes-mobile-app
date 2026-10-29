@@ -105,7 +105,8 @@ export async function openSiblingSocket(path: string): Promise<WebSocket> {
 
   const ticket = await target.api.wsTicket()
 
-  return new (WebSocket as unknown as HeaderSocket)(`${wsOriginFor(target.workspace.baseUrl)}${path}?ticket=${encodeURIComponent(ticket)}`, undefined, {
+  // A path with its own query takes the ticket as one more parameter.
+  return new (WebSocket as unknown as HeaderSocket)(`${wsOriginFor(target.workspace.baseUrl)}${path}${path.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(ticket)}`, undefined, {
     headers: target.workspace.headers
   })
 }
