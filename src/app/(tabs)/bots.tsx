@@ -145,7 +145,7 @@ export default function Bots() {
                 onChangeText={setQuery}
                 placeholder="Find a bot: a name or a role"
                 placeholderTextColor={t.muted}
-                style={[type.body, styles.search, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
+                style={[type.body, styles.search, { color: t.ink, backgroundColor: t.soft }]}
                 value={query}
               />
             ) : null
@@ -245,7 +245,9 @@ export default function Bots() {
                       // The bot works now: the mark of the chat screen stands where the time was.
                       <WorkingMark />
                     ) : mark.live ? (
-                      <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>Needs you</Text>
+                      <View style={[styles.chip, { backgroundColor: t.ink }]}>
+                        <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
+                      </View>
                     ) : item.lastActive ? (
                       <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text>
                     ) : null}
@@ -399,9 +401,9 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   roomIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  heading: { fontWeight: '700', marginTop: space.sm },
+  heading: { fontWeight: '600', marginTop: space.sm },
   headingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
-  headingText: { fontWeight: '700', flex: 1 },
+  headingText: { fontWeight: '600', flex: 1 },
   empty: { padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', textAlign: 'center' },
   addSection: { marginTop: space.md },
   shrink: { flexShrink: 1 },
@@ -411,7 +413,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },
   content: { padding: space.lg, gap: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },
-  search: { minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, marginBottom: space.sm },
+  search: { minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, marginBottom: space.sm },
+  chip: { paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   badge: { paddingHorizontal: space.sm, borderRadius: radius.sm, overflow: 'hidden', fontWeight: '700' },
