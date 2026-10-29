@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -27,9 +28,11 @@ export default function TerminalScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.fill, { backgroundColor: c.bg }]}>
+      <StatusBar style="light" />
       <View style={styles.head}>
-        <Pressable accessibilityLabel="Leave terminal mode" accessibilityRole="button" hitSlop={6} onPress={() => router.back()} style={[styles.close, { backgroundColor: c.soft }]}>
-          <Feather color={c.ink} name="chevron-down" size={22} />
+        {/* A small mark, not a button shape: the touch area is still 44 points with its slop. */}
+        <Pressable accessibilityLabel="Leave terminal mode" accessibilityRole="button" hitSlop={8} onPress={() => router.back()} style={styles.close}>
+          <Feather color={c.muted} name="chevron-down" size={20} />
         </Pressable>
         <Text style={[type.heading, styles.fill, { color: c.ink }]}>Terminal</Text>
       </View>
@@ -47,6 +50,6 @@ export default function TerminalScreen() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-  close: { width: TOUCH, height: TOUCH, borderRadius: TOUCH / 2, alignItems: 'center', justifyContent: 'center' },
+  close: { width: TOUCH - 16, height: TOUCH - 16, alignItems: 'center', justifyContent: 'center' },
   problem: { padding: space.lg }
 })
