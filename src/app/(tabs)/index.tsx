@@ -21,7 +21,7 @@ import {
   type LiveState,
   rowProfile,
   type SearchHit,
-  sessionPreview,
+  sessionLine,
   type SessionRow as Row,
   sessionSections,
   sessionTitle,
@@ -346,7 +346,7 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
   // The bot that owns the conversation. Its picture is the same one the Bots tab shows: a photo, or its drawn avatar.
   const ownerBot = useStore($bots)?.find(known => known.name === owner)
   const snippet = (row as SearchHit).snippet
-  const preview = sessionPreview(row)
+  const line = sessionLine(row)
   const title = botChat ?? sessionTitle(row)
   // The title of a bot's own chat names the bot already.
   const named = botChat ? undefined : bot
@@ -430,11 +430,11 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
               )
             )}
           </Text>
-        ) : named || (row.title && preview) ? (
+        ) : named || line ? (
           <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
             {named ? <Text style={{ color: t.accent, fontWeight: '600' }}>{named}</Text> : null}
-            {named && row.title && preview ? '  ·  ' : ''}
-            {row.title ? preview : ''}
+            {named && line ? '  ·  ' : ''}
+            {line}
           </Text>
         ) : null}
       </View>

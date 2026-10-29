@@ -4,12 +4,15 @@ import {
   rowProfile,
   rowsInView,
   filterSessions,
+  keepLastMessages,
   liveStates,
   sameLiveStates,
   sessionActions,
   sessionSearchPath,
   snippetParts,
+  withLastMessages,
   withMessageHits,
+  sessionLine,
   sessionListPath,
   sessionPreview,
   sessionSections,
@@ -36,6 +39,44 @@ describe('session rows', () => {
   it('asks the backend for the view', () => {
     expect(sessionListPath('current')).toContain('archived=exclude')
     expect(sessionListPath('archived')).toContain('archived=only')
+  })
+})
+
+describe('sessionLine', () => {
+  it('shows the last message, with "You: " for the user', () => {
+    expect(sessionLine({ ...rows[0], last: { role: 'assistant', text: 'The **build** passes now.' } })).toBe('The build passes now.')
+    expect(sessionLine({ ...rows[0], last: { role: 'user', text: 'Ship it @file:/up/a.png' } })).toBe('You: Ship it')
+  })
+
+  it('shows the last message under an untitled row, but not when it is the title', () => {
+    expect(sessionLine({ ...rows[1], last: { role: 'assistant', text: 'Done.' } })).toBe('Done.')
+    expect(sessionLine({ ...rows[1], last: { role: 'assistant', text: 'Reply ok.' } })).toBe('')
+  })
+
+  it('shows the first message under a title until the host gives the last one', () => {
+    expect(sessionLine(rows[0])).toBe('the build fails')
+    expect(sessionLine(rows[1])).toBe('')
+  })
+})
+
+describe('last messages', () => {
+  const last = { role: 'assistant' as const, text: 'new' }
+
+  it('puts each last message on its row and leaves the other rows', () => {
+    const next = withLastMessages(rows, { a: last })
+
+    expect(next[0].last).toEqual(last)
+    expect(next[1]).toBe(rows[1])
+  })
+
+  it('keeps the last message on screen for a row of a new page', () => {
+    const shown = [{ id: 'a', last }, { id: 'b' }]
+    const page = [{ id: 'a' }, { id: 'b' }, { id: 'c', last: { role: 'user' as const, text: 'own' } }]
+    const next = keepLastMessages(page, shown)
+
+    expect(next[0].last).toEqual(last)
+    expect(next[1]).toBe(page[1])
+    expect(next[2]).toBe(page[2])
   })
 })
 

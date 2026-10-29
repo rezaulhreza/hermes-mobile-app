@@ -22,7 +22,10 @@ export const SESSION_SOURCE = 'desktop'
 export interface SessionRow {
   id: string
   title?: string | null
+  /** The head of the FIRST user message (stock Hermes). The title of a chat with no title. */
   preview?: string | null
+  /** The last message of the user or the assistant, from the `phone-chat-list` plugin. Absent on a host without it. */
+  last?: LastMessage | null
   /** Where the conversation started: desktop, mobile, telegram, cli, cron, ... */
   source?: string | null
   started_at?: number | null
@@ -118,6 +121,48 @@ export function sessionPreview(row: SessionRow): string {
 export function sessionTitle(row: SessionRow): string {
   // A title is a label: a date in it reads as a date, not as the host wrote it.
   return readableDates(row.title?.trim() || sessionPreview(row)) || 'Untitled conversation'
+}
+
+export interface LastMessage {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+/** The plugin route that gives the last message of a page of chats in one request. */
+export const LAST_MESSAGES_PATH = '/api/plugins/phone-chat-list/last'
+
+/**
+ * The second line of a row, as in a messaging app: the last message, with "You: " for the
+ * user's own. Before the host answers, and on a host without the plugin, the first message,
+ * but only under a title of its own: an untitled row shows that message as its title already.
+ */
+export function sessionLine(row: SessionRow): string {
+  if (!row.last) {
+    return row.title?.trim() ? sessionPreview(row) : ''
+  }
+
+  const line = previewLine(row.last.text).replace(TRAILING_REFERENCES, '')
+
+  if (!line || line === sessionTitle(row)) {
+    return ''
+  }
+
+  return row.last.role === 'user' ? `You: ${line}` : line
+}
+
+/** The rows with the last messages the host gave. A row the answer does not name keeps what it had. */
+export function withLastMessages(rows: readonly SessionRow[], last: Readonly<Record<string, LastMessage>>): SessionRow[] {
+  return rows.map(row => (last[row.id] ? { ...row, last: last[row.id] } : row))
+}
+
+/**
+ * A new page of rows with the last message each row had on screen. The list then does not
+ * show the first message for a moment, until the host answers with the new last messages.
+ */
+export function keepLastMessages(page: readonly SessionRow[], shown: readonly SessionRow[]): SessionRow[] {
+  const known = new Map(shown.filter(row => row.last).map(row => [row.id, row.last]))
+
+  return page.map(row => (row.last || !known.has(row.id) ? row : { ...row, last: known.get(row.id) }))
 }
 
 /** What a conversation does now: Hermes works in it, or it waits for an answer of the user. */

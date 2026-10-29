@@ -8,6 +8,9 @@ import { type HistoryPage, pageMessages, type StoredMessage } from '@/core/histo
 import {
   deleteGroups,
   exportFileName,
+  keepLastMessages,
+  LAST_MESSAGES_PATH,
+  type LastMessage,
   type LiveState,
   liveStates,
   rowProfile,
@@ -23,6 +26,7 @@ import {
   type SessionRow,
   type SessionView,
   SOURCES_TO_PROBE,
+  withLastMessages,
   withSessionChange,
   withSessionPage,
   withSources
@@ -121,6 +125,33 @@ $sessionView.listen(searchMessages)
 interface SessionList {
   sessions?: SessionRow[]
   total?: number
+}
+
+/**
+ * The last message of each of these rows, in one request to the `phone-chat-list` plugin of
+ * the host. `cache`: the rows are the list a start of the app shows, so the copy gets them too.
+ */
+async function loadLastMessages(rows: readonly SessionRow[], cache?: { workspaceId?: string }): Promise<void> {
+  if (!rows.length) {
+    return
+  }
+
+  try {
+    const result = await api().request<{ last?: Record<string, LastMessage> }>({ path: LAST_MESSAGES_PATH, method: 'POST', body: { ids: rows.map(row => row.id) } })
+    const last = result.last ?? {}
+
+    if (!Object.keys(last).length) {
+      return
+    }
+
+    $sessions.set(withLastMessages($sessions.get(), last))
+
+    if (cache) {
+      writeCached('sessions', withLastMessages(rows, last), cache.workspaceId)
+    }
+  } catch {
+    // A host without the plugin: the rows show the first message.
+  }
 }
 
 /** The backend has rows after the ones on screen. */
@@ -222,7 +253,10 @@ export async function refreshSessions(): Promise<void> {
 
       if (project.id === $sessionProject.get()?.id) {
         $projects.set(projectChoices(tree))
-        $sessions.set(rowsInView(projectRows(tree.projects.find(node => node.id === project.id)), view))
+        const rows = keepLastMessages(rowsInView(projectRows(tree.projects.find(node => node.id === project.id)), view), $sessions.get())
+
+        $sessions.set(rows)
+        void loadLastMessages(rows)
         $sessionsMore.set(false)
         $sessionsError.set(null)
       }
@@ -231,16 +265,18 @@ export async function refreshSessions(): Promise<void> {
     }
 
     const result = await api().request<SessionList>({ path: sessionListPath(view, { source, profile }) })
-    const page = (result.sessions ?? []).map(slimSessionRow)
-
+    const page = keepLastMessages((result.sessions ?? []).map(slimSessionRow), $sessions.get())
     // The list a start of the app shows: every profile, every channel, not the archive.
-    if (view === 'current' && !source && !profile) {
+    const startList = view === 'current' && !source && !profile
+
+    if (startList) {
       writeCached('sessions', rowsInView(page, view), workspaceId)
     }
 
     // The user can change the view, the source or the profile while the request runs. An answer for another one is not shown.
     if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get() && !$sessionProject.get()) {
       $sessions.set(rowsInView(page, view))
+      void loadLastMessages(rowsInView(page, view), startList ? { workspaceId } : undefined)
       $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > page.length)
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
       $sessionsError.set(null)
@@ -274,6 +310,7 @@ export async function loadMoreSessions(): Promise<void> {
     // The offset counts the rows on screen. A refresh or another filter in the meantime makes this page wrong.
     if (view === $sessionView.get() && source === $sessionSource.get() && profile === $sessionProfile.get() && offset === $sessions.get().length) {
       $sessions.set(withSessionPage($sessions.get(), rowsInView(page, view)))
+      void loadLastMessages(rowsInView(page, view))
       $sessionsMore.set(page.length >= SESSION_PAGE && (result.total ?? Infinity) > offset + page.length)
       $sessionSources.set(withSources($sessionSources.get(), page.map(row => row.source)))
     }

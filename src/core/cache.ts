@@ -48,6 +48,7 @@ export function slimSessionRow(row: SessionRow): SessionRow {
     id: row.id,
     title: row.title,
     preview: row.preview,
+    last: row.last,
     source: row.source,
     started_at: row.started_at,
     last_active: row.last_active,
