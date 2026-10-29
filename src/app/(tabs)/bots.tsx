@@ -115,7 +115,10 @@ export default function Bots() {
   return (
     <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
       <View style={styles.top}>
-        <Text style={[type.title, styles.fill, { color: t.ink }]}>Bots</Text>
+        <View style={styles.fill}>
+          <Text style={[type.small, { color: t.muted }]}>{bots ? `${bots.length} ${bots.length === 1 ? 'bot' : 'bots'}` : ' '}</Text>
+          <Text style={[type.title, { color: t.ink }]}>Bots</Text>
+        </View>
         {roomsWritable ? <IconButton icon="users" label="New group chat" onPress={() => setGrouping(true)} /> : null}
         <IconButton icon="columns" label="Board" onPress={() => router.push('/kanban')} />
         <IconButton icon="clock" label="Schedules" onPress={() => router.push('/cron')} />
@@ -492,7 +495,7 @@ const styles = StyleSheet.create({
   avatarPhoto: { width: 48, height: 48, borderRadius: 24 },
   unread: { position: 'absolute', top: -3, right: -3, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },
+  top: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xs },
   content: { padding: space.lg, paddingTop: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },
   search: { minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, marginBottom: space.sm },
   chip: { paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },

@@ -71,7 +71,7 @@ export function IconButton({ icon, label, onPress, filled, soft, disabled }: Ico
       accessibilityLabel={label}
       accessibilityRole="button"
       disabled={disabled}
-      hitSlop={6}
+      hitSlop={(TOUCH - ICON_BUTTON) / 2 + 2}
       onPress={onPress}
       style={({ pressed }) => [
         styles.iconButton,
@@ -80,9 +80,9 @@ export function IconButton({ icon, label, onPress, filled, soft, disabled }: Ico
       ]}
     >
       {icon === 'waveform' ? (
-        <MaterialCommunityIcons color={filled ? t.onAccent : t.ink} name="waveform" size={22} />
+        <MaterialCommunityIcons color={filled ? t.onAccent : t.ink} name="waveform" size={20} />
       ) : (
-        <Feather color={filled ? t.onAccent : t.ink} name={icon} size={20} />
+        <Feather color={filled ? t.onAccent : t.ink} name={icon} size={filled ? 18 : 19} />
       )}
     </Pressable>
   )
@@ -137,9 +137,11 @@ export function Notice({ icon, title, detail, action }: { icon: IconName; title:
   )
 }
 
+const ICON_BUTTON = 36
+
 const styles = StyleSheet.create({
   button: {
-    minHeight: TOUCH + 4,
+    minHeight: TOUCH,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -148,9 +150,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth
   },
+  // Drawn at 36 points so a row of them stays light. The slop keeps the touch area at 44.
   iconButton: {
-    width: TOUCH,
-    height: TOUCH,
+    width: ICON_BUTTON,
+    height: ICON_BUTTON,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center'

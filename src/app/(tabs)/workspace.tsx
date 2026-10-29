@@ -13,7 +13,7 @@ import { RootSheet } from '@/components/workspace/root-sheet'
 import { baseName } from '@/core/workspace'
 import { $linkState } from '@/store/link'
 import { $changes, $root, $terminal } from '@/store/workspace'
-import { dark, MONO, radius, space, TOUCH, type } from '@/theme/tokens'
+import { dark, MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { TAB_BAR_CLEARANCE } from './_layout'
@@ -65,11 +65,12 @@ export default function Workspace() {
           accessibilityHint="Opens the command line of the host"
           accessibilityRole="button"
           disabled={linkState !== 'open'}
+          hitSlop={4}
           onPress={() => router.push('/terminal')}
           style={({ pressed }) => [styles.terminal, { backgroundColor: t.ink }, (pressed || linkState !== 'open') && styles.dim]}
         >
-          <Feather color={t.accentFill} name="terminal" size={16} />
-          <Text style={[type.label, { color: t.accentFill }]}>Terminal</Text>
+          <Feather color={t.accentFill} name="terminal" size={14} />
+          <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Terminal</Text>
         </Pressable>
       </View>
 
@@ -88,7 +89,7 @@ export default function Workspace() {
                   onPress={() => setPanel(item.name)}
                   style={[styles.tab, on && { backgroundColor: t.paper }]}
                 >
-                  <Feather color={on ? t.accent : t.muted} name={item.icon} size={15} />
+                  <Feather color={on ? t.ink : t.muted} name={item.icon} size={15} />
                   <Text numberOfLines={1} style={[type.small, { color: on ? t.ink : t.muted, fontWeight: '600' }]}>
                     {item.name === 'changes' && changed ? `${item.label} ${changed}` : item.label}
                   </Text>
@@ -126,10 +127,11 @@ export default function Workspace() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   shrink: { flexShrink: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.md },
+  header: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.md },
   title: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   dim: { opacity: 0.5 },
-  terminal: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: TOUCH, paddingHorizontal: space.lg, borderRadius: TOUCH / 2 },
+  // On the line of the title, as the button of the Chats header. The slop keeps the touch area at 44.
+  terminal: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, marginBottom: 2, paddingHorizontal: space.md + 2, borderRadius: 18 },
   runningBar: {
     position: 'absolute',
     left: space.md,
