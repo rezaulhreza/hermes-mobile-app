@@ -1,13 +1,3 @@
-export function greeting(now: Date): string {
-  const hour = now.getHours()
-
-  if (hour < 5) {
-    return 'Good night'
-  }
-
-  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-}
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** A day as a person reads it: "11 Nov". The year is there only when it is not this year: "11 Nov 2025". */

@@ -145,6 +145,14 @@ describe('filters', () => {
     expect(sessionSections([rows[0]])).toEqual([{ title: null, data: [rows[0]] }])
     expect(sessionSections([])).toEqual([])
   })
+
+  it('puts the conversations Hermes works in above the pinned ones', () => {
+    expect(sessionSections(rows, { b: 'working', c: 'waiting' }).map(section => [section.title, section.data.map(row => row.id)])).toEqual([
+      ['Working now', ['b', 'c']],
+      ['Recent', ['a']]
+    ])
+    expect(sessionSections(rows, { a: 'working' }).map(section => section.title)).toEqual(['Working now', 'Pinned', 'Recent'])
+  })
 })
 
 describe('actions', () => {

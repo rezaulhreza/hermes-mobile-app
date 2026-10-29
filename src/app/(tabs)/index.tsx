@@ -13,7 +13,7 @@ import { SessionActionsSheet } from '@/components/session-actions'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { WorkingMark } from '@/components/working-mark'
 import { botInitials, botOfBotChat } from '@/core/bots'
-import { greeting, relativeTime } from '@/core/format'
+import { relativeTime } from '@/core/format'
 import { requestSummary } from '@/core/requests'
 import {
   channel,
@@ -134,7 +134,7 @@ export default function Chats() {
   const crowded = Boolean(project)
   const hits = useStore($sessionHits)
   const live = useStore($liveSessions)
-  const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource)), hits), [sessions, query, activeSource, hits])
+  const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource), live), hits), [sessions, query, activeSource, hits, live])
 
   const startChat = async () => {
     setStarting(true)
@@ -156,10 +156,13 @@ export default function Chats() {
     <View style={styles.header}>
       <View style={styles.topRow}>
         <View style={styles.fill}>
-          <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-            {workspace?.label}
-          </Text>
-          <Text style={[type.title, { color: t.ink }]}>{greeting(new Date())}</Text>
+          <View style={styles.status}>
+            <View style={[styles.statusDot, { backgroundColor: linkState === 'open' ? t.green : t.muted }]} />
+            <Text numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+              {workspace?.label}
+            </Text>
+          </View>
+          <Text style={[type.title, { color: t.ink }]}>Chats</Text>
         </View>
         <IconButton disabled={linkState !== 'open' || starting} filled icon="plus" label="New chat" onPress={startChat} />
       </View>
@@ -177,18 +180,20 @@ export default function Chats() {
         <Pressable
           accessibilityRole="button"
           onPress={() => router.navigate('/activity')}
-          style={[styles.needs, { backgroundColor: t.accentBg }]}
+          style={[styles.needs, { backgroundColor: t.paper, borderColor: t.line }]}
         >
-          <Feather color={t.accent} name="shield" size={20} />
+          <View style={[styles.count, { backgroundColor: t.ink }]}>
+            <Text style={[type.label, { color: t.accentFill }]}>{requests.length}</Text>
+          </View>
           <View style={styles.fill}>
-            <Text style={[type.label, { color: t.ink }]}>
-              {requests.length === 1 ? '1 thing needs you' : `${requests.length} things need you`}
-            </Text>
+            <Text style={[type.label, { color: t.ink }]}>Needs you</Text>
             <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
               {requestSummary(requests[0])}
             </Text>
           </View>
-          <Feather color={t.ink} name="chevron-right" size={20} />
+          <View style={[styles.review, { backgroundColor: t.accentFill }]}>
+            <Text style={[type.small, { color: t.onAccent, fontWeight: '700' }]}>Review</Text>
+          </View>
         </Pressable>
       ) : null}
 
@@ -264,8 +269,10 @@ export default function Chats() {
         onEndReached={() => void loadMoreSessions()}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
-        renderItem={({ item }) => (
+        renderItem={({ item, index, section }) => (
           <SessionRow
+            first={index === 0}
+            last={index === section.data.length - 1}
             bot={profile || !rowProfile(item) ? undefined : (botTitles.get(item.profile ?? '') ?? item.profile ?? undefined)}
             // The host titles the one long chat of every bot "Bot Chat": a person reads the name of the bot.
             botChat={botOfBotChat(item.title, rowProfile(item), bots ?? [])?.title}
@@ -346,7 +353,28 @@ export default function Chats() {
  * `botChat` is the name of the bot when the row is that bot's own long chat.
  * `live` says that Hermes works in the conversation now, or that it waits for the user.
  */
-function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { row: Row; bot?: string; botChat?: string; owner?: string; live?: LiveState; onActions: () => void; selected?: boolean }) {
+function SessionRow({
+  row,
+  bot,
+  botChat,
+  owner,
+  live,
+  onActions,
+  selected,
+  first,
+  last
+}: {
+  row: Row
+  bot?: string
+  botChat?: string
+  owner?: string
+  live?: LiveState
+  onActions: () => void
+  selected?: boolean
+  /** The rows of a section sit on one card: the first and the last round its corners. */
+  first: boolean
+  last: boolean
+}) {
   const t = useTheme()
   // The bot that owns the conversation. Its picture is the same one the Bots tab shows: a photo, or its drawn avatar.
   const ownerBot = useStore($bots)?.find(known => known.name === owner)
@@ -366,6 +394,7 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
   }
 
   return (
+    <View style={[styles.card, { backgroundColor: t.paper, borderColor: t.line }, first && styles.cardFirst, last && styles.cardLast]}>
     <Swipeable
       friction={2}
       overshootRight={false}
@@ -402,7 +431,7 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
       onLongPress={() => (tap(), selected === undefined ? onActions() : toggleSelected(row.id))}
       onPress={() => selected !== undefined ? toggleSelected(row.id) : openChat({ id: row.id, title, profile: rowProfile(row) || undefined })}
       // The row hides the actions under it until it slides, so it needs a colour of its own.
-      style={({ pressed }) => [styles.row, { borderBottomColor: t.line, backgroundColor: pressed ? t.soft : t.bg }]}
+      style={({ pressed }) => [styles.row, { borderBottomColor: t.line, backgroundColor: pressed ? t.soft : t.paper }, last && styles.rowLast]}
     >
       {selected === undefined ? null : <Feather accessibilityLabel={selected ? 'Selected' : 'Not selected'} color={selected ? t.accent : t.muted} name={selected ? 'check-circle' : 'circle'} size={22} />}
       {row.unread ? <View accessibilityLabel="Unread" style={[styles.unread, { backgroundColor: t.accent }]} /> : null}
@@ -451,10 +480,17 @@ function SessionRow({ row, bot, botChat, owner, live, onActions, selected }: { r
         // A turn runs now: the mark of the chat screen stands where the time was.
         <WorkingMark />
       ) : (
-        <Text style={[type.small, live ? { color: t.accent, fontWeight: '600' } : { color: t.muted }]}>{live ? 'Needs you' : at ? relativeTime(at) : ''}</Text>
+        live ? (
+          <View style={[styles.chip, { backgroundColor: t.ink }]}>
+            <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
+          </View>
+        ) : (
+          <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>
+        )
       )}
     </Pressable>
     </Swipeable>
+    </View>
   )
 }
 
@@ -479,9 +515,18 @@ const styles = StyleSheet.create({
   pane: { borderLeftWidth: StyleSheet.hairlineWidth },
   list: { paddingBottom: TAB_BAR_CLEARANCE, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
   header: { padding: space.lg, gap: space.md },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  topRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   banner: { padding: space.md, borderRadius: radius.md, gap: 2 },
-  needs: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg },
+  needs: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  count: { minWidth: 32, height: 32, paddingHorizontal: space.sm, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  review: { height: 32, paddingHorizontal: space.md, borderRadius: 16, justifyContent: 'center' },
+  chip: { paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },
+  card: { marginHorizontal: space.lg, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  cardFirst: { borderTopWidth: StyleSheet.hairlineWidth, borderTopLeftRadius: radius.lg - 6, borderTopRightRadius: radius.lg - 6 },
+  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: radius.lg - 6, borderBottomRightRadius: radius.lg - 6 },
+  rowLast: { borderBottomWidth: 0 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -491,7 +536,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md
   },
   filters: { flexDirection: 'row', gap: space.sm },
-  section: { fontWeight: '700', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
+  section: { fontWeight: '600', paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.sm },
   // In the margin of the row, so an unread row keeps its picture and its title in line with the others.
   unread: { position: 'absolute', left: space.xs, top: '50%', marginTop: -4, width: 8, height: 8, borderRadius: 4 },
   owner: { width: 34, height: 34, borderRadius: 17 },

@@ -232,21 +232,30 @@ export function filterSessions(rows: readonly SessionRow[], query: string, sourc
 }
 
 export interface SessionSection {
-  /** Null for a list with no pinned conversation: one group needs no heading. */
+  /** Null for a list with one group only: one group needs no heading. */
   title: string | null
   data: SessionRow[]
 }
 
-/** Pinned conversations first, under a heading. The order inside a group is the order given. */
-export function sessionSections(rows: readonly SessionRow[]): SessionSection[] {
-  const pinned = rows.filter(row => row.pinned)
-  const rest = rows.filter(row => !row.pinned)
+/**
+ * The conversations Hermes works in now (or that wait for the user) first,
+ * then the pinned ones, each under a heading. The order inside a group is the
+ * order given.
+ */
+export function sessionSections(rows: readonly SessionRow[], live: Readonly<Record<string, LiveState>> = {}): SessionSection[] {
+  const working = rows.filter(row => live[row.id])
+  const pinned = rows.filter(row => !live[row.id] && row.pinned)
+  const rest = rows.filter(row => !live[row.id] && !row.pinned)
 
-  if (!pinned.length) {
+  if (!working.length && !pinned.length) {
     return rest.length ? [{ title: null, data: rest }] : []
   }
 
-  return [{ title: 'Pinned', data: pinned }, ...(rest.length ? [{ title: 'Recent', data: rest }] : [])]
+  return [
+    ...(working.length ? [{ title: 'Working now', data: working }] : []),
+    ...(pinned.length ? [{ title: 'Pinned', data: pinned }] : []),
+    ...(rest.length ? [{ title: 'Recent', data: rest }] : [])
+  ]
 }
 
 /** A conversation that has the searched words in a message. `snippet` marks each match as `>>>words<<<`. */

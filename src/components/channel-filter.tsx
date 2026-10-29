@@ -27,7 +27,8 @@ interface ButtonProps {
 /** One filter of the chat list, under the search field. */
 export function FilterButton({ icon, label, on, opens, compact, onPress }: ButtonProps) {
   const t = useTheme()
-  const ink = on ? t.accent : t.ink
+  // A filter that is set is a pill of ink, like a chosen tab: the accent is kept for marks.
+  const ink = on ? t.bg : t.ink
 
   return (
     <Pressable
@@ -38,17 +39,17 @@ export function FilterButton({ icon, label, on, opens, compact, onPress }: Butto
       style={({ pressed }) => [
         styles.button,
         !compact && styles.shrink,
-        { backgroundColor: on ? t.accentBg : t.paper, borderColor: on ? t.accent : t.line },
+        { backgroundColor: on ? t.ink : t.paper, borderColor: on ? t.ink : t.line },
         pressed && styles.dim
       ]}
     >
-      <Feather color={on ? t.accent : t.muted} name={icon} size={16} />
+      <Feather color={on ? t.bg : t.muted} name={icon} size={16} />
       {compact ? null : (
         <Text numberOfLines={1} style={[type.small, styles.shrink, { color: ink, fontWeight: '600' }]}>
           {label}
         </Text>
       )}
-      {opens ? <Feather color={on ? t.accent : t.muted} name="chevron-down" size={14} /> : null}
+      {opens ? <Feather color={on ? t.bg : t.muted} name="chevron-down" size={14} /> : null}
     </Pressable>
   )
 }
