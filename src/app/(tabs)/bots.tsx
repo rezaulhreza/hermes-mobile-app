@@ -14,7 +14,7 @@ import { WorkingMark } from '@/components/working-mark'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { messageWords } from '@/core/attachments'
 import { defaultLook, type Look } from '@/core/avatars'
-import { type Bot, botGroups, botMark, botNameProblem, botSlug, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
+import { type Bot, botGroups, botMark, type BotMark, botNameProblem, botSlug, type BotSection, filterBots, knownSections, type Room } from '@/core/bots'
 import { previewLine, relativeTime } from '@/core/format'
 import { $botRead, $bots, $defaultBot, $filing, $rooms, createBot, pickBotPicture, setBotLook, setBotPicture, loadBots, makeSection, removeSection, renameSection, setRoomSection } from '@/store/bots'
 import { openBotChat } from '@/store/chat'
@@ -58,6 +58,9 @@ export default function Bots() {
     [bots, query, searching, rooms, filing]
   )
   const sections = useMemo(() => knownSections(bots ?? [], filing.sections), [bots, filing])
+  // The pinned bots show as cards over the list. A search lists what it finds, the pinned bots too.
+  const pinned = searching ? undefined : groups.find(group => group.key === 'pinned')
+  const listed = pinned ? groups.filter(group => group !== pinned) : groups
   // The section sheet: a new section, or one to rename or remove.
   const [editing, setEditing] = useState<BotSection | 'new' | null>(null)
   const [movingRoom, setMovingRoom] = useState<Room | null>(null)
@@ -136,19 +139,42 @@ export default function Bots() {
           keyExtractor={row => (row.kind === 'bot' ? `bot:${row.bot.name}` : `room:${row.room.id}`)}
           ListFooterComponent={searching ? null : <Button icon="folder-plus" label="Add a section" onPress={() => setEditing('new')} style={styles.addSection} />}
           ListHeaderComponent={
-            bots.length > 6 ? (
-              <TextInput
-                accessibilityLabel="Find a bot"
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="while-editing"
-                onChangeText={setQuery}
-                placeholder="Find a bot: a name or a role"
-                placeholderTextColor={t.muted}
-                style={[type.body, styles.search, { color: t.ink, backgroundColor: t.soft }]}
-                value={query}
-              />
-            ) : null
+            <>
+              {bots.length > 6 ? (
+                <TextInput
+                  accessibilityLabel="Find a bot"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode="while-editing"
+                  onChangeText={setQuery}
+                  placeholder="Find a bot: a name or a role"
+                  placeholderTextColor={t.muted}
+                  style={[type.body, styles.search, { color: t.ink, backgroundColor: t.soft }]}
+                  value={query}
+                />
+              ) : null}
+              {pinned ? (
+                // The pinned bots are cards, two to a row: the ones the user opens most, with their state on top.
+                <>
+                  <Text style={[type.small, styles.heading, { color: t.muted }]}>{pinned.title}</Text>
+                  <View style={styles.grid}>
+                    {pinned.data.map(row =>
+                      row.kind === 'bot' ? (
+                        <BotCard
+                          bot={row.bot}
+                          busy={opening === row.bot.name}
+                          isDefault={row.bot.name === defaultBot}
+                          key={row.bot.name}
+                          mark={botMark(row.bot, live, read)}
+                          onHold={() => setDetail(row.bot.name)}
+                          onOpen={() => void talk(row.bot)}
+                        />
+                      ) : null
+                    )}
+                  </View>
+                </>
+              ) : null}
+            </>
           }
           refreshControl={<RefreshControl onRefresh={pull.onRefresh} refreshing={pull.refreshing} tintColor={t.muted} />}
           renderSectionFooter={({ section }) =>
@@ -181,38 +207,46 @@ export default function Bots() {
               <Text style={[type.small, styles.heading, { color: t.muted }]}>{section.title}</Text>
             )
           }}
-          sections={groups}
+          sections={listed}
           stickySectionHeadersEnabled={false}
-          renderItem={({ item: row }) => {
+          renderItem={({ item: row, index, section }) => {
+            const first = index === 0
+            const last = index === section.data.length - 1
+            // The rows of a section sit on one card, as on the chat list.
+            const card = [styles.card, { backgroundColor: t.paper, borderColor: t.line }, first && styles.cardFirst, last && styles.cardLast]
+            const rowStyle = ({ pressed }: { pressed: boolean }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderBottomColor: t.line }, last && styles.rowLast]
+
             if (row.kind === 'room') {
               const { room } = row
-              const last = room.messages[room.messages.length - 1]
+              const message = room.messages[room.messages.length - 1]
 
               return (
-                <Pressable
-                  accessibilityHint="Opens the group chat. Hold to move it to a section."
-                  accessibilityLabel={`Group chat: ${room.name}`}
-                  accessibilityRole="button"
-                  onLongPress={() => setMovingRoom(room)}
-                  onPress={() => router.push({ pathname: '/room', params: { id: room.id } })}
-                  style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
-                >
-                  <View style={[styles.roomIcon, { backgroundColor: t.accentBg }]}>
-                    <Feather color={t.accent} name="users" size={20} />
-                  </View>
-                  <View style={styles.fill}>
-                    <View style={styles.nameRow}>
-                      <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
-                        {room.name}
-                      </Text>
-                      <View style={styles.fill} />
-                      {last ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(last.at / 1000)}</Text> : null}
+                <View style={card}>
+                  <Pressable
+                    accessibilityHint="Opens the group chat. Hold to move it to a section."
+                    accessibilityLabel={`Group chat: ${room.name}`}
+                    accessibilityRole="button"
+                    onLongPress={() => setMovingRoom(room)}
+                    onPress={() => router.push({ pathname: '/room', params: { id: room.id } })}
+                    style={rowStyle}
+                  >
+                    <View style={[styles.roomIcon, { backgroundColor: t.accentBg }]}>
+                      <Feather color={t.accent} name="users" size={18} />
                     </View>
-                    <Text numberOfLines={2} style={[type.small, { color: t.muted }]}>
-                      {last ? previewLine(messageWords(last.text)) : `${room.members.length} bots`}
-                    </Text>
-                  </View>
-                </Pressable>
+                    <View style={styles.fill}>
+                      <View style={styles.nameRow}>
+                        <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                          {room.name}
+                        </Text>
+                        <View style={styles.fill} />
+                        {message ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(message.at / 1000)}</Text> : null}
+                      </View>
+                      <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                        {message ? previewLine(messageWords(message.text)) : `${room.members.length} bots`}
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
               )
             }
 
@@ -221,43 +255,36 @@ export default function Bots() {
             const state = mark.live === 'working' ? 'Working' : mark.live ? 'Needs you' : mark.unread ? 'Unread' : ''
 
             return (
-              <Pressable
-                accessibilityHint="Opens the conversation with this bot. Hold for its details and its section."
-                accessibilityLabel={state ? `${item.title}, ${state}` : item.title}
-                accessibilityRole="button"
-                onLongPress={() => setDetail(item.name)}
-                onPress={() => void talk(item)}
-                style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
-              >
-                <View>
-                  <Avatar bot={item} size={46} t={t} />
-                  {/* On the picture, so the rows keep one left edge. The ring is the colour of the row. */}
-                  {mark.unread ? <View style={[styles.unread, { backgroundColor: t.accent, borderColor: t.paper }]} /> : null}
-                </View>
-                <View style={styles.fill}>
-                  <View style={styles.nameRow}>
-                    <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
-                      {item.title}
-                    </Text>
-                    {item.name === defaultBot ? <Text style={[type.small, styles.badge, { color: t.muted, backgroundColor: t.soft }]}>Default</Text> : null}
-                    <View style={styles.fill} />
-                    {mark.live === 'working' ? (
-                      // The bot works now: the mark of the chat screen stands where the time was.
-                      <WorkingMark />
-                    ) : mark.live ? (
-                      <View style={[styles.chip, { backgroundColor: t.ink }]}>
-                        <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
-                      </View>
-                    ) : item.lastActive ? (
-                      <Text style={[type.small, { color: t.muted }]}>{relativeTime(item.lastActive)}</Text>
-                    ) : null}
+              <View style={card}>
+                <Pressable
+                  accessibilityHint="Opens the conversation with this bot. Hold for its details and its section."
+                  accessibilityLabel={state ? `${item.title}, ${state}` : item.title}
+                  accessibilityRole="button"
+                  onLongPress={() => setDetail(item.name)}
+                  onPress={() => void talk(item)}
+                  style={rowStyle}
+                >
+                  <View>
+                    <Avatar bot={item} size={40} t={t} />
+                    {/* On the picture, so the rows keep one left edge. The ring is the colour of the row. */}
+                    {mark.unread ? <View style={[styles.unread, { backgroundColor: t.accent, borderColor: t.paper }]} /> : null}
                   </View>
-                  <Text numberOfLines={2} style={[type.small, { color: mark.unread ? t.ink : t.muted }]}>
-                    {item.preview || item.description || 'No role written yet.'}
-                  </Text>
-                </View>
-                {opening === item.name ? <ActivityIndicator color={t.muted} /> : null}
-              </Pressable>
+                  <View style={styles.fill}>
+                    <View style={styles.nameRow}>
+                      <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+                        {item.title}
+                      </Text>
+                      {item.name === defaultBot ? <Text style={[type.small, styles.badge, { color: t.muted, backgroundColor: t.soft }]}>Default</Text> : null}
+                      <View style={styles.fill} />
+                      <BotState lastActive={item.lastActive} mark={mark} />
+                    </View>
+                    <Text numberOfLines={1} style={[type.small, { color: mark.unread ? t.ink : t.muted }]}>
+                      {item.preview || item.description || 'No role written yet.'}
+                    </Text>
+                  </View>
+                  {opening === item.name ? <ActivityIndicator color={t.muted} /> : null}
+                </Pressable>
+              </View>
             )
           }}
           windowSize={7}
@@ -288,6 +315,60 @@ export default function Bots() {
         />
       ) : null}
     </SafeAreaView>
+  )
+}
+
+/** Where a bot is now, at the end of its row or on its card: working, waiting for the user, or when it last spoke. */
+function BotState({ mark, lastActive }: { mark: BotMark; lastActive: number }) {
+  const t = useTheme()
+
+  if (mark.live === 'working') {
+    // The bot works now: the mark of the chat screen stands where the time was.
+    return <WorkingMark />
+  }
+
+  if (mark.live) {
+    return (
+      <View style={[styles.chip, { backgroundColor: t.ink }]}>
+        <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
+      </View>
+    )
+  }
+
+  return lastActive ? <Text style={[type.small, { color: t.muted }]}>{relativeTime(lastActive)}</Text> : null
+}
+
+/** A pinned bot: its picture and its state on top, its name and its role under them. */
+function BotCard({ bot, mark, isDefault, busy, onOpen, onHold }: { bot: Bot; mark: BotMark; isDefault: boolean; busy: boolean; onOpen: () => void; onHold: () => void }) {
+  const t = useTheme()
+  const state = mark.live === 'working' ? 'Working' : mark.live ? 'Needs you' : mark.unread ? 'Unread' : ''
+
+  return (
+    <Pressable
+      accessibilityHint="Opens the conversation with this bot. Hold for its details and its section."
+      accessibilityLabel={state ? `${bot.title}, ${state}` : bot.title}
+      accessibilityRole="button"
+      onLongPress={onHold}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.botCard, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+    >
+      <View style={styles.cardTop}>
+        <View>
+          <Avatar bot={bot} size={44} t={t} />
+          {mark.unread ? <View style={[styles.unread, { backgroundColor: t.accent, borderColor: t.paper }]} /> : null}
+        </View>
+        {busy ? <ActivityIndicator color={t.muted} /> : <BotState lastActive={bot.lastActive} mark={mark} />}
+      </View>
+      <View style={styles.nameRow}>
+        <Text numberOfLines={1} style={[type.label, styles.shrink, { color: t.ink }]}>
+          {bot.title}
+        </Text>
+        {isDefault ? <Text style={[type.small, styles.badge, { color: t.muted, backgroundColor: t.soft }]}>Default</Text> : null}
+      </View>
+      <Text numberOfLines={2} style={[type.small, { color: mark.unread ? t.ink : t.muted }]}>
+        {bot.description || bot.preview || 'No role written yet.'}
+      </Text>
+    </Pressable>
   )
 }
 
@@ -400,9 +481,9 @@ function NewBotSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => v
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  roomIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  heading: { fontWeight: '600', marginTop: space.sm },
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
+  roomIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  heading: { fontWeight: '600', marginTop: space.lg, marginBottom: space.sm },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.lg, marginBottom: space.sm },
   headingText: { fontWeight: '600', flex: 1 },
   empty: { padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', textAlign: 'center' },
   addSection: { marginTop: space.md },
@@ -412,10 +493,17 @@ const styles = StyleSheet.create({
   unread: { position: 'absolute', top: -3, right: -3, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm },
-  content: { padding: space.lg, gap: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  content: { padding: space.lg, paddingTop: space.sm, paddingBottom: TAB_BAR_CLEARANCE, maxWidth: 760, width: '100%', alignSelf: 'center' },
   search: { minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md, marginBottom: space.sm },
   chip: { paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowLast: { borderBottomWidth: 0 },
+  card: { borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  cardFirst: { borderTopWidth: StyleSheet.hairlineWidth, borderTopLeftRadius: radius.md + 2, borderTopRightRadius: radius.md + 2 },
+  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: radius.md + 2, borderBottomRightRadius: radius.md + 2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm + 2 },
+  botCard: { width: '48.5%', flexGrow: 1, maxWidth: '100%', gap: space.sm, padding: space.md + 2, borderRadius: radius.md + 2, borderWidth: StyleSheet.hairlineWidth },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.sm },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   badge: { paddingHorizontal: space.sm, borderRadius: radius.sm, overflow: 'hidden', fontWeight: '700' },
   initials: { alignItems: 'center', justifyContent: 'center' },
