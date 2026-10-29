@@ -1,8 +1,12 @@
 import { Platform } from 'react-native'
 
 /**
- * Colour and shape tokens. The palette comes from the design prototype: warm
- * paper in light mode, soft charcoal in dark mode, one terracotta accent.
+ * Colour and shape tokens: cool graphite greys and one lime accent.
+ *
+ * Lime on a light ground cannot carry text (1.3:1), so the accent has two
+ * roles. `accent` is for text, icons and lines: olive in light mode, lime in
+ * dark mode. `accentFill` is the lime of a button, a badge or a mark, always
+ * with `onAccent` (ink) on it.
  */
 export interface Palette {
   bg: string
@@ -13,9 +17,8 @@ export interface Palette {
   soft: string
   accent: string
   accentBg: string
+  accentFill: string
   onAccent: string
-  purple: string
-  purpleBg: string
   green: string
   greenBg: string
   red: string
@@ -23,39 +26,37 @@ export interface Palette {
 }
 
 export const light: Palette = {
-  bg: '#f8f7f4',
+  bg: '#f5f6f8',
   paper: '#ffffff',
-  ink: '#22252c',
-  muted: '#666c76',
-  line: '#e6e4e0',
-  soft: '#efeeeb',
-  accent: '#a13e26',
-  accentBg: '#f9e9e2',
-  onAccent: '#ffffff',
-  purple: '#6550a4',
-  purpleBg: '#efebf9',
-  green: '#27765c',
-  greenBg: '#e6f2eb',
-  red: '#ad333a',
-  redBg: '#f9e6e6'
+  ink: '#14171c',
+  muted: '#5d6470',
+  line: '#e2e5ea',
+  soft: '#eceef2',
+  accent: '#4d6a00',
+  accentBg: '#eef7d4',
+  accentFill: '#c6f432',
+  onAccent: '#14171c',
+  green: '#1d7a50',
+  greenBg: '#e3f2e9',
+  red: '#b3261e',
+  redBg: '#fbe7e6'
 }
 
 export const dark: Palette = {
-  bg: '#18191d',
-  paper: '#23252b',
-  ink: '#f3f1ee',
-  muted: '#b1b4bf',
-  line: '#373940',
-  soft: '#2c2e35',
-  accent: '#f2ac91',
-  accentBg: '#442d28',
-  onAccent: '#222222',
-  purple: '#c2b2ff',
-  purpleBg: '#353047',
-  green: '#9cdbc0',
-  greenBg: '#203e33',
-  red: '#ffa0a5',
-  redBg: '#4a2a2d'
+  bg: '#111317',
+  paper: '#1a1d22',
+  ink: '#eceef2',
+  muted: '#9aa1ad',
+  line: '#2a2e35',
+  soft: '#22262c',
+  accent: '#c6f432',
+  accentBg: '#2a3312',
+  accentFill: '#c6f432',
+  onAccent: '#14171c',
+  green: '#7dd3a8',
+  greenBg: '#16302a',
+  red: '#ff9ea6',
+  redBg: '#3e1f24'
 }
 
 /** A colour of the palette, part of the way to clear: for a fill or a line that must work on any ground. */

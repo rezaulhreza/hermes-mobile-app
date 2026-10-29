@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   thumb: { width: THUMB, height: THUMB, borderRadius: radius.sm }
 })
 
-const CODE_COLOUR: Record<CodeTokenKind, keyof Palette> = { plain: 'ink', comment: 'muted', string: 'green', number: 'purple', keyword: 'accent' }
+const CODE_COLOUR: Record<CodeTokenKind, keyof Palette> = { plain: 'ink', comment: 'muted', string: 'green', number: 'red', keyword: 'accent' }
 
 /** Code with colour. The scan runs once for a text, not on every draw of the list. */
 export function CodeText({ text, language, style }: { text: string; language: string | null; style: StyleProp<TextStyle> }) {

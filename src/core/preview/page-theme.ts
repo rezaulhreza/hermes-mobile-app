@@ -6,7 +6,7 @@ export interface PageColours {
   muted: string
   line: string
   soft: string
-  accent: string
+  accentFill: string
   onAccent: string
 }
 
@@ -42,11 +42,11 @@ export function pageThemeScript(palette: PageColours, dark: boolean): string {
     'muted-foreground': palette.muted,
     border: palette.line,
     input: palette.line,
-    accent: palette.accent,
+    accent: palette.accentFill,
     'accent-foreground': palette.onAccent,
-    primary: palette.accent,
+    primary: palette.accentFill,
     'primary-foreground': palette.onAccent,
-    ring: palette.accent
+    ring: palette.accentFill
   }
 
   const rules = Object.entries(variables)

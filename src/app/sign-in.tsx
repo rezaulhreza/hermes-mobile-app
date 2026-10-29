@@ -96,8 +96,8 @@ export default function SignIn() {
             onPress={() => setChoosing(true)}
             style={[styles.kind, { backgroundColor: t.paper, borderColor: t.line }]}
           >
-            <View style={[styles.kindIcon, { backgroundColor: t.purpleBg }]}>
-              <Feather color={t.purple} name={KIND_ICON[info.kind]} size={18} />
+            <View style={[styles.kindIcon, { backgroundColor: t.accentBg }]}>
+              <Feather color={t.accent} name={KIND_ICON[info.kind]} size={18} />
             </View>
             <View style={styles.fill}>
               <Text style={[type.small, { color: t.muted }]}>How do you connect?</Text>
@@ -204,8 +204,8 @@ export default function SignIn() {
                 }}
                 style={[styles.option, index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }]}
               >
-                <View style={[styles.kindIcon, { backgroundColor: t.purpleBg }]}>
-                  <Feather color={t.purple} name={KIND_ICON[option.kind]} size={18} />
+                <View style={[styles.kindIcon, { backgroundColor: t.accentBg }]}>
+                  <Feather color={t.accent} name={KIND_ICON[option.kind]} size={18} />
                 </View>
                 <View style={styles.fill}>
                   <Text style={[type.label, { color: t.ink }]}>{option.label}</Text>

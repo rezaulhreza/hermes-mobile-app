@@ -29,8 +29,8 @@ interface ButtonProps {
 
 export function Button({ label, onPress, icon, tone = 'plain', busy, disabled, style }: ButtonProps) {
   const t = useTheme()
-  const background = tone === 'primary' ? t.ink : t.paper
-  const colour = tone === 'primary' ? t.bg : tone === 'danger' ? t.red : t.ink
+  const background = tone === 'primary' ? t.accentFill : t.paper
+  const colour = tone === 'primary' ? t.onAccent : tone === 'danger' ? t.red : t.ink
 
   return (
     <Pressable
@@ -40,7 +40,7 @@ export function Button({ label, onPress, icon, tone = 'plain', busy, disabled, s
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: background, borderColor: tone === 'primary' ? t.ink : t.line },
+        { backgroundColor: background, borderColor: tone === 'primary' ? t.accentFill : t.line },
         (pressed || disabled) && styles.dim,
         style
       ]}
@@ -72,14 +72,14 @@ export function IconButton({ icon, label, onPress, filled, disabled }: IconButto
       onPress={onPress}
       style={({ pressed }) => [
         styles.iconButton,
-        { backgroundColor: filled ? t.ink : t.soft },
+        { backgroundColor: filled ? t.accentFill : t.soft },
         (pressed || disabled) && styles.dim
       ]}
     >
       {icon === 'waveform' ? (
-        <MaterialCommunityIcons color={filled ? t.bg : t.ink} name="waveform" size={22} />
+        <MaterialCommunityIcons color={filled ? t.onAccent : t.ink} name="waveform" size={22} />
       ) : (
-        <Feather color={filled ? t.bg : t.ink} name={icon} size={20} />
+        <Feather color={filled ? t.onAccent : t.ink} name={icon} size={20} />
       )}
     </Pressable>
   )

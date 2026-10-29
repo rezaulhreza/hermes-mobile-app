@@ -1,7 +1,7 @@
 import { type PageColours, pageThemeScript } from '../preview/page-theme'
 
-const light: PageColours = { bg: '#f8f7f4', paper: '#ffffff', ink: '#22252c', muted: '#666c76', line: '#e6e4e0', soft: '#efeeeb', accent: '#a13e26', onAccent: '#ffffff' }
-const dark: PageColours = { bg: '#18191d', paper: '#23252b', ink: '#f3f1ee', muted: '#b1b4bf', line: '#373940', soft: '#2c2e35', accent: '#f2ac91', onAccent: '#222222' }
+const light: PageColours = { bg: '#f8f7f4', paper: '#ffffff', ink: '#22252c', muted: '#666c76', line: '#e6e4e0', soft: '#efeeeb', accentFill: '#c6f432', onAccent: '#ffffff' }
+const dark: PageColours = { bg: '#18191d', paper: '#23252b', ink: '#f3f1ee', muted: '#b1b4bf', line: '#373940', soft: '#2c2e35', accentFill: '#c6f432', onAccent: '#222222' }
 
 interface Page {
   /** The computed background of the page and of the body. */
@@ -64,7 +64,7 @@ describe('the theme of a page on the phone', () => {
     expect(css).toContain(`--card: ${light.paper};`)
     expect(css).toContain(`--border: ${light.line};`)
     expect(css).toContain(`--muted-foreground: ${light.muted};`)
-    expect(css).toContain(`--accent: ${light.accent};`)
+    expect(css).toContain(`--accent: ${light.accentFill};`)
   })
 
   it('leaves the variables of a page that defines its own', () => {

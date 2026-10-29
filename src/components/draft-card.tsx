@@ -79,7 +79,7 @@ export function DraftCard({ draft }: { draft: Draft }) {
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => setSending(true)}
-          style={({ pressed }) => [styles.send, { backgroundColor: t.accent }, pressed && styles.dim]}
+          style={({ pressed }) => [styles.send, { backgroundColor: t.accentFill }, pressed && styles.dim]}
         >
           <Feather color={t.onAccent} name="send" size={18} />
         </Pressable>
