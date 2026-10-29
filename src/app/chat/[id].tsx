@@ -45,6 +45,7 @@ import { ScreenPill, ScreenView } from '@/components/screen-view'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
+import { SideChatSheet } from '@/components/side-chat'
 import { AgentsCard, WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
@@ -81,6 +82,7 @@ import {
 import { markBotChatRead, $bots, loadBots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { unwatchBackground, watchBackground } from '@/store/background'
+import { closeSide } from '@/store/side-chat'
 import { $linkState } from '@/store/link'
 import { type AgentRequest, answerInOwnWords } from '@/core/requests'
 import { $requests, answerRequest } from '@/store/requests'
@@ -188,6 +190,9 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
     return () => unwatchBackground(sessionId)
   }, [sessionId, linkState])
 
+  // The side chat lives as long as the chat is on screen.
+  useEffect(() => (sessionId ? () => closeSide(sessionId) : undefined), [sessionId])
+
   useFocusEffect(
     useCallback(() => {
       $shownSession.set(sessionId ?? null)
@@ -266,6 +271,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
   const holdsScreen = useStore($screenHold) !== null
   const [watching, setWatching] = useState(false)
   const [workOpen, setWorkOpen] = useState(false)
+  const [sideOpen, setSideOpen] = useState(false)
   // The bot this chat belongs to, when it is a chat of a bot.
   const bots = useStore($bots)
   const bot = bots?.find(known => known.name === params.profile && !known.isDefault)
@@ -460,6 +466,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             {conversation ? <Feather color={t.muted} name="chevron-down" size={14} /> : null}
           </View>
         </Pressable>
+        {sessionId ? <IconButton icon="message-square" label="Side chat" onPress={() => setSideOpen(true)} /> : null}
         {conversation?.info.model ? (
           <Pressable
             accessibilityHint="Changes the model and the reasoning level"
@@ -715,6 +722,15 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
           {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
       {bot && botOpen ? <BotSheet bot={bot} onClose={() => setBotOpen(false)} /> : null}
+      {sessionId && sideOpen ? (
+        <SideChatSheet
+          botName={bot?.title ?? 'Hermes'}
+          onAddToMessage={text => setDraft(current => (current.trim() ? `${current.trimEnd()}\n\n${text}` : text))}
+          onClose={() => setSideOpen(false)}
+          profile={params.profile}
+          sessionId={sessionId}
+        />
+      ) : null}
       {sessionId && workOpen ? <WorkSheet onClose={() => setWorkOpen(false)} sessionId={sessionId} storedId={conversation?.storedId} /> : null}
       <SessionActionsSheet
             // The long conversation of a bot can be exported and branched. It cannot be renamed, archived or deleted from here.
