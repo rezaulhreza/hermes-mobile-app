@@ -49,6 +49,7 @@ import { takeAttachments } from './attachments'
 import { $bots } from './bots'
 import { $catalog, loadCatalog } from './commands'
 import { currentApi, onGatewayEvent, rpc } from './link'
+import { isSideAnswer } from './side-chat'
 import { $sessionQuery } from './sessions'
 import { forgetWork, saveRun, seedTodos } from './work'
 
@@ -833,6 +834,11 @@ onGatewayEvent(event => {
       patch(sessionId, c => ({ ...c, info: { ...c.info, ...info }, title: info.title || c.title }))
     }
 
+    return
+  }
+
+  // An answer of the side chat stays in the side chat.
+  if (event.type === 'btw.complete' && isSideAnswer(sessionId, (event.payload as { task_id?: string } | undefined)?.task_id ?? '')) {
     return
   }
 
