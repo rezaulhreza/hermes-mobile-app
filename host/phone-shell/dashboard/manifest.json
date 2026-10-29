@@ -1,0 +1,8 @@
+{
+  "name": "phone-shell",
+  "label": "Phone Shell",
+  "description": "Backend route that gives the terminal of the phone app a login shell on the host.",
+  "version": "0.1.0",
+  "tab": { "path": "/phone-shell", "hidden": true },
+  "api": "plugin_api.py"
+}

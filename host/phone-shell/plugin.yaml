@@ -1,0 +1,6 @@
+manifest_version: 1
+name: phone-shell
+version: 0.1.0
+description: "Gives the Hermes phone app a real terminal: the user's login shell on the host, behind a pseudo-terminal that keeps running between connections."
+author: hermes-native
+kind: backend

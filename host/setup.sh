@@ -24,7 +24,7 @@ PORT="${HERMES_PHONE_PORT:-9130}"
 LABEL="com.hermes.backend.mobile"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LAUNCHER="$HERMES_HOME/bin/phone-backend.sh"
-PLUGINS="phone-push phone-preview screen-remote group-rooms phone-chat-list"
+PLUGINS="phone-push phone-preview screen-remote group-rooms phone-chat-list phone-shell"
 check_only=false
 [ "${1:-}" = "--check" ] && check_only=true
 
