@@ -1,5 +1,5 @@
 import type { GatewayEvent } from '../gateway/gateway-events'
-import { currentTodo, helperEnded, NO_WORK, reduceWork, withSnapshots, withTodos, workSummary } from '../work'
+import { agentsHeading, currentTodo, helperEnded, NO_WORK, reduceWork, shownAgents, withSnapshots, withTodos, workSummary } from '../work'
 
 const event = (type: string, payload: Record<string, unknown>) => ({ type, session_id: 's', payload }) as unknown as GatewayEvent
 const run = (events: GatewayEvent[]) => events.reduce((work, next) => reduceWork(work, next, 1000), NO_WORK)
@@ -80,6 +80,21 @@ describe('workSummary', () => {
 
     expect(workSummary(work)).toBe('1 of 2 done · 1 agent at work')
     expect(workSummary(reduceWork(work, event('subagent.complete', { subagent_id: 'h1', goal: 'x' }), 0))).toBe('1 of 2 done · 1 agent finished')
+  })
+})
+
+describe('the agents card', () => {
+  const agents = [{ id: 'a', status: 'completed' }, { id: 'b', status: 'running' }, { id: 'c', status: 'failed' }, { id: 'd', status: 'queued' }] as const
+
+  it('says how many agents there are and how many still work', () => {
+    expect(agentsHeading(agents)).toBe('4 agents · 2 working')
+    expect(agentsHeading([agents[1]])).toBe('1 agent working')
+    expect(agentsHeading([agents[0], agents[2]])).toBe('2 agents done')
+  })
+
+  it('shows the agents that work first, up to the limit', () => {
+    expect(shownAgents(agents, 3).map(agent => agent.id)).toEqual(['b', 'd', 'a'])
+    expect(shownAgents(agents, 10).map(agent => agent.id)).toEqual(['b', 'd', 'a', 'c'])
   })
 })
 

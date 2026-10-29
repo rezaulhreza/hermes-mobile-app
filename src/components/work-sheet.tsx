@@ -1,11 +1,11 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { relativeTime } from '@/core/format'
-import { currentTodo, type Helper, helperEnded, helpersInTree, helperStatusWord, NO_WORK, type Todo, workSummary } from '@/core/work'
+import { agentsHeading, currentTodo, type Helper, helperEnded, helpersInTree, helperStatusWord, NO_WORK, shownAgents, type Todo, workSummary } from '@/core/work'
 import type { SpawnTreeEntry } from '@/core/gateway/gateway-contract.generated'
 import { $delegation, $work, helperTail, loadDelegation, loadHelpers, loadRun, loadRuns, pauseDelegation, steerHelper, stopHelper } from '@/store/work'
 import { lineOf, MONO, type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
@@ -57,13 +57,79 @@ export function WorkStrip({ sessionId, storedId }: { sessionId: string; storedId
   )
 }
 
-/** The plan, the helpers, and the runs of earlier turns. The chat's menu opens it too, when no strip shows. */
-export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string; storedId?: string; onClose: () => void }) {
+/** The agents card shows this many rows. The sheet shows them all. */
+const CARD_ROWS = 3
+
+/**
+ * The agents of this turn, in the chat under the newest message, as the
+ * desktop app shows them: one row each, with what it does now. A tap opens
+ * that agent's own conversation in the sheet; the chat goes on under it.
+ */
+export function AgentsCard({ sessionId, storedId, running }: { sessionId: string; storedId?: string; running: boolean }) {
+  const t = useTheme()
+  const helpers = (useStore($work)[sessionId] ?? NO_WORK).helpers
+  const [opened, setOpened] = useState<string | null | undefined>(undefined)
+
+  // When the turn is over and every agent has ended, the card goes: the menu still opens them.
+  if (!helpers.length || (opened === undefined && !running && helpers.every(helperEnded))) {
+    return null
+  }
+
+  const rows = shownAgents(helpers, CARD_ROWS)
+  const more = helpers.length - rows.length
+
+  return (
+    <View style={[styles.card, { backgroundColor: t.paper, borderColor: t.line }]}>
+      <View style={[styles.cardHead, { borderBottomColor: t.line }]}>
+        <Feather color={t.muted} name="users" size={14} />
+        <Text style={[type.small, styles.fill, { color: t.muted, fontWeight: '600' }]}>{agentsHeading(helpers)}</Text>
+      </View>
+      {rows.map((helper, index) => (
+        <Pressable
+          accessibilityHint="Opens what this agent does"
+          accessibilityLabel={`${helper.goal}, ${helperStatusWord(helper.status)}`}
+          accessibilityRole="button"
+          key={helper.id}
+          onPress={() => setOpened(helper.id)}
+          style={({ pressed }) => [styles.cardRow, index > 0 && { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+        >
+          <AgentMark helper={helper} t={t} />
+          <View style={styles.fill}>
+            <Text numberOfLines={1} style={[type.label, { color: t.ink }]}>
+              {helper.goal}
+            </Text>
+            <Text numberOfLines={1} style={[styles.activity, { color: t.muted }]}>
+              {!helperEnded(helper) && helper.activity ? helper.activity : helperLine(helper)}
+            </Text>
+          </View>
+          <Feather color={t.muted} name="chevron-right" size={16} />
+        </Pressable>
+      ))}
+      {more > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => setOpened(null)} style={[styles.cardRow, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }]}>
+          <Text style={[type.small, { color: t.accent, fontWeight: '600' }]}>{`Show all ${helpers.length}`}</Text>
+        </Pressable>
+      ) : null}
+      {opened !== undefined ? <WorkSheet onClose={() => setOpened(undefined)} sessionId={sessionId} startAt={opened} storedId={storedId} /> : null}
+    </View>
+  )
+}
+
+function AgentMark({ helper, t }: { helper: Helper; t: Palette }) {
+  if (!helperEnded(helper)) {
+    return helper.status === 'queued' ? <Feather color={t.muted} name="clock" size={18} /> : <ActivityIndicator color={t.accent} size="small" />
+  }
+
+  return helper.status === 'completed' ? <Feather color={t.green} name="check-circle" size={18} /> : <Feather color={t.red} name="x-circle" size={18} />
+}
+
+/** The plan, the agents, and the runs of earlier turns. The chat's menu opens it too, when no strip shows. `startAt` opens one agent. */
+export function WorkSheet({ sessionId, storedId, startAt, onClose }: { sessionId: string; storedId?: string; startAt?: string | null; onClose: () => void }) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const work = useStore($work)[sessionId] ?? NO_WORK
   const delegation = useStore($delegation)
-  const [helperId, setHelperId] = useState<string | null>(null)
+  const [helperId, setHelperId] = useState<string | null>(startAt ?? null)
   const [runs, setRuns] = useState<SpawnTreeEntry[]>([])
   // The helpers of the earlier run that is open, by the path of the run.
   const [run, setRun] = useState<{ path: string; helpers: Helper[] } | null>(null)
@@ -351,6 +417,10 @@ const styles = StyleSheet.create({
   todo: { flexDirection: 'row', gap: space.md },
   todoIcon: { marginTop: 3 },
   helper: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  card: { marginHorizontal: space.lg, marginVertical: space.sm, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, minHeight: TOUCH + 8, paddingVertical: space.sm },
+  activity: { fontFamily: MONO, fontSize: 11, lineHeight: lineOf(16) },
   tail: { fontFamily: MONO, fontSize: 13, lineHeight: lineOf(19), padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
   actions: { gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth },
   sendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

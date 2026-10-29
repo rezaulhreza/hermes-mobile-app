@@ -270,6 +270,19 @@ export function runLabel(helpers: readonly Helper[]): string {
   return (top.length ? top.join(' · ') : `${helpers.length} agents`).slice(0, 120)
 }
 
+/** The heading of the agents card in the chat: how many, and how many still work. */
+export function agentsHeading(helpers: readonly Pick<Helper, 'status'>[]): string {
+  const working = helpers.filter(helper => !helperEnded(helper)).length
+  const count = `${helpers.length} ${helpers.length === 1 ? 'agent' : 'agents'}`
+
+  return working && working < helpers.length ? `${count} · ${working} working` : working ? `${count} working` : `${count} done`
+}
+
+/** The rows of the agents card: the ones that still work first, then the ones that ended, each in the order given. */
+export function shownAgents<T extends Pick<Helper, 'status'>>(helpers: readonly T[], limit: number): T[] {
+  return [...helpers.filter(helper => !helperEnded(helper)), ...helpers.filter(helper => helperEnded(helper))].slice(0, limit)
+}
+
 /** The line above the message field: where the plan is and who works. Null when there is nothing to say. */
 export function workSummary(work: Work): string | null {
   const live = work.todos.filter(todo => todo.status !== 'cancelled')

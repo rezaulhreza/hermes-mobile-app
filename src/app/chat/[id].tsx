@@ -45,7 +45,7 @@ import { ScreenPill, ScreenView } from '@/components/screen-view'
 import { SessionActionsSheet } from '@/components/session-actions'
 import { ToolSheet, type ToolTarget } from '@/components/tool-sheet'
 import { VoiceCallScreen, VoiceStrip } from '@/components/voice-call'
-import { WorkSheet, WorkStrip } from '@/components/work-sheet'
+import { AgentsCard, WorkSheet, WorkStrip } from '@/components/work-sheet'
 import { WorkingMark } from '@/components/working-mark'
 import { IconButton, type IconName, Notice } from '@/components/ui'
 import { parseMarkdown } from '@/core/markdown'
@@ -493,7 +493,12 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             <FlatList
               ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
               // The list is upside down: its header is under the newest message. That is where the answer will come.
-              ListHeaderComponent={running ? <Working status={transcript?.status ?? null} /> : null}
+              ListHeaderComponent={
+                <>
+                  {sessionId ? <AgentsCard running={running} sessionId={sessionId} storedId={conversation?.storedId} /> : null}
+                  {running ? <Working status={transcript?.status ?? null} /> : null}
+                </>
+              }
               contentContainerStyle={styles.transcript}
               data={newestFirst}
               initialNumToRender={12}
