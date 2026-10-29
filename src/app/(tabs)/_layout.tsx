@@ -64,7 +64,7 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
           }
 
           const focused = state.index === index
-          const colour = focused ? t.accent : t.muted
+          const colour = focused ? t.ink : t.muted
 
           return (
             <Pressable
@@ -79,19 +79,21 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
                   navigation.navigate(route.name)
                 }
               }}
-              style={[styles.tab, focused && { backgroundColor: t.accentBg }]}
+              style={styles.tab}
             >
               <View>
                 <Feather color={colour} name={tab.icon} size={20} />
                 {route.name === 'activity' && waiting > 0 ? (
-                  <View style={[styles.badge, { backgroundColor: t.accent }]}>
-                    <Text style={[styles.badgeText, { color: t.onAccent }]}>{waiting}</Text>
+                  <View style={[styles.badge, { backgroundColor: t.ink }]}>
+                    <Text style={[styles.badgeText, { color: t.accentFill }]}>{waiting}</Text>
                   </View>
                 ) : null}
               </View>
-              <Text numberOfLines={1} style={[styles.label, { color: colour }]}>
+              <Text numberOfLines={1} style={[styles.label, { color: colour }, focused && styles.labelOn]}>
                 {tab.label}
               </Text>
+              {/* The ink of the label says which tab is open. The lime mark under it is the accent, not the only sign. */}
+              {focused ? <View style={[styles.mark, { backgroundColor: t.accentFill }]} /> : null}
             </Pressable>
           )
         })}
@@ -125,6 +127,8 @@ const styles = StyleSheet.create({
   },
   tab: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: radius.lg },
   label: { fontSize: 11, fontWeight: '600' },
+  labelOn: { fontWeight: '700' },
+  mark: { position: 'absolute', bottom: 2, width: 18, height: 4, borderRadius: 2 },
   badge: {
     position: 'absolute',
     top: -6,
