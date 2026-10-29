@@ -4,7 +4,7 @@ import { router } from 'expo-router'
 import { useMemo, useRef, useState } from 'react'
 // The plain swipeable, not the Reanimated one: with a hundred rows that one cost 2 MB a row.
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar } from '@/components/bot-sheet'
@@ -242,7 +242,12 @@ export default function Chats() {
       <SectionList
         automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
-          linkState === 'open' && !loading ? (
+          // A view that is still loading, for example the archive after its button: not a blank list that looks stuck.
+          loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator accessibilityLabel="Loading conversations" color={t.muted} />
+            </View>
+          ) : linkState === 'open' ? (
             <Notice
               detail={filtered ? 'Try other words or another filter.' : view === 'archived' ? 'Archive a conversation to put it away without deleting it.' : 'Tap + to start one.'}
               icon={view === 'archived' ? 'archive' : 'message-circle'}
@@ -469,6 +474,7 @@ const styles = StyleSheet.create({
   swipe: { flexDirection: 'row' },
   swipeAction: { width: 84, alignItems: 'center', justifyContent: 'center', gap: 4 },
   fill: { flex: 1 },
+  loading: { paddingTop: space.xxl, alignItems: 'center' },
   split: { flex: 1, flexDirection: 'row' },
   pane: { borderLeftWidth: StyleSheet.hairlineWidth },
   list: { paddingBottom: TAB_BAR_CLEARANCE, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' },
