@@ -9,7 +9,7 @@ import { attachmentKind, fileGlyph, previewMode } from '@/core/attachments'
 import { faultWords } from '@/core/format'
 import { type FsEntry, joinPath, nameProblem, parentPath, pathUnderRoot, type SearchHit } from '@/core/workspace'
 import { $folder, $root, deleteEntry, newFile, newFolder, renameEntry, searchFolder, showFolder } from '@/store/workspace'
-import { radius, space, TOUCH, type } from '@/theme/tokens'
+import { MONO, radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { ChoiceSheet } from '../choice'
@@ -67,13 +67,13 @@ export function FilesPanel({ bottom }: { bottom: number }) {
 
   return (
     <View style={styles.fill}>
-      <View style={[styles.crumbs, { borderBottomColor: t.line }]}>
+      <View style={styles.crumbs}>
         {up ? (
           <Pressable accessibilityLabel="Folder above" accessibilityRole="button" hitSlop={8} onPress={() => void showFolder(up)} style={styles.up}>
             <Feather color={t.ink} name="corner-left-up" size={18} />
           </Pressable>
         ) : null}
-        <Text ellipsizeMode="head" numberOfLines={1} style={[type.small, styles.fill, { color: t.muted }]}>
+        <Text ellipsizeMode="head" numberOfLines={1} style={[styles.path, styles.fill, { color: t.muted }]}>
           {inside ? pathUnderRoot(root, folder.path) || 'Top of the folder' : folder.path}
         </Text>
         {folder.loading ? <ActivityIndicator color={t.muted} size="small" /> : null}
@@ -104,12 +104,21 @@ export function FilesPanel({ bottom }: { bottom: number }) {
         ListEmptyComponent={
           folder.loading ? null : <Notice detail={folder.problem ?? undefined} icon={folder.problem ? 'alert-triangle' : 'folder'} title={folder.problem ? 'Could not read the folder' : 'This folder is empty'} />
         }
-        contentContainerStyle={{ paddingBottom: bottom, flexGrow: 1 }}
+        contentContainerStyle={{ paddingBottom: bottom, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' }}
         data={folder.entries}
         initialNumToRender={20}
         keyExtractor={entry => entry.path}
         refreshControl={<RefreshControl onRefresh={() => void showFolder(folder.path)} refreshing={false} tintColor={t.muted} />}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
+          // The entries of the folder sit on one card, as the lists of the other tabs do.
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: t.paper, borderColor: t.line },
+              index === 0 && styles.cardFirst,
+              index === folder.entries.length - 1 && styles.cardLast
+            ]}
+          >
           <Pressable
             accessibilityLabel={`${item.isDirectory ? 'Folder' : 'File'}: ${item.name}`}
             accessibilityHint="Hold for rename and delete"
@@ -117,18 +126,19 @@ export function FilesPanel({ bottom }: { bottom: number }) {
             delayLongPress={350}
             onLongPress={() => setMenu(item)}
             onPress={() => open(item)}
-            style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, pressed && { backgroundColor: t.soft }]}
+            style={({ pressed }) => [styles.row, { borderBottomColor: t.line }, index === folder.entries.length - 1 && styles.rowLast, pressed && { backgroundColor: t.soft }]}
           >
             <Feather
               color={item.isDirectory ? t.accent : t.muted}
               name={item.isDirectory ? 'folder' : (GLYPH[fileGlyph(item.name, attachmentKind({ name: item.name }))] ?? 'file')}
               size={18}
             />
-            <Text numberOfLines={1} style={[type.body, styles.fill, { color: t.ink }]}>
+            <Text numberOfLines={1} style={[type.body, styles.fill, { color: t.ink, fontSize: 15 }]}>
               {item.name}
             </Text>
             {item.isDirectory ? <Feather color={t.muted} name="chevron-right" size={16} /> : null}
           </Pressable>
+          </View>
         )}
         windowSize={9}
       />
@@ -291,7 +301,12 @@ const styles = StyleSheet.create({
   none: { padding: space.xl, textAlign: 'center' },
   hit: { gap: 2, paddingHorizontal: space.lg, paddingVertical: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   fill: { flex: 1 },
-  crumbs: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 40, paddingHorizontal: space.lg, borderBottomWidth: StyleSheet.hairlineWidth },
+  crumbs: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 40, paddingHorizontal: space.lg },
+  path: { fontFamily: MONO, fontSize: 12 },
   up: { paddingRight: space.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, paddingHorizontal: space.lg, borderBottomWidth: StyleSheet.hairlineWidth }
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH + 4, paddingHorizontal: space.md + 2, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowLast: { borderBottomWidth: 0 },
+  card: { marginHorizontal: space.lg, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  cardFirst: { borderTopWidth: StyleSheet.hairlineWidth, borderTopLeftRadius: radius.md + 2, borderTopRightRadius: radius.md + 2 },
+  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: radius.md + 2, borderBottomRightRadius: radius.md + 2 }
 })
