@@ -78,8 +78,8 @@ describe('workSummary', () => {
     const todos = withTodos(NO_WORK, [{ id: 'a', content: 'One', status: 'completed' }, { id: 'b', content: 'Two', status: 'pending' }, { id: 'c', content: 'Three', status: 'cancelled' }], 1)
     const work = reduceWork(todos, event('subagent.start', { subagent_id: 'h1', goal: 'x' }), 0)
 
-    expect(workSummary(work)).toBe('1 of 2 done · 1 helper at work')
-    expect(workSummary(reduceWork(work, event('subagent.complete', { subagent_id: 'h1', goal: 'x' }), 0))).toBe('1 of 2 done · 1 helper finished')
+    expect(workSummary(work)).toBe('1 of 2 done · 1 agent at work')
+    expect(workSummary(reduceWork(work, event('subagent.complete', { subagent_id: 'h1', goal: 'x' }), 0))).toBe('1 of 2 done · 1 agent finished')
   })
 })
 

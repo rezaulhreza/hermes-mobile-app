@@ -92,7 +92,7 @@ export function withTodos(work: Work, todos: unknown, revision: unknown): Work {
 function helperFromEvent(known: Helper | undefined, id: string, payload: SubagentEventPayload): Helper {
   return {
     id,
-    goal: payload.goal || known?.goal || 'A helper',
+    goal: payload.goal || known?.goal || 'An agent',
     status: payload.status ?? known?.status ?? 'running',
     parentId: payload.parent_id ?? known?.parentId ?? null,
     depth: payload.depth ?? known?.depth ?? 0,
@@ -167,7 +167,7 @@ export function withSnapshots(work: Work, snapshots: readonly SubagentSnapshot[]
 
     return putHelper(next, {
       id: snapshot.subagent_id,
-      goal: snapshot.goal || known?.goal || 'A helper',
+      goal: snapshot.goal || known?.goal || 'An agent',
       status: snapshot.status ?? known?.status ?? 'running',
       parentId: snapshot.parent_id ?? known?.parentId ?? null,
       depth: snapshot.depth ?? known?.depth ?? 0,
@@ -186,7 +186,7 @@ export function withSnapshots(work: Work, snapshots: readonly SubagentSnapshot[]
 export function withFailedStarts(work: Work, delegations: readonly FailedDelegation[] | null | undefined): Work {
   const failed = (delegations ?? []).map(item => ({
     id: `${item.delegation_id}:${item.task_index ?? 0}`,
-    goal: item.goal?.trim() || 'A helper',
+    goal: item.goal?.trim() || 'An agent',
     reason: (item.error ?? '').trim()
   }))
 
@@ -246,7 +246,7 @@ export function helperFromSaved(record: Record<string, unknown>, index: number):
 
   return {
     id: text(record.id) || `saved-${index}`,
-    goal: text(record.goal) || 'A helper',
+    goal: text(record.goal) || 'An agent',
     status: ENDED.has(status) ? (status as SubagentStatus) : 'completed',
     parentId: text(record.parentId) || null,
     depth: number(record.depth) ?? 0,
@@ -267,7 +267,7 @@ export function runLabel(helpers: readonly Helper[]): string {
     .map(helper => helper.goal)
     .slice(0, 2)
 
-  return (top.length ? top.join(' · ') : `${helpers.length} helpers`).slice(0, 120)
+  return (top.length ? top.join(' · ') : `${helpers.length} agents`).slice(0, 120)
 }
 
 /** The line above the message field: where the plan is and who works. Null when there is nothing to say. */
@@ -282,9 +282,9 @@ export function workSummary(work: Work): string | null {
   }
 
   if (running) {
-    parts.push(`${running} ${running === 1 ? 'helper' : 'helpers'} at work`)
+    parts.push(`${running} ${running === 1 ? 'agent' : 'agents'} at work`)
   } else if (work.helpers.length) {
-    parts.push(`${work.helpers.length} ${work.helpers.length === 1 ? 'helper' : 'helpers'} finished`)
+    parts.push(`${work.helpers.length} ${work.helpers.length === 1 ? 'agent' : 'agents'} finished`)
   }
 
   return parts.length ? parts.join(' · ') : null

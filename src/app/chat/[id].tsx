@@ -717,7 +717,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
             shownTitle={botChat?.title}
             extra={[
               ...(bot ? [{ icon: 'user' as const, label: `Profile and settings of ${bot.title}`, onPress: () => setBotOpen(true) }] : []),
-              { icon: 'list', label: 'Plan and helpers', onPress: () => setWorkOpen(true) },
+              { icon: 'list', label: 'Plan and agents', onPress: () => setWorkOpen(true) },
               { icon: 'monitor', label: holdsScreen ? 'Screen: you have it' : 'Screen of the host', onPress: () => setWatching(true) }
             ]}
             onBranched={storedId => (embedded ? embedded.onOpen(storedId, params.profile) : router.replace({ pathname: '/chat/[id]', params: { id: storedId, ...(params.profile ? { profile: params.profile } : {}) } }))}

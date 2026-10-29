@@ -81,7 +81,7 @@ export function arrivalOf(stored: string, title?: string | null): Arrival | null
   }
 
   if (SUBAGENT.test(text)) {
-    return { kind: 'event', title: title?.trim() || 'A helper finished its task', tone: 'done', detail: text }
+    return { kind: 'event', title: title?.trim() || 'An agent finished its task', tone: 'done', detail: text }
   }
 
   return null

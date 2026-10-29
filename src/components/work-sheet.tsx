@@ -38,7 +38,7 @@ export function WorkStrip({ sessionId, storedId }: { sessionId: string; storedId
 
   return (
     <>
-      <Pressable accessibilityHint="Shows the plan and the helpers" accessibilityLabel="Plan and helpers" accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.strip, { backgroundColor: t.soft }]}>
+      <Pressable accessibilityHint="Shows the plan and the agents" accessibilityLabel="Plan and agents" accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.strip, { backgroundColor: t.soft }]}>
         <Feather color={t.accent} name="list" size={16} />
         <View style={styles.fill}>
           <Text numberOfLines={1} style={[type.small, { color: t.ink, fontWeight: '700' }]}>
@@ -100,7 +100,7 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
 
   const row = (known: Helper) => (
     <Pressable
-      accessibilityHint="Shows what this helper does"
+      accessibilityHint="Shows what this agent does"
       accessibilityLabel={known.goal}
       accessibilityRole="button"
       key={known.id}
@@ -125,7 +125,7 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
         <View style={[styles.head, { borderBottomColor: t.line }]}>
           {helper ? <IconButton icon="chevron-left" label="Back to the plan" onPress={() => setHelperId(null)} /> : null}
           <Text numberOfLines={1} style={[type.heading, styles.fill, { color: t.ink }]}>
-            {helper ? 'Helper' : 'Plan and helpers'}
+            {helper ? 'Agent' : 'Plan and agents'}
           </Text>
           <IconButton icon="x" label="Close" onPress={onClose} />
         </View>
@@ -158,7 +158,7 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
 
             {tree.length || work.failed.length ? (
               <View style={styles.group}>
-                <Text style={[type.small, styles.groupTitle, { color: t.muted }]}>Helpers</Text>
+                <Text style={[type.small, styles.groupTitle, { color: t.muted }]}>Agents</Text>
                 {tree.map(row)}
                 {work.failed.map(item => (
                   <View key={item.id} style={[styles.helper, { backgroundColor: t.redBg, borderColor: t.line }]}>
@@ -180,9 +180,9 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
               <View style={[styles.helper, { backgroundColor: t.paper, borderColor: t.line }]}>
                 <Feather color={delegation.paused ? t.accent : t.muted} name={delegation.paused ? 'pause-circle' : 'users'} size={20} />
                 <View style={styles.fill}>
-                  <Text style={[type.label, { color: t.ink }]}>{delegation.paused ? 'New helpers are paused' : 'Hermes can start helpers'}</Text>
+                  <Text style={[type.label, { color: t.ink }]}>{delegation.paused ? 'New agents are paused' : 'Hermes can start agents'}</Text>
                   <Text style={[type.small, { color: t.muted }]}>
-                    {delegation.paused ? 'Helpers that run go on. Hermes starts no new one.' : `Up to ${delegation.maxAtOnce} at the same time.`}
+                    {delegation.paused ? 'Agents that run go on. Hermes starts no new one.' : `Up to ${delegation.maxAtOnce} at the same time.`}
                   </Text>
                 </View>
                 <Button busy={pausing} label={delegation.paused ? 'Allow' : 'Pause'} onPress={togglePause} />
@@ -195,7 +195,7 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
                 {runs.map(entry => (
                   <View key={entry.path} style={styles.group}>
                     <Pressable
-                      accessibilityLabel={`Earlier run: ${entry.label || 'Helpers'}`}
+                      accessibilityLabel={`Earlier run: ${entry.label || 'Agents'}`}
                       accessibilityRole="button"
                       accessibilityState={{ expanded: run?.path === entry.path }}
                       onPress={() => openRun(entry.path)}
@@ -203,10 +203,10 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
                     >
                       <View style={styles.fill}>
                         <Text numberOfLines={2} style={[type.label, { color: t.ink }]}>
-                          {entry.label || 'Helpers'}
+                          {entry.label || 'Agents'}
                         </Text>
                         <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-                          {[entry.count ? `${entry.count} ${entry.count === 1 ? 'helper' : 'helpers'}` : '', entry.finished_at ? relativeTime(entry.finished_at) : ''].filter(Boolean).join(' · ')}
+                          {[entry.count ? `${entry.count} ${entry.count === 1 ? 'agent' : 'agents'}` : '', entry.finished_at ? relativeTime(entry.finished_at) : ''].filter(Boolean).join(' · ')}
                         </Text>
                       </View>
                       <Feather color={t.muted} name={run?.path === entry.path ? 'chevron-up' : 'chevron-down'} size={18} />
@@ -218,7 +218,7 @@ export function WorkSheet({ sessionId, storedId, onClose }: { sessionId: string;
             ) : null}
 
             {!work.todos.length && !tree.length && !work.failed.length && !runs.length ? (
-              <Text style={[type.body, { color: t.muted }]}>No plan and no helper in this chat yet. They show here when Hermes makes a plan or starts a helper.</Text>
+              <Text style={[type.body, { color: t.muted }]}>No plan and no agent in this chat yet. They show here when Hermes makes a plan or starts an agent.</Text>
             ) : null}
           </ScrollView>
         )}
@@ -279,7 +279,7 @@ function HelperDetail({ sessionId, helper }: { sessionId: string; helper: Helper
 
     setText('')
     steerHelper(sessionId, helper.id, words).then(
-      taken => setNote(taken ? 'Sent. The helper reads it after its current action.' : 'The helper no longer takes a message.'),
+      taken => setNote(taken ? 'Sent. The agent reads it after its current action.' : 'The agent no longer takes a message.'),
       error => setNote(error instanceof Error ? error.message : String(error))
     )
   }
@@ -304,7 +304,7 @@ function HelperDetail({ sessionId, helper }: { sessionId: string; helper: Helper
           <View style={styles.group}>
             <Text style={[type.small, styles.groupTitle, { color: t.muted }]}>Its work, newest lines</Text>
             <Text selectable style={[styles.tail, { color: t.ink, backgroundColor: t.soft }]}>
-              {tail === null ? 'The host has no lines for this helper yet.' : tail || 'Nothing yet.'}
+              {tail === null ? 'The host has no lines for this agent yet.' : tail || 'Nothing yet.'}
             </Text>
           </View>
         )}
@@ -315,22 +315,22 @@ function HelperDetail({ sessionId, helper }: { sessionId: string; helper: Helper
           {note ? <Text style={[type.small, { color: t.muted }]}>{note}</Text> : null}
           <View style={styles.sendRow}>
             <TextInput
-              accessibilityLabel="Message to the helper"
+              accessibilityLabel="Message to the agent"
               editable={helper.acceptsSteer}
               onChangeText={setText}
               onSubmitEditing={send}
-              placeholder={helper.acceptsSteer ? 'Tell this helper something' : 'This helper is past its last action'}
+              placeholder={helper.acceptsSteer ? 'Tell this agent something' : 'This agent is past its last action'}
               placeholderTextColor={t.muted}
               returnKeyType="send"
               style={[type.body, styles.input, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
               value={text}
             />
-            <IconButton disabled={!text.trim() || !helper.acceptsSteer} filled icon="arrow-up" label="Send to the helper" onPress={send} />
+            <IconButton disabled={!text.trim() || !helper.acceptsSteer} filled icon="arrow-up" label="Send to the agent" onPress={send} />
           </View>
           <Button
             icon="square"
-            label="Stop this helper"
-            onPress={() => stopHelper(sessionId, helper.id).then(found => setNote(found ? 'Stopping.' : 'The helper is gone already.'), () => undefined)}
+            label="Stop this agent"
+            onPress={() => stopHelper(sessionId, helper.id).then(found => setNote(found ? 'Stopping.' : 'The agent is gone already.'), () => undefined)}
             tone="danger"
           />
         </View>

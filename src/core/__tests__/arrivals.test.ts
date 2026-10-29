@@ -43,7 +43,7 @@ describe('what comes into a chat and is not from the user', () => {
     expect(arrivalOf('[IMPORTANT: Background process p matched watch pattern "ready".\nCommand: run\nMatched output:\nready]')).toMatchObject({ title: 'Background task wrote "ready"', tone: 'info' })
     expect(arrivalOf('[Background process p heartbeat #3 — still running after 5m (next in 60s when there is new output; you will also be told when it exits).\nCommand: run\nOutput since last heartbeat:\n]')).toMatchObject({ title: 'Background task still runs after 5m' })
     expect(arrivalOf('[IMPORTANT: 3 background processes completed. Details follow.]')).toMatchObject({ title: '3 background tasks finished' })
-    expect(arrivalOf('A background subagent you dispatched earlier has finished.\nResult: ok')).toMatchObject({ title: 'A helper finished its task' })
+    expect(arrivalOf('A background subagent you dispatched earlier has finished.\nResult: ok')).toMatchObject({ title: 'An agent finished its task' })
   })
 
   it('has one line for a list', () => {

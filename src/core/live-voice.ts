@@ -485,7 +485,7 @@ const TOOL_LINES: readonly (readonly [RegExp, string])[] = [
   [/^(browser|open_preview|read_preview|drive_preview)/, 'Using the browser.'],
   [/^computer_use/, 'Working on your screen.'],
   [/^(memory|session_search)/, 'Checking my memory.'],
-  [/^(delegate|subagent)/, 'Handing part of this to a helper.'],
+  [/^(delegate|subagent)/, 'Handing part of this to an agent.'],
   [/^(image_generate|vision)/, 'Working on an image.']
 ]
 
