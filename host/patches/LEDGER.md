@@ -7,8 +7,8 @@ after an update, and says what to do. Work through it from the top.
 A host that runs the phone app is stock Hermes plus:
 
 1. One small patch: `hermes-backend.patch` in this folder. It changes two functions.
-2. Four plugins in `$HERMES_HOME/plugins/`: `phone-push`, `phone-preview`, `screen-remote`
-   and `group-rooms`. Their source and `install.sh` are in `host/<name>/` of this repository.
+2. Five plugins in `$HERMES_HOME/plugins/`: `phone-push`, `phone-preview`, `screen-remote`,
+   `group-rooms` and `phone-chat-list`. Their source and `install.sh` are in `host/<name>/` of this repository.
 3. Some keys in `$HERMES_HOME/config.yaml` (see the last table).
 
 Nothing else of the app goes into the Hermes checkout. This repository is the only place to
@@ -17,7 +17,7 @@ change the patch or a plugin. Never edit the copy in the Hermes checkout or in
 
 ## After `hermes update`: the short way
 
-Run `host/setup.sh` in this repository, on the host. It applies the patch, installs the four
+Run `host/setup.sh` in this repository, on the host. It applies the patch, installs the five
 plugins, writes the launch agent of the backend for the phone and restarts that backend, from
 the one Hermes install. It stops with a message when the patch does not apply: then do the
 steps below from step 3. `host/setup.sh --check` changes nothing and reports the state.
@@ -71,6 +71,7 @@ that `setup.sh` writes waits while that copy holds the port, so the two do not f
 | `phone-preview` | Public dashboard plugin routes only. | Not by a rename. | `GET /api/plugins/phone-preview/host?url=http://127.0.0.1:<port>/` shows the page of a local server. | Not expected. |
 | `screen-remote` | The `pre_tool_call` hook, and the private names `_backend_for_call`, `_backends` and `_backend_lock` of `tools/computer_use/tool.py`. | A renamed private name: its routes answer 500. | `GET /api/plugins/screen-remote/status` and `/windows` answer 200. | Find the new names in `tools/computer_use/tool.py` and change `host/screen-remote/dashboard/plugin_api.py`. |
 | `group-rooms` | Public gateway methods (`profiles.list`, `profiles.configure`, `groups.*`) and the Desktop's room record in `ui_meta`. For the turns of a round also the read-only `gateway.hosted_room_driver.list_tasks` with `gateway.hosted_rooms.default_db_path`: no method names the bot of a turn. To stop one turn, `get_hosted_room_service` of `tui_gateway/methods_groups.py` and `runtime.cancel` of that service: `groups.stop` stops the whole room. | A changed method shape. A moved `list_tasks`: a room still reads and writes, and the phone shows "The bots answer in turn" with no names. A moved service or `cancel`: "Stop this bot" answers 502, and the stop of the room still works. | `GET /api/plugins/group-rooms/status` answers 200. `GET /api/plugins/group-rooms/rooms/<id>` has a `round` list that is not empty after a round. | Read `host/group-rooms/README.md`. A `round` that stays empty: find the task list in `gateway/hosted_room_driver.py` and change `_round` in `host/group-rooms/dashboard/plugin_api.py`. Drop the plugin when the Desktop moves its rooms to `groups.*`. |
+| `phone-chat-list` | Nothing of Hermes in code. It reads the `messages` table of each `state.db` read-only with its own SQL: the columns `id`, `session_id`, `role`, `content`, `timestamp`, and, when present, `display_kind`, `_compressed_summary`, `active`, `compacted`. | A renamed column of the five it needs: the route gives no entries, and the chat list shows the first message (the stock `preview`). A new kind of row that the chat screen hides can show as the last message. | `GET /api/plugins/phone-chat-list/status` answers 200 with `stores` above 0. `POST /api/plugins/phone-chat-list/last` with `{"ids": ["<id>"]}` gives that chat's last message. | Change `_filters` or `_NEEDED_COLUMNS` in `host/phone-chat-list/dashboard/plugin_api.py`. |
 
 Install or update a plugin with `host/<name>/install.sh`, then restart the backend.
 
@@ -78,7 +79,7 @@ Install or update a plugin with `host/<name>/install.sh`, then restart the backe
 
 | Key | For | Default when absent |
 |---|---|---|
-| `plugins.enabled` lists the four plugins | Loads them | Not loaded |
+| `plugins.enabled` lists the five plugins | Loads them | Not loaded |
 | `push.*` (see `host/phone-push/README.md`) | Push | No push |
 | `push.kinds` | Which requests make a push | `clarify`, `approval`, `mention` |
 | `preview.local_domains` | Local-development sites in the preview (for example `test`) | Only `localhost` |

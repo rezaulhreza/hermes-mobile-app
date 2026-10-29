@@ -1,0 +1,8 @@
+{
+  "name": "phone-chat-list",
+  "label": "Phone Chat List",
+  "description": "Backend route that gives the chat list of the phone app the last message of each chat.",
+  "version": "0.1.0",
+  "tab": { "path": "/phone-chat-list", "hidden": true },
+  "api": "plugin_api.py"
+}

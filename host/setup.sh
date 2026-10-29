@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Set up a Hermes host for the phone app, in one command. Run it on the host:
 #
-#   host/setup.sh            the patch, the four plugins, two skills, the backend service, a check
+#   host/setup.sh            the patch, the five plugins, two skills, the backend service, a check
 #   host/setup.sh --check    change nothing: say what state the host is in
 #
 # Safe to run again, and the thing to run after every `hermes update`. Everything the app puts
@@ -24,7 +24,7 @@ PORT="${HERMES_PHONE_PORT:-9130}"
 LABEL="com.hermes.backend.mobile"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LAUNCHER="$HERMES_HOME/bin/phone-backend.sh"
-PLUGINS="phone-push phone-preview screen-remote group-rooms"
+PLUGINS="phone-push phone-preview screen-remote group-rooms phone-chat-list"
 check_only=false
 [ "${1:-}" = "--check" ] && check_only=true
 

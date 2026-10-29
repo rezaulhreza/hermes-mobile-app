@@ -1,0 +1,6 @@
+manifest_version: 1
+name: phone-chat-list
+version: 0.1.0
+description: "Gives the chat list of the Hermes phone app the last message of each chat, of the user or of the assistant, in one request for a page of the list."
+author: hermes-native
+kind: backend
