@@ -52,6 +52,12 @@ describe('promptWithAttachments', () => {
 })
 
 describe('splitStoredPrompt', () => {
+  it('hides the routing note of a host plugin and shows the saved picture', () => {
+    const stored = 'Which shop is open?\n\n[Image attached at: /h/cache/shot.jpg]\n[screenshot]\n[Tool routing for the browser and screen. Use the chrome tools.\nNever launch another browser.]'
+
+    expect(splitStoredPrompt(stored)).toEqual({ text: 'Which shop is open?', attached: [{ name: 'shot.jpg', kind: 'image', path: '/h/cache/shot.jpg' }] })
+  })
+
   it('cuts the context the backend added and keeps a reference inside a sentence', () => {
     const stored = 'Look at @file:a.yml and count\n\n--- Attached Context ---\n\n📄 @file:a.yml (864 tokens)\n```yaml\nx: 1\n```'
 

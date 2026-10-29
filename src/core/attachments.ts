@@ -237,6 +237,10 @@ const REF_LINE = /^@(file|image):(?:"([^"]+)"|'([^']+)'|`([^`]+)`|(\S+))$/
 // The backend adds one such line per picture it holds for the prompt. The `@image:` line already names the picture.
 const PICTURE_MARK = /^\[(screenshot|image)\]$/i
 const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$/
+// The backend names the file of a picture it saved for the prompt.
+const IMAGE_AT_LINE = /^\[Image attached at: (.+)\]$/
+// A note a host plugin adds under the words of a turn about the browser, for the agent only.
+const ROUTING_NOTE = /\n*\[Tool routing for [\s\S]*\]\s*$/
 
 /**
  * A stored user message, as the user wrote it: the words, and the names of
@@ -247,13 +251,14 @@ const HELD_LINE = /^\[User attached (image|PDF): (.+?)(?: \(\d+ page\(s\)\))?\]$
  */
 export function splitStoredPrompt(stored: string): { text: string; attached: SentAttachment[] } {
   // The note that says which bots a mention means is for the agent too.
-  const lines = withoutMentionNote(stored.replace(ATTACHED_CONTEXT, '')).trimEnd().split('\n')
+  const lines = withoutMentionNote(stored.replace(ATTACHED_CONTEXT, '').replace(ROUTING_NOTE, '')).trimEnd().split('\n')
   const attached: SentAttachment[] = []
 
   while (lines.length) {
     const line = lines[lines.length - 1].trim()
     const ref = REF_LINE.exec(line)
     const held = HELD_LINE.exec(line)
+    const saved = IMAGE_AT_LINE.exec(line)
 
     if (ref) {
       attached.unshift(referred(ref))
@@ -261,6 +266,8 @@ export function splitStoredPrompt(stored: string): { text: string; attached: Sen
       // Nothing to show for it.
     } else if (held) {
       attached.unshift({ name: held[2], kind: held[1] === 'PDF' ? 'pdf' : 'image' })
+    } else if (saved) {
+      attached.unshift({ name: saved[1].split(/[\\/]/).pop() ?? 'picture', kind: 'image', path: saved[1] })
     } else if (line) {
       break
     }
