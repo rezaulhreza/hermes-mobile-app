@@ -291,7 +291,7 @@ function Picture({ held, onInput }: { held: boolean; onInput: (input: ScreenInpu
       )}
       {zoomed ? (
         <View style={styles.fit}>
-          <IconButton icon="minimize-2" label="Show the whole picture" onPress={fit} />
+          <IconButton icon="minimize-2" label="Show the whole picture" onPress={fit} soft />
         </View>
       ) : null}
     </GestureHandlerRootView>

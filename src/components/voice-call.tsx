@@ -208,13 +208,14 @@ function FullCall({ call, title, items }: { call: Call; title: string; items: re
         ) : null}
 
         <View style={[styles.bar, { borderTopColor: t.line }]}>
-          <IconButton icon={call.muted ? 'mic-off' : 'mic'} label={call.muted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!call.muted)} />
+          <IconButton icon={call.muted ? 'mic-off' : 'mic'} label={call.muted ? 'Turn the microphone on' : 'Mute'} onPress={() => setCallMuted(!call.muted)} soft />
           <IconButton
             icon={speaker ? 'volume-2' : 'phone'}
             label={speaker ? 'Loudspeaker is on. Use the earpiece' : 'Earpiece is on. Use the loudspeaker'}
             onPress={() => setCallSpeaker(!speaker)}
+            soft
           />
-          <IconButton icon="message-circle" label="Show the chat" onPress={hide} />
+          <IconButton icon="message-circle" label="Show the chat" onPress={hide} soft />
           <Pressable accessibilityLabel="End Live voice" accessibilityRole="button" onPress={endCall} style={[styles.end, { backgroundColor: t.redBg }]}>
             <Feather color={t.red} name="x" size={22} />
           </Pressable>

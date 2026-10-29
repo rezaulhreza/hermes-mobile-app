@@ -56,11 +56,14 @@ interface IconButtonProps {
   icon: IconName | 'waveform'
   label: string
   onPress: () => void
+  /** The main action of a place: lime, with ink on it. */
   filled?: boolean
+  /** A soft circle behind the icon, for a button that floats over content. Otherwise the icon stands alone. */
+  soft?: boolean
   disabled?: boolean
 }
 
-export function IconButton({ icon, label, onPress, filled, disabled }: IconButtonProps) {
+export function IconButton({ icon, label, onPress, filled, soft, disabled }: IconButtonProps) {
   const t = useTheme()
 
   return (
@@ -72,7 +75,7 @@ export function IconButton({ icon, label, onPress, filled, disabled }: IconButto
       onPress={onPress}
       style={({ pressed }) => [
         styles.iconButton,
-        { backgroundColor: filled ? t.accentFill : t.soft },
+        filled ? { backgroundColor: t.accentFill } : soft ? { backgroundColor: t.soft } : null,
         (pressed || disabled) && styles.dim
       ]}
     >
