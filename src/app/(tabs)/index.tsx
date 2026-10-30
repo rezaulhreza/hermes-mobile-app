@@ -182,8 +182,8 @@ export default function Chats() {
           onPress={() => router.navigate('/activity')}
           style={[styles.needs, { backgroundColor: t.paper, borderColor: t.line }]}
         >
-          <View style={[styles.count, { backgroundColor: t.ink }]}>
-            <Text style={[type.label, { color: t.accentFill }]}>{requests.length}</Text>
+          <View style={[styles.count, { backgroundColor: t.inverse }]}>
+            <Text style={[type.label, { color: t.onInverse }]}>{requests.length}</Text>
           </View>
           <View style={styles.fill}>
             <Text style={[type.label, { color: t.ink }]}>Needs you</Text>
@@ -481,8 +481,8 @@ function SessionRow({
         <WorkingMark />
       ) : (
         live ? (
-          <View style={[styles.chip, { backgroundColor: t.ink }]}>
-            <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
+          <View style={[styles.chip, { backgroundColor: t.inverse }]}>
+            <Text style={[type.small, { color: t.onInverse, fontWeight: '700' }]}>Needs you</Text>
           </View>
         ) : (
           <Text style={[type.small, { color: t.muted }]}>{at ? relativeTime(at) : ''}</Text>

@@ -84,8 +84,8 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
               <View>
                 <Feather color={colour} name={tab.icon} size={20} />
                 {route.name === 'activity' && waiting > 0 ? (
-                  <View style={[styles.badge, { backgroundColor: t.ink }]}>
-                    <Text style={[styles.badgeText, { color: t.accentFill }]}>{waiting}</Text>
+                  <View style={[styles.badge, { backgroundColor: t.inverse }]}>
+                    <Text style={[styles.badgeText, { color: t.onInverse }]}>{waiting}</Text>
                   </View>
                 ) : null}
               </View>

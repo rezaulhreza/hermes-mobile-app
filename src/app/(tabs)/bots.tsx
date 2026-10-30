@@ -332,8 +332,8 @@ function BotState({ mark, lastActive }: { mark: BotMark; lastActive: number }) {
 
   if (mark.live) {
     return (
-      <View style={[styles.chip, { backgroundColor: t.ink }]}>
-        <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Needs you</Text>
+      <View style={[styles.chip, { backgroundColor: t.inverse }]}>
+        <Text style={[type.small, { color: t.onInverse, fontWeight: '700' }]}>Needs you</Text>
       </View>
     )
   }

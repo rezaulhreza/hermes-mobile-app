@@ -19,6 +19,9 @@ export interface Palette {
   accentBg: string
   accentFill: string
   onAccent: string
+  /** A small strong mark (a count, "Needs you", the Terminal button): ink with lime in light mode, lime with ink in dark mode. */
+  inverse: string
+  onInverse: string
   green: string
   greenBg: string
   red: string
@@ -36,6 +39,8 @@ export const light: Palette = {
   accentBg: '#eef7d4',
   accentFill: '#c6f432',
   onAccent: '#14171c',
+  inverse: '#14171c',
+  onInverse: '#c6f432',
   green: '#1d7a50',
   greenBg: '#e3f2e9',
   red: '#b3261e',
@@ -53,6 +58,8 @@ export const dark: Palette = {
   accentBg: '#2a3312',
   accentFill: '#c6f432',
   onAccent: '#14171c',
+  inverse: '#c6f432',
+  onInverse: '#14171c',
   green: '#7dd3a8',
   greenBg: '#16302a',
   red: '#ff9ea6',
