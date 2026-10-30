@@ -379,3 +379,45 @@ export function deleteGroups(rows: readonly SessionRow[]): Map<string, string[]>
 
   return groups
 }
+
+/** What `GET /api/sessions/{id}/mutation-snapshot` says: the counters an edit must name. */
+export interface MutationSnapshot {
+  exists?: boolean
+  runtime_revision?: number
+  runtime_generation?: number | null
+}
+
+/** The fence an edit sends: the host commits it only while the session is still at this revision. */
+export interface MutationFence {
+  request_id: string
+  expected_revision: number
+  expected_generation?: number
+}
+
+const counter = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
+
+/**
+ * The fence for an edit of a stored session. The host refuses an edit without one: it answers
+ * 409 `client_upgrade_required`. A retry of the same edit sends the same request id, so the host
+ * replays its answer and never applies the edit twice.
+ */
+export function mutationFence(snapshot: MutationSnapshot, requestId: string): MutationFence {
+  if (!snapshot.exists || !counter(snapshot.runtime_revision)) {
+    throw new Error('The host does not have this conversation. Refresh the list.')
+  }
+
+  return {
+    request_id: requestId,
+    expected_revision: snapshot.runtime_revision,
+    ...(counter(snapshot.runtime_generation) ? { expected_generation: snapshot.runtime_generation } : {})
+  }
+}
+
+/** Another client changed the session after the snapshot, so the host did not apply the edit. */
+export function isStaleFence(error: unknown): boolean {
+  return /revision_conflict|stale_generation/.test(String(error))
+}
+
+export function mutationRequestId(): string {
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`
+}

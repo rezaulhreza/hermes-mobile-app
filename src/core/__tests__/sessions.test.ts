@@ -4,8 +4,11 @@ import {
   rowProfile,
   rowsInView,
   filterSessions,
+  isStaleFence,
   keepLastMessages,
   liveStates,
+  mutationFence,
+  mutationRequestId,
   sameLiveStates,
   sessionActions,
   sessionSearchPath,
@@ -248,5 +251,30 @@ describe('live states', () => {
     expect(sameLiveStates({ a: 'working' }, { a: 'waiting' })).toBe(false)
     expect(sameLiveStates({ a: 'working' }, {})).toBe(false)
     expect(sameLiveStates({}, { a: 'working' })).toBe(false)
+  })
+})
+
+describe('session edit fence', () => {
+  it('names the revision and the generation of the snapshot', () => {
+    expect(mutationFence({ exists: true, runtime_revision: 4, runtime_generation: 2 }, 'r1'))
+      .toEqual({ request_id: 'r1', expected_revision: 4, expected_generation: 2 })
+    expect(mutationFence({ exists: true, runtime_revision: 0, runtime_generation: null }, 'r1'))
+      .toEqual({ request_id: 'r1', expected_revision: 0 })
+  })
+
+  it('refuses a snapshot of a session the host does not have', () => {
+    expect(() => mutationFence({ exists: false, runtime_revision: 0 }, 'r1')).toThrow('Refresh')
+    expect(() => mutationFence({ exists: true, runtime_revision: -1 }, 'r1')).toThrow('Refresh')
+    expect(() => mutationFence({}, 'r1')).toThrow('Refresh')
+  })
+
+  it('knows a refusal because another client changed the session', () => {
+    expect(isStaleFence(new Error('409: {"detail":"revision_conflict"}'))).toBe(true)
+    expect(isStaleFence(new Error('409: {"detail":"stale_generation"}'))).toBe(true)
+    expect(isStaleFence(new Error('409: {"detail":"session_busy"}'))).toBe(false)
+  })
+
+  it('makes a new request id each time', () => {
+    expect(mutationRequestId()).not.toBe(mutationRequestId())
   })
 })

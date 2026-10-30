@@ -11,8 +11,13 @@ import {
   keepLastMessages,
   LAST_MESSAGES_PATH,
   type LastMessage,
+  isStaleFence,
   type LiveState,
   liveStates,
+  type MutationFence,
+  mutationFence,
+  mutationRequestId,
+  type MutationSnapshot,
   rowProfile,
   rowsInView,
   sameLiveStates,
@@ -229,7 +234,7 @@ export async function markSessionRead(id: string, profile?: string): Promise<voi
 
   try {
     // This route reads the profile from the body, not from the address.
-    await api().request({ path: `/api/sessions/${encodeURIComponent(id)}`, method: 'PATCH', body: { unread: false, ...(profile ? { profile } : {}) } })
+    await patchSession(id, profile, { unread: false })
   } catch {
     // The next list from the host says what it knows.
   }
@@ -373,6 +378,38 @@ export function clearSessions(): void {
 }
 
 /**
+ * Edit a stored session. The host commits an edit only with the session's current revision, so read
+ * it first. When another client changes the session between the read and the edit, the host refuses
+ * the edit and nothing changes; the edit sets values, not steps, so one more try with a new read is safe.
+ */
+async function fencedEdit<T>(id: string, profile: string | undefined, send: (fence: MutationFence) => Promise<T>): Promise<T> {
+  const attempt = async () => {
+    const snapshot = await api().request<MutationSnapshot>({ path: `/api/sessions/${encodeURIComponent(id)}/mutation-snapshot`, profile })
+
+    return send(mutationFence(snapshot, mutationRequestId()))
+  }
+
+  try {
+    return await attempt()
+  } catch (error) {
+    if (!isStaleFence(error)) {
+      throw error
+    }
+
+    return attempt()
+  }
+}
+
+function patchSession(id: string, profile: string | undefined, change: Partial<Pick<SessionRow, 'title' | 'pinned' | 'archived'>> & { unread?: boolean }): Promise<unknown> {
+  // This route reads the profile from the body, not from the address.
+  return fencedEdit(id, profile, fence => api().request({
+    path: `/api/sessions/${encodeURIComponent(id)}`,
+    method: 'PATCH',
+    body: { ...change, ...fence, ...(profile ? { profile } : {}) }
+  }))
+}
+
+/**
  * Change the title or a flag of a conversation. The list shows the change at
  * once and goes back to the backend's state if the backend refuses.
  */
@@ -382,8 +419,7 @@ export async function updateSession(row: SessionRow, change: Pick<SessionRow, 't
   $sessions.set(withSessionChange(before, row.id, change))
 
   try {
-    // This route reads the profile from the body, not from the address.
-    await api().request({ path: `/api/sessions/${encodeURIComponent(row.id)}`, method: 'PATCH', body: { ...change, profile: rowProfile(row) } })
+    await patchSession(row.id, rowProfile(row), change)
   } catch (error) {
     $sessions.set(before)
     throw error
@@ -392,7 +428,13 @@ export async function updateSession(row: SessionRow, change: Pick<SessionRow, 't
 
 /** Delete a conversation and its messages. The backend refuses while a turn writes to it. */
 export async function deleteSession(row: SessionRow): Promise<void> {
-  await api().request({ path: `/api/sessions/${encodeURIComponent(row.id)}`, method: 'DELETE', profile: rowProfile(row) })
+  const profile = rowProfile(row)
+
+  await fencedEdit(row.id, profile, fence => {
+    const query = Object.entries(fence).map(([name, value]) => `${name}=${encodeURIComponent(value)}`).join('&')
+
+    return api().request({ path: `/api/sessions/${encodeURIComponent(row.id)}?${query}`, method: 'DELETE', profile })
+  })
   $sessions.set($sessions.get().filter(other => other.id !== row.id))
 }
 
