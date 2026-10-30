@@ -12,6 +12,6 @@ module.exports = defineConfig([
   expoConfig,
   {
     // src/core/gateway is vendored from the Hermes repo and keeps its own style.
-    ignores: ["dist/**", ".expo/**", "node_modules/**", "ios/**", "android/**", "src/core/gateway/**", "src/core/preview/act-engine.generated.ts", "src/components/terminal/xterm.generated.ts"],
+    ignores: ["dist/**", ".expo/**", ".claude/**", "node_modules/**", "ios/**", "android/**", "src/core/gateway/**", "src/core/preview/act-engine.generated.ts", "src/components/terminal/xterm.generated.ts"],
   },
 ]);

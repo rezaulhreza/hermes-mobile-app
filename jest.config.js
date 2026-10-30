@@ -6,6 +6,9 @@ const preset = require.resolve("babel-preset-expo", { paths: [require.resolve("e
 module.exports = {
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
+  // Agent worktrees live in .claude/: their copy of the tests is not this checkout's.
+  testPathIgnorePatterns: ["/node_modules/", "<rootDir>/.claude/"],
+  modulePathIgnorePatterns: ["<rootDir>/.claude/"],
   transform: { "^.+\\.[jt]sx?$": ["babel-jest", { presets: [preset] }] },
   moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
   clearMocks: true,
