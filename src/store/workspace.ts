@@ -8,8 +8,6 @@ import { atom } from 'nanostores'
 
 import type { ProjectsPayload, ShellExecResult } from '@/core/gateway/gateway-contract.generated'
 import {
-  cdTarget,
-  commandOutput,
   type FsEntry,
   type GitBranch,
   type GitFile,
@@ -20,11 +18,7 @@ import {
   type SearchHit,
   searchHits,
   type GitStatus,
-  resolveCdCommand,
-  shellCommand,
-  type TerminalEntry,
   type TextFile,
-  withEntry,
   withRecentRoot
 } from '@/core/workspace'
 
@@ -54,13 +48,6 @@ export interface Changes {
 
 export const $changes = atom<Changes>({ status: null, files: [], loading: false, problem: null })
 
-export interface Terminal {
-  cwd: string
-  entries: TerminalEntry[]
-  running: boolean
-}
-
-export const $terminal = atom<Terminal | null>(null)
 
 /** Where the folder choice can start: the folder Hermes runs in and the projects of the host. */
 export const $startPoints = atom<{ label: string; path: string }[]>([])
@@ -123,33 +110,11 @@ export async function hostHome(): Promise<string | null> {
   return null
 }
 
-/**
- * The terminal can open with no folder chosen: it then starts in the home
- * folder of the host. A terminal that is open already keeps its folder.
- */
-export async function ensureTerminal(): Promise<void> {
-  if ($terminal.get()) {
-    return
-  }
-
-  const cwd = $root.get() ?? (await hostHome())
-
-  if (!cwd) {
-    throw new Error('The host did not say where its home folder is.')
-  }
-
-  // A folder chosen while the home folder was read wins.
-  if (!$terminal.get()) {
-    $terminal.set({ cwd, entries: [], running: false })
-  }
-}
-
-/** Work in this folder. The Files panel shows it, the terminal starts in it. */
+/** Work in this folder. The Files panel shows it, and a new shell starts in it. */
 export function openRoot(path: string): void {
   $root.set(path)
   $folder.set(null)
   $changes.set({ status: null, files: [], loading: false, problem: null })
-  $terminal.set({ cwd: path, entries: [], running: false })
   setPreference('roots', withRecentRoot($preferences.get().roots, path))
   void showFolder(path)
 }
@@ -324,60 +289,9 @@ export async function searchFolder(words: string): Promise<SearchHit[]> {
 export const commitChanges = (message: string, push: boolean) => gitAction('commit', { message: message.trim(), push })
 export const pushBranch = () => gitAction('push', {})
 
-let nextKey = 0
-
-/** Run one command in the terminal's folder. The host gives it 30 seconds and returns the end of its output. */
-export async function runCommand(command: string): Promise<void> {
-  const terminal = $terminal.get()
-
-  if (!terminal || terminal.running || !command.trim()) {
-    return
-  }
-
-  const key = (nextKey += 1)
-  const started = Date.now()
-  const { cwd } = terminal
-  const target = cdTarget(command)
-  const finish = (output: string, failed: boolean, nextCwd = cwd) => {
-    const current = $terminal.get()
-
-    if (current) {
-      $terminal.set({
-        cwd: nextCwd,
-        running: false,
-        entries: current.entries.map(entry => (entry.key === key ? { ...entry, output, failed, seconds: (Date.now() - started) / 1000 } : entry))
-      })
-    }
-  }
-
-  $terminal.set({ cwd, running: true, entries: withEntry(terminal.entries, { key, cwd, command, output: null, failed: false }) })
-
-  try {
-    // A `cd` in its own process changes nothing: the app asks where it leads and keeps that folder.
-    const result = await rpc<ShellExecResult>('shell.exec', { command: target === null ? shellCommand(cwd, command) : resolveCdCommand(cwd, target) }, 40_000)
-
-    if (target !== null && result.code === 0 && result.stdout.trim()) {
-      finish('', false, result.stdout.trim().split('\n').pop()!)
-    } else {
-      finish(commandOutput(result), result.code !== 0)
-    }
-  } catch (error) {
-    finish(words(error), true)
-  }
-}
-
-export function clearTerminal(): void {
-  const terminal = $terminal.get()
-
-  if (terminal) {
-    $terminal.set({ ...terminal, entries: [] })
-  }
-}
-
 export function clearWorkspace(): void {
   $root.set(null)
   $folder.set(null)
   $changes.set({ status: null, files: [], loading: false, problem: null })
-  $terminal.set(null)
   $startPoints.set([])
 }

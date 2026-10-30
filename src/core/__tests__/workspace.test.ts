@@ -1,19 +1,12 @@
 import {
   baseName,
-  cdTarget,
   changeGroups,
-  commandOutput,
   commitLabel,
   commitProblem,
   editProblem,
   parentPath,
   pathUnderRoot,
   previewTarget,
-  recentCommands,
-  resolveCdCommand,
-  shellCommand,
-  TERMINAL_KEEP,
-  withEntry,
   withRecentRoot
 } from '../workspace'
 
@@ -58,46 +51,6 @@ describe('changes', () => {
     expect(editProblem({ binary: true, truncated: false })).toContain('not text')
     expect(editProblem({ binary: false, truncated: true })).toContain('too large')
     expect(editProblem({ binary: false, truncated: false })).toBeNull()
-  })
-})
-
-describe('terminal', () => {
-  it('runs a command in the folder, for the shell of the host', () => {
-    expect(shellCommand("/Users/me/it's here", 'ls')).toBe("cd '/Users/me/it'\\''s here' && ls")
-    expect(shellCommand('C:\\Users\\me', 'dir')).toBe('cd /d "C:\\Users\\me" && dir')
-  })
-
-  it('keeps the folder of a cd itself', () => {
-    expect(cdTarget('cd src')).toBe('src')
-    expect(cdTarget(' cd "My Docs" ')).toBe('My Docs')
-    expect(cdTarget('cd')).toBe('~')
-    expect(cdTarget('cd src && ls')).toBeNull()
-    expect(cdTarget('cdk deploy')).toBeNull()
-    expect(resolveCdCommand('/a', 'src')).toBe("cd '/a' && cd 'src' && pwd")
-    expect(resolveCdCommand('/a', '~')).toBe("cd '/a' && cd ~ && pwd")
-  })
-
-  it('shows the output, the error text, or that there was none', () => {
-    expect(commandOutput({ stdout: 'a\n', stderr: 'warn\n', code: 0 })).toBe('a\nwarn')
-    expect(commandOutput({ stdout: '', stderr: '', code: 0 })).toBe('(no output)')
-    expect(commandOutput({ stdout: '', stderr: '', code: 2 })).toBe('(ended with code 2)')
-  })
-
-  it('offers the last different commands, the newest first', () => {
-    const entry = (key: number, command: string) => ({ key, cwd: '/', command, output: '', failed: false })
-
-    expect(recentCommands([entry(1, 'ls'), entry(2, 'git status'), entry(3, 'ls'), entry(4, ' ')])).toEqual(['ls', 'git status'])
-  })
-
-  it('keeps the last commands only', () => {
-    let entries = [] as ReturnType<typeof withEntry>
-
-    for (let key = 0; key < TERMINAL_KEEP + 5; key += 1) {
-      entries = withEntry(entries, { key, cwd: '/', command: 'ls', output: '', failed: false })
-    }
-
-    expect(entries).toHaveLength(TERMINAL_KEEP)
-    expect(entries[0]!.key).toBe(5)
   })
 })
 
