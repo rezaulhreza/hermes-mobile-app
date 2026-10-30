@@ -86,7 +86,7 @@ for profile in "$HERMES_HOME"/profiles/*/; do
   [ -d "${profile}skills" ] && homes="$homes
 ${profile%/}"
 done
-for pair in "mobile-answer-cards:productivity" "phone-host-setup:devops"; do
+for pair in "mobile-answer-cards:productivity" "phone-host-setup:devops" "host-security-audit:devops"; do
   name="${pair%%:*}"; category="${pair##*:}"
   count=0
   while IFS= read -r home; do

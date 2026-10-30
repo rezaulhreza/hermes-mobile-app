@@ -19,7 +19,7 @@ The phone adds three things to stock Hermes. All of them come from this folder:
 
 - One patch on the Hermes checkout: `patches/hermes-backend.patch`.
 - Six plugins: `phone-push`, `phone-preview`, `screen-remote`, `group-rooms`, `phone-chat-list`, `phone-shell`.
-- Two skills for the agent of the host: `skills/`.
+- Three skills for the agent of the host: `skills/`.
 
 ## The one command
 
