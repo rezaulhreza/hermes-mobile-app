@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import { StyleSheet } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
+import type { CursorKey } from '@/core/shell'
 import { dark } from '@/theme/tokens'
 
 import { FIT_JS, XTERM_CSS, XTERM_JS } from './xterm.generated'
@@ -10,6 +11,8 @@ export interface TerminalViewHandle {
   /** Output of the shell, as base64. */
   write: (base64: string) => void
   focus: () => void
+  /** A cursor key of the key row. The page answers with the mode of the shell, through `onCursor`. */
+  cursor: (key: CursorKey) => void
   /** Start again with an empty screen, for another shell. */
   reset: () => void
 }
@@ -19,6 +22,8 @@ interface Props {
   onReady: (cols: number, rows: number) => void
   onInput: (text: string) => void
   onResize: (cols: number, rows: number) => void
+  /** A cursor key to send, and whether the shell set application cursor mode. */
+  onCursor: (key: CursorKey, applicationMode: boolean) => void
 }
 
 /** A terminal is dark in both appearances. */
@@ -51,6 +56,7 @@ const GLUE = `(function () {
     }
   };
   window.__focus = function () { term.focus(); };
+  window.__cursor = function (key) { send({ type: 'cursor', key: key, app: term.modes.applicationCursorKeysMode }); };
   window.__reset = function () { term.reset(); };
   send({ type: 'ready', cols: term.cols, rows: term.rows });
 })();`
@@ -70,7 +76,7 @@ html, body { margin: 0; height: 100%; background: ${c.bg}; overflow: hidden; }
  * of one frame goes into the page in one call, so a fast log does not choke
  * the bridge to the page.
  */
-export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onInput, onResize }, ref) {
+export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onInput, onResize, onCursor }, ref) {
   const web = useRef<WebView>(null)
   const pending = useRef<string[]>([])
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -90,6 +96,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       timer.current ??= setTimeout(flush, 16)
     },
     focus: () => web.current?.injectJavaScript('window.__focus && window.__focus(); true;'),
+    cursor: key => web.current?.injectJavaScript(`window.__cursor && window.__cursor(${JSON.stringify(key)}); true;`),
     reset: () => {
       pending.current = []
       web.current?.injectJavaScript('window.__reset && window.__reset(); true;')
@@ -97,7 +104,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   }))
 
   const onMessage = (event: WebViewMessageEvent) => {
-    let message: { type?: string; data?: unknown; cols?: unknown; rows?: unknown }
+    let message: { type?: string; data?: unknown; cols?: unknown; rows?: unknown; key?: unknown; app?: unknown }
 
     try {
       message = JSON.parse(event.nativeEvent.data)
@@ -107,6 +114,8 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
 
     if (message.type === 'input' && typeof message.data === 'string') {
       onInput(message.data)
+    } else if (message.type === 'cursor' && typeof message.key === 'string') {
+      onCursor(message.key as CursorKey, message.app === true)
     } else if ((message.type === 'ready' || message.type === 'resize') && typeof message.cols === 'number' && typeof message.rows === 'number') {
       ;(message.type === 'ready' ? onReady : onResize)(message.cols, message.rows)
     }

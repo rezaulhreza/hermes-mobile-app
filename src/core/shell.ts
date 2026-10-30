@@ -13,14 +13,23 @@ export interface ShellInfo {
   started: number | null
 }
 
-/** The keys a phone keyboard does not have, as the bytes a terminal sends for them. */
-export const SHELL_KEYS: readonly { label: string; name: string; bytes: string }[] = [
+/**
+ * A key that moves the cursor. Its bytes depend on the mode the shell set:
+ * `ESC [ C` normally, `ESC O C` in application cursor mode (oh-my-zsh sets
+ * it). Only the terminal knows the mode, so the page sends these keys.
+ */
+export type CursorKey = 'up' | 'down' | 'left' | 'right' | 'home' | 'end'
+
+/** The keys a phone keyboard does not have: the bytes a terminal sends for them, or the cursor key it presses. */
+export const SHELL_KEYS: readonly ({ label: string; name: string } & ({ bytes: string } | { cursor: CursorKey }))[] = [
   { label: 'esc', name: 'Escape', bytes: '\x1b' },
   { label: 'tab', name: 'Tab', bytes: '\t' },
-  { label: '↑', name: 'Up', bytes: '\x1b[A' },
-  { label: '↓', name: 'Down', bytes: '\x1b[B' },
-  { label: '←', name: 'Left', bytes: '\x1b[D' },
-  { label: '→', name: 'Right', bytes: '\x1b[C' },
+  { label: '↑', name: 'Up', cursor: 'up' },
+  { label: '↓', name: 'Down', cursor: 'down' },
+  { label: '←', name: 'Left', cursor: 'left' },
+  { label: '→', name: 'Right, or accept the suggestion', cursor: 'right' },
+  // End also takes the grey suggestion of zsh-autosuggestions, with the cursor anywhere in the line.
+  { label: 'end', name: 'End', cursor: 'end' },
   { label: '|', name: 'Pipe', bytes: '|' },
   { label: '~', name: 'Tilde', bytes: '~' },
   { label: '/', name: 'Slash', bytes: '/' },
@@ -46,6 +55,13 @@ export function shellSocketPath(id: string, cwd: string | null, size: { cols: nu
 /** The frame that resizes the pseudo-terminal, as on the core `/api/pty`. */
 export function resizeFrame(cols: number, rows: number): string {
   return `\x1b[RESIZE:${Math.max(2, Math.round(cols))};${Math.max(2, Math.round(rows))}]`
+}
+
+/** The bytes of a cursor key, in the mode the shell set. */
+export function cursorBytes(key: CursorKey, applicationMode: boolean): string {
+  const letter = { up: 'A', down: 'B', right: 'C', left: 'D', end: 'F', home: 'H' }[key]
+
+  return `\x1b${applicationMode ? 'O' : '['}${letter}`
 }
 
 /**

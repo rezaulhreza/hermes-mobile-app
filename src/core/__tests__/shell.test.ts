@@ -1,4 +1,4 @@
-import { newShellId, resizeFrame, shellLabel, shellSocketPath, shellsFrom, withControl } from '../shell'
+import { cursorBytes, newShellId, resizeFrame, shellLabel, shellSocketPath, shellsFrom, withControl } from '../shell'
 
 describe('the shell of the terminal', () => {
   it('names a new shell with letters and figures only', () => {
@@ -13,6 +13,12 @@ describe('the shell of the terminal', () => {
   it('writes the resize frame of the host, never smaller than 2 by 2', () => {
     expect(resizeFrame(81.6, 24)).toBe('\x1b[RESIZE:82;24]')
     expect(resizeFrame(0, 0)).toBe('\x1b[RESIZE:2;2]')
+  })
+
+  it('sends a cursor key in the mode the shell set', () => {
+    expect(cursorBytes('right', false)).toBe('\x1b[C')
+    expect(cursorBytes('right', true)).toBe('\x1bOC')
+    expect(cursorBytes('end', true)).toBe('\x1bOF')
   })
 
   it('turns a letter into its control code with Ctrl held', () => {

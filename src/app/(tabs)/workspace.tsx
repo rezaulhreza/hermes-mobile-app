@@ -12,7 +12,7 @@ import { PreviewPanel } from '@/components/workspace/preview-panel'
 import { RootSheet } from '@/components/workspace/root-sheet'
 import { baseName } from '@/core/workspace'
 import { $linkState } from '@/store/link'
-import { $shells, loadShells } from '@/store/shell'
+import { $shells, closeShell, loadShells } from '@/store/shell'
 import { $changes, $root } from '@/store/workspace'
 import { dark, MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -41,6 +41,12 @@ export default function Workspace() {
   const [panel, setPanel] = useState<Panel>('files')
   const [choosing, setChoosing] = useState(false)
   const shells = useStore($shells)
+  const [endingAll, setEndingAll] = useState(false)
+
+  const endAll = () => {
+    setEndingAll(false)
+    void Promise.all($shells.get().map(shell => closeShell(shell.id).catch(() => undefined)))
+  }
   // The panels leave room for the bar of the shells over the tab bar.
   const bottom = TAB_BAR_CLEARANCE + (shells.length ? 56 : 0)
 
@@ -78,10 +84,10 @@ export default function Workspace() {
           disabled={linkState !== 'open'}
           hitSlop={4}
           onPress={() => router.push('/terminal')}
-          style={({ pressed }) => [styles.terminal, { backgroundColor: t.ink }, (pressed || linkState !== 'open') && styles.dim]}
+          style={({ pressed }) => [styles.terminal, { backgroundColor: t.inverse }, (pressed || linkState !== 'open') && styles.dim]}
         >
-          <Feather color={t.accentFill} name="terminal" size={14} />
-          <Text style={[type.small, { color: t.accentFill, fontWeight: '700' }]}>Terminal</Text>
+          <Feather color={t.onInverse} name="terminal" size={14} />
+          <Text style={[type.small, { color: t.onInverse, fontWeight: '700' }]}>Terminal</Text>
         </Pressable>
       </View>
 
@@ -121,14 +127,37 @@ export default function Workspace() {
         />
       )}
       {shells.length ? (
-        // A shell runs on the host: one tap goes back to it.
-        <Pressable accessibilityHint="Opens the terminal" accessibilityRole="button" onPress={() => router.push('/terminal')} style={[styles.runningBar, { backgroundColor: dark.bg }]}>
-          <View style={[styles.runningDot, { backgroundColor: dark.accentFill }]} />
-          <Text numberOfLines={1} style={[styles.runningText, { color: dark.ink }]}>
-            {shells.length === 1 ? '1 shell runs on the host' : `${shells.length} shells run on the host`}
-          </Text>
-          <Text style={[type.small, { color: dark.accentFill, fontWeight: '700' }]}>Open</Text>
-        </Pressable>
+        // A shell runs on the host: one tap goes back to it, and End stops every one, after a question.
+        <View style={[styles.runningBar, { backgroundColor: dark.bg, borderColor: dark.line }]}>
+          <View style={[styles.runningDot, { backgroundColor: endingAll ? dark.red : dark.accentFill }]} />
+          {endingAll ? (
+            <>
+              <Text numberOfLines={2} style={[type.small, styles.fill, { color: dark.ink }]}>
+                {shells.length === 1 ? 'End the shell and every program in it?' : `End ${shells.length} shells and every program in them?`}
+              </Text>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setEndingAll(false)}>
+                <Text style={[type.small, { color: dark.ink, fontWeight: '700' }]}>Keep</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={endAll}>
+                <Text style={[type.small, { color: dark.red, fontWeight: '700' }]}>End</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable accessibilityHint="Opens the terminal" accessibilityRole="button" onPress={() => router.push('/terminal')} style={styles.fill}>
+                <Text numberOfLines={1} style={[styles.runningText, { color: dark.ink }]}>
+                  {shells.length === 1 ? '1 shell runs on the host' : `${shells.length} shells run on the host`}
+                </Text>
+              </Pressable>
+              <Pressable accessibilityLabel={shells.length === 1 ? 'End the shell' : 'End the shells'} accessibilityRole="button" hitSlop={8} onPress={() => setEndingAll(true)}>
+                <Text style={[type.small, { color: dark.muted, fontWeight: '700' }]}>End</Text>
+              </Pressable>
+              <Pressable accessibilityLabel="Open the terminal" accessibilityRole="button" hitSlop={8} onPress={() => router.push('/terminal')}>
+                <Text style={[type.small, { color: dark.accentFill, fontWeight: '700' }]}>Open</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
       ) : null}
       <RootSheet onClose={() => setChoosing(false)} visible={choosing} />
     </SafeAreaView>
@@ -153,7 +182,9 @@ const styles = StyleSheet.create({
     gap: space.sm,
     minHeight: 48,
     paddingHorizontal: space.md,
-    borderRadius: radius.md
+    borderRadius: radius.md,
+    // The bar is terminal black in both modes: the line keeps its edge on the dark ground.
+    borderWidth: StyleSheet.hairlineWidth
   },
   runningDot: { width: 8, height: 8, borderRadius: 4 },
   runningText: { flex: 1, fontFamily: MONO, fontSize: 12 },

@@ -7,7 +7,7 @@ import { Appearance, KeyboardAvoidingView, Platform, Pressable, ScrollView, Styl
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { TerminalView, type TerminalViewHandle } from '@/components/terminal/terminal-view'
-import { newShellId, SHELL_KEYS, type ShellInfo, shellLabel, withControl } from '@/core/shell'
+import { cursorBytes, newShellId, SHELL_KEYS, type ShellInfo, shellLabel, withControl } from '@/core/shell'
 import { tap } from '@/native/haptics'
 import { $shells, closeShell, connectShell, type ShellEnd, type ShellLink, loadShells } from '@/store/shell'
 import { $root } from '@/store/workspace'
@@ -43,6 +43,8 @@ export default function TerminalScreen() {
   const [ctrl, setCtrl] = useState(false)
   const [ending, setEnding] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // The list of the host is read: with no shell, the screen says so and offers one.
+  const [loaded, setLoaded] = useState(false)
 
   // Light status bar text on the dark terminal, and the app's own style again when it closes.
   // A <StatusBar> element here kept the light text on the screen under it.
@@ -70,6 +72,8 @@ export default function TerminalScreen() {
   useEffect(() => {
     loadShells()
       .then(found => {
+        setLoaded(true)
+
         if (!found.length) {
           startShell()
         } else {
@@ -110,10 +114,16 @@ export default function TerminalScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shell?.id, attempt])
 
-  const send = (text: string) => {
-    link.current?.send(ctrl ? withControl(text) : text)
+  // A press on the key row must not take the keyboard from the terminal.
+  const keepFocus = () => view.current?.focus()
 
-    if (ctrl) {
+  const send = (text: string) => {
+    // Ctrl goes with one typed key only. A longer input (a focus report of the terminal, a paste) leaves it armed.
+    const withCtrl = ctrl && text.length === 1
+
+    link.current?.send(withCtrl ? withControl(text) : text)
+
+    if (withCtrl) {
       setCtrl(false)
     }
   }
@@ -132,11 +142,8 @@ export default function TerminalScreen() {
         .finally(() => {
           const left = $shells.get().filter(known => known.id !== id)
 
-          if (left.length) {
-            setCurrent(left[left.length - 1].id)
-          } else {
-            startShell()
-          }
+          // The last shell ended: none starts by itself. The screen offers a new one.
+          setCurrent(left.length ? left[left.length - 1].id : null)
         })
     }
   }
@@ -166,7 +173,7 @@ export default function TerminalScreen() {
 
             return (
               <Pressable
-                accessibilityHint={on ? 'Hold to end this shell' : undefined}
+                accessibilityHint={on ? 'Hold, or press its cross, to end this shell' : undefined}
                 accessibilityLabel={`Shell: ${shellLabel(known)}`}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
@@ -179,6 +186,11 @@ export default function TerminalScreen() {
                 <Text numberOfLines={1} style={[styles.mono, { color: on ? c.ink : c.muted }]}>
                   {shellLabel(known)}
                 </Text>
+                {on ? (
+                  <Pressable accessibilityLabel="End this shell" accessibilityRole="button" hitSlop={10} onPress={() => (tap(), setEnding(true))}>
+                    <Feather color={c.muted} name="x" size={14} />
+                  </Pressable>
+                ) : null}
               </Pressable>
             )
           })}
@@ -200,6 +212,11 @@ export default function TerminalScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
         <View style={[styles.screen, { borderColor: c.line }]}>
           <TerminalView
+            onCursor={(key, applicationMode) => {
+              // Ctrl does not go with a cursor key here: the key is sent as it is, and Ctrl is let go.
+              setCtrl(false)
+              link.current?.send(cursorBytes(key, applicationMode))
+            }}
             onInput={send}
             onReady={(cols, rows) => {
               size.current = { cols, rows }
@@ -212,6 +229,15 @@ export default function TerminalScreen() {
             }}
             ref={view}
           />
+          {loaded && !shell && !end ? (
+            <View style={styles.none}>
+              <Text style={[type.body, { color: c.muted }]}>No shell runs on the host.</Text>
+              <Pressable accessibilityRole="button" onPress={() => (tap(), startShell())} style={[styles.start, { backgroundColor: c.accentFill }]}>
+                <Feather color={c.onAccent} name="terminal" size={15} />
+                <Text style={[type.label, { color: c.onAccent }]}>Start a shell</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {end ? (
             <View style={[styles.end, { backgroundColor: c.paper, borderColor: c.line }]}>
               <Text style={[type.small, styles.fill, { color: c.ink }]}>{END_WORDS[end]}</Text>
@@ -241,7 +267,13 @@ export default function TerminalScreen() {
             <Text style={[styles.keyText, { color: ctrl ? c.onAccent : c.ink }]}>ctrl</Text>
           </Pressable>
           {SHELL_KEYS.map(key => (
-            <Pressable accessibilityLabel={key.name} accessibilityRole="button" key={key.name} onPress={() => (tap(), send(key.bytes))} style={[styles.key, { backgroundColor: c.soft }]}>
+            <Pressable
+              accessibilityLabel={key.name}
+              accessibilityRole="button"
+              key={key.name}
+              onPress={() => (tap(), 'cursor' in key ? view.current?.cursor(key.cursor) : send(key.bytes), keepFocus())}
+              style={[styles.key, { backgroundColor: c.soft }]}
+            >
               <Text style={[styles.keyText, { color: c.ink }]}>{key.label}</Text>
             </Pressable>
           ))}
@@ -262,6 +294,8 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginHorizontal: space.md, marginBottom: space.sm, padding: space.md, borderRadius: radius.md },
   screen: { flex: 1, marginHorizontal: space.sm, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  none: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: space.md, backgroundColor: c.bg },
+  start: { flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 40, paddingHorizontal: space.lg, borderRadius: 20 },
   end: { position: 'absolute', left: space.sm, right: space.sm, bottom: space.sm, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   keyBar: { flexGrow: 0, paddingTop: space.sm },
   keys: { gap: 6, paddingHorizontal: space.sm },
