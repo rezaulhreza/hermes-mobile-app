@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
-import { useState } from 'react'
-import { router } from 'expo-router'
+import { useCallback, useState } from 'react'
+import { router, useFocusEffect } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -12,7 +12,8 @@ import { PreviewPanel } from '@/components/workspace/preview-panel'
 import { RootSheet } from '@/components/workspace/root-sheet'
 import { baseName } from '@/core/workspace'
 import { $linkState } from '@/store/link'
-import { $changes, $root, $terminal } from '@/store/workspace'
+import { $shells, loadShells } from '@/store/shell'
+import { $changes, $root } from '@/store/workspace'
 import { dark, MONO, radius, space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -39,8 +40,18 @@ export default function Workspace() {
   const changed = useStore($changes).files.length
   const [panel, setPanel] = useState<Panel>('files')
   const [choosing, setChoosing] = useState(false)
-  const terminal = useStore($terminal)
-  const running = terminal?.running ? terminal.entries[terminal.entries.length - 1]?.command : undefined
+  const shells = useStore($shells)
+  // The panels leave room for the bar of the shells over the tab bar.
+  const bottom = TAB_BAR_CLEARANCE + (shells.length ? 56 : 0)
+
+  // The shells keep running on the host after the terminal closes: the bar under the panels says so.
+  useFocusEffect(
+    useCallback(() => {
+      if (linkState === 'open') {
+        void loadShells().catch(() => undefined)
+      }
+    }, [linkState])
+  )
 
   return (
     <SafeAreaView edges={['top']} style={[styles.fill, { backgroundColor: t.bg }]}>
@@ -97,9 +108,9 @@ export default function Workspace() {
               )
             })}
           </View>
-          {panel === 'files' ? <FilesPanel bottom={TAB_BAR_CLEARANCE} /> : null}
-          {panel === 'changes' ? <ChangesPanel bottom={TAB_BAR_CLEARANCE} /> : null}
-          {panel === 'preview' ? <PreviewPanel bottom={TAB_BAR_CLEARANCE} /> : null}
+          {panel === 'files' ? <FilesPanel bottom={bottom} /> : null}
+          {panel === 'changes' ? <ChangesPanel bottom={bottom} /> : null}
+          {panel === 'preview' ? <PreviewPanel bottom={bottom} /> : null}
         </>
       ) : (
         <Notice
@@ -109,12 +120,12 @@ export default function Workspace() {
           title="Work in a folder on the host"
         />
       )}
-      {running ? (
-        // A command still runs on the host: one tap goes back to it.
+      {shells.length ? (
+        // A shell runs on the host: one tap goes back to it.
         <Pressable accessibilityHint="Opens the terminal" accessibilityRole="button" onPress={() => router.push('/terminal')} style={[styles.runningBar, { backgroundColor: dark.bg }]}>
           <View style={[styles.runningDot, { backgroundColor: dark.accentFill }]} />
           <Text numberOfLines={1} style={[styles.runningText, { color: dark.ink }]}>
-            {running}
+            {shells.length === 1 ? '1 shell runs on the host' : `${shells.length} shells run on the host`}
           </Text>
           <Text style={[type.small, { color: dark.accentFill, fontWeight: '700' }]}>Open</Text>
         </Pressable>
