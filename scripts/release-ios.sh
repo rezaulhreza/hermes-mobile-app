@@ -19,6 +19,8 @@
 # The script writes your values into the generated ios/ folder (not in git) for the build and
 # puts the placeholder back when it ends, also after a failure.
 set -eu
+# CocoaPods crashes without a UTF-8 locale (a shell started by a tool often has none).
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 MODE="${1:?archive or upload}"
 ENV_FILE="${HERMES_RELEASE_ENV:-$HOME/.config/hermes-native/release.env}"
