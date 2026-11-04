@@ -1,4 +1,6 @@
 import {
+  sessionWork,
+  workWords,
   channel,
   exportFileName,
   rowProfile,
@@ -276,5 +278,22 @@ describe('session edit fence', () => {
 
   it('makes a new request id each time', () => {
     expect(mutationRequestId()).not.toBe(mutationRequestId())
+  })
+})
+
+describe('what runs for a conversation that is not open', () => {
+  it('reads the roster of the host by stored id', () => {
+    expect(sessionWork({ sessions: [{ session_id: 'a', subagents: 2 }, { session_id: 'b', background: 1, subagents: 0 }, { session_id: 'c' }, { subagents: 3 }] })).toEqual({
+      a: { subagents: 2, background: 0 },
+      b: { subagents: 0, background: 1 }
+    })
+    expect(sessionWork(null)).toEqual({})
+  })
+
+  it('says it in words', () => {
+    expect(workWords({ subagents: 2, background: 0 })).toBe('2 helpers at work')
+    expect(workWords({ subagents: 1, background: 1 })).toBe('1 helper · 1 background job')
+    expect(workWords({ subagents: 0, background: 2 })).toBe('2 background jobs')
+    expect(workWords(undefined)).toBe('')
   })
 })

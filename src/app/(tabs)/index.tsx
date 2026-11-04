@@ -26,7 +26,8 @@ import {
   sessionSections,
   sessionTitle,
   snippetParts,
-  withMessageHits
+  withMessageHits,
+  workWords
 } from '@/core/sessions'
 import { listPaneWidth } from '@/core/layout'
 import { tap } from '@/native/haptics'
@@ -38,6 +39,7 @@ import { $pane, closePane, openChat, useWide } from '@/store/pane'
 import { $requests } from '@/store/requests'
 import {
   $liveSessions,
+  $sessionWork,
   $sessionHits,
   $selectedSessions,
   deleteSelected,
@@ -134,6 +136,7 @@ export default function Chats() {
   const crowded = Boolean(project)
   const hits = useStore($sessionHits)
   const live = useStore($liveSessions)
+  const work = useStore($sessionWork)
   const sections = useMemo(() => withMessageHits(sessionSections(filterSessions(sessions, query, activeSource), live), hits), [sessions, query, activeSource, hits, live])
 
   const startChat = async () => {
@@ -280,6 +283,7 @@ export default function Chats() {
             // In the list of every profile, each row shows whose conversation it is.
             owner={profile ? undefined : (item.profile ?? undefined)}
             live={live[item.id]}
+            work={workWords(work[item.id])}
             row={item}
             selected={selected ? selected.includes(item.id) : undefined}
           />
@@ -359,6 +363,7 @@ function SessionRow({
   botChat,
   owner,
   live,
+  work,
   onActions,
   selected,
   first,
@@ -369,6 +374,8 @@ function SessionRow({
   botChat?: string
   owner?: string
   live?: LiveState
+  /** What still runs for it with no one watching: "2 helpers at work". Empty: nothing. */
+  work?: string
   onActions: () => void
   selected?: boolean
   /** The rows of a section sit on one card: the first and the last round its corners. */
@@ -469,6 +476,11 @@ function SessionRow({
             {named ? <Text style={{ color: t.accent, fontWeight: '600' }}>{named}</Text> : null}
             {named && line ? '  ·  ' : ''}
             {line}
+          </Text>
+        ) : null}
+        {work ? (
+          <Text numberOfLines={1} style={[type.small, { color: t.ink }]}>
+            {work}
           </Text>
         ) : null}
       </View>

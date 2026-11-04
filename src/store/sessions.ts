@@ -30,6 +30,8 @@ import {
   sessionSearchPath,
   type SessionRow,
   type SessionView,
+  type SessionWork,
+  sessionWork,
   SOURCES_TO_PROBE,
   withLastMessages,
   withSessionChange,
@@ -192,6 +194,23 @@ export async function loadSessionSources(): Promise<void> {
 
 /** The conversations in which Hermes works now, or which wait for the user, by stored id. */
 export const $liveSessions = atom<Record<string, LiveState>>({})
+/** The helpers and background jobs that still run for a conversation, by stored id. Empty for a host without the roster. */
+export const $sessionWork = atom<Record<string, SessionWork>>({})
+
+/**
+ * Ask each profile in the list which conversations still have helpers or
+ * background jobs running. The host answers for one profile at a time, and
+ * only with the conversations stored in it.
+ */
+async function refreshSessionWork(): Promise<void> {
+  const profiles = [...new Set($sessions.get().map(row => row.profile ?? ''))].slice(0, 8)
+  const answers = await Promise.all(profiles.map(profile => rpc('subagent.roster', profile ? { profile } : {}).then(sessionWork, () => ({}))))
+  const work = Object.assign({}, ...answers) as Record<string, SessionWork>
+
+  if (JSON.stringify(work) !== JSON.stringify($sessionWork.get())) {
+    $sessionWork.set(work)
+  }
+}
 
 const LIVE_POLL_MS = 5000
 let liveTimer: ReturnType<typeof setTimeout> | null = null
@@ -218,6 +237,8 @@ export async function refreshLiveSessions(): Promise<void> {
   if (!sameLiveStates(states, $liveSessions.get())) {
     $liveSessions.set(states)
   }
+
+  await refreshSessionWork().catch(() => undefined)
 
   if (Object.keys(states).length && !liveTimer) {
     liveTimer = setTimeout(() => void refreshLiveSessions(), LIVE_POLL_MS)

@@ -421,3 +421,38 @@ export function isStaleFence(error: unknown): boolean {
 export function mutationRequestId(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`
 }
+
+/** What still runs for a conversation that is not open: helpers (subagents) and background jobs. */
+export interface SessionWork {
+  subagents: number
+  background: number
+}
+
+/** The answer of `subagent.roster`, by stored session id. A conversation with nothing running is not in it. */
+export function sessionWork(result: unknown): Record<string, SessionWork> {
+  const rows = (result as { sessions?: unknown } | null)?.sessions
+  const count = (value: unknown) => (typeof value === 'number' && value > 0 ? Math.floor(value) : 0)
+
+  return Object.fromEntries(
+    (Array.isArray(rows) ? rows : []).flatMap(row => {
+      const { session_id, subagents, background } = (row ?? {}) as Record<string, unknown>
+      const work = { subagents: count(subagents), background: count(background) }
+
+      return typeof session_id === 'string' && session_id && (work.subagents || work.background) ? [[session_id, work]] : []
+    })
+  )
+}
+
+/** "2 helpers at work", "1 background job", "2 helpers · 1 background job". Empty: nothing runs. */
+export function workWords(work: SessionWork | undefined): string {
+  if (!work) {
+    return ''
+  }
+
+  const parts = [
+    work.subagents ? `${work.subagents} ${work.subagents === 1 ? 'helper' : 'helpers'}${work.background ? '' : ' at work'}` : '',
+    work.background ? `${work.background} background ${work.background === 1 ? 'job' : 'jobs'}` : ''
+  ]
+
+  return parts.filter(Boolean).join(' · ')
+}
