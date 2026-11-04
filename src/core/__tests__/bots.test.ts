@@ -5,7 +5,6 @@ const NOW = 10_000
 const rows = botRows(
   [
     { name: 'writer', path: '/p/writer', description: ' Writes the docs. ', model: 'm', canonical_session: { id: 'a', resolved_id: 'a2', last_active: 500, preview: 'Draft\n done' } },
-    { name: 'setup-tmp', path: '/p/s', role: 'setup' },
     { name: 'backend', path: '/p/backend', worker_session: { id: 'w', last_active: NOW - 30 } },
     { name: 'default', path: '/p', is_default: true, display_name: 'manager', has_avatar: true, skill_count: 12 },
     { name: 'idle', path: '/p/idle', worker_session: { id: 'w', last_active: NOW - 900 } }
@@ -16,10 +15,6 @@ const rows = botRows(
 describe('botRows', () => {
   it('puts the main bot first, then the ones at work, then the newest', () => {
     expect(rows.map(bot => bot.name)).toEqual(['default', 'backend', 'idle', 'writer'])
-  })
-
-  it('leaves out a profile that only finishes a setup', () => {
-    expect(rows.some(bot => bot.name === 'setup-tmp')).toBe(false)
   })
 
   it('reads the name a person sees, the chat and the state', () => {

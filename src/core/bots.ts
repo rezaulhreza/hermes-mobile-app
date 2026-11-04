@@ -92,8 +92,6 @@ function titleOf(row: ProfileRow): string {
 
 export function botRows(profiles: readonly ProfileRow[], nowS: number): Bot[] {
   return profiles
-    // A profile that exists only to finish a setup is not a bot yet.
-    .filter(row => row.role !== 'setup')
     .map(row => {
       const chat = row.canonical_session
       const workerAt = row.worker_session?.last_active ?? 0
