@@ -314,7 +314,7 @@ def _round(engine_id: str, state: Optional[dict] = None) -> dict:
     No RPC of the gateway names the bot of a turn (``groups.state`` gives counts only), so this
     reads the task list of the engine, and reads only. IF A HERMES UPDATE MOVES IT: there is no
     turn, and the phone says "The bots answer in turn" as it did before. See LEDGER.md."""
-    empty = {"round": [], "actions": [], "round_end": None}
+    empty = {"round": [], "actions": [], "round_end": None, "assigned": None}
     try:
         from gateway.hosted_room_driver import list_tasks
         from gateway.hosted_rooms import default_db_path
@@ -325,7 +325,7 @@ def _round(engine_id: str, state: Optional[dict] = None) -> dict:
         # A message of the user starts a discussion. Its turns name the place of that message in the log.
         last = str(tasks[-1]["payload"].get("source_event_seq"))
         mine = [task for task in tasks if str(task["payload"].get("source_event_seq")) == last]
-        ends, end = _turn_ends(engine_id, int(last or 0))
+        ends, end, assigned = _turn_ends(engine_id, int(last or 0))
         ms = lambda at: int(float(at) * 1000) if at else 0  # noqa: E731
         turns = []
         for task in mine:
@@ -341,8 +341,10 @@ def _round(engine_id: str, state: Optional[dict] = None) -> dict:
             if not isinstance(action, dict) or str(action.get("task_id") or "") not in members:
                 continue
             task_id = str(action["task_id"])
-            if action.get("kind") == "retry":
-                actions.append({"kind": "retry", "task_id": task_id, "member": members[task_id]})
+            if action.get("kind") in ("retry", "discard"):
+                # The engine does not know how this turn ended: run it again, or let it go.
+                actions.append({"kind": str(action["kind"]), "task_id": task_id, "member": str(action.get("member_id") or members[task_id]),
+                                "execution_generation": int(action.get("execution_generation") or 0)})
             elif action.get("kind") == "approval" and action.get("request_id"):
                 approval = action.get("approval") if isinstance(action.get("approval"), dict) else {}
                 asks = str(approval.get("description") or approval.get("command") or approval.get("message") or "").strip()
@@ -350,17 +352,21 @@ def _round(engine_id: str, state: Optional[dict] = None) -> dict:
                     "kind": "approval", "task_id": task_id, "member": str(action.get("member_id") or members[task_id]),
                     "request_id": str(action["request_id"]), "execution_generation": int(action.get("execution_generation") or 0),
                     "asks": asks[:600]})
-        return {"round": turns, "actions": actions, "round_end": end}
+        return {"round": turns, "actions": actions, "round_end": end, "assigned": assigned}
     except Exception:  # noqa: BLE001 - the room is readable without it
         logger.debug("group-rooms: the turns of %s cannot be read", engine_id, exc_info=True)
         return empty
 
 
-def _turn_ends(engine_id: str, source_seq: int) -> tuple[dict[str, dict], Optional[dict]]:
-    """How each turn of a discussion ended, by its task, and how the discussion ended: from the log
-    of the engine after the message that started it."""
+def _turn_ends(engine_id: str, source_seq: int) -> tuple[dict[str, dict], Optional[dict], Optional[dict]]:
+    """How each turn of a discussion ended, by its task, how the discussion ended, and who it was
+    given to: from the log of the engine after the message that started it.
+
+    The gateway writes who takes a message before any bot answers: ``room.assignment`` when the lead
+    bot handed it out, ``room.routed`` when the router of the room chose. A discussion that stopped at
+    its limit ends ``bounded``; ``room.continued`` opens it again."""
     ends: dict[str, dict] = {}
-    end, cursor = None, max(0, source_seq - 1)
+    end, assigned, cursor = None, None, max(0, source_seq - 1)
     while True:
         page = _rpc("groups.log", {"room_id": engine_id, "since_seq": cursor, "limit": 200})
         for event in page.get("events") or []:
@@ -373,12 +379,21 @@ def _turn_ends(engine_id: str, source_seq: int) -> tuple[dict[str, dict], Option
             elif kind in ("turn.failed", "turn.cancelled") and task_id:
                 ends[task_id] = {"reason": str(payload.get("reason_code") or payload.get("reason") or "")[:64], "error": str(payload.get("error") or "")[:300]}
             elif kind == "room.activity" and int(event.get("seq") or 0) > source_seq:
-                end = {"status": str(payload.get("status") or ""), "reason": str(payload.get("reason_code") or "")}
+                end = {"status": str(payload.get("status") or ""), "reason": str(payload.get("reason_code") or ""),
+                       "discussion": str(payload.get("discussion_event_id") or "")}
+            elif kind == "room.continued" and int(event.get("seq") or 0) > source_seq:
+                end = None  # The person gave the discussion more rounds: it runs again.
+            elif kind in ("room.assignment", "room.routed") and int(event.get("seq") or 0) >= source_seq:
+                assigned = {
+                    "by": "lead" if kind == "room.assignment" else "router",
+                    "members": [str(member) for member in payload.get("member_ids") or []],
+                    "lead": str(payload.get("lead_member_id") or ""),
+                    "everyone": bool(payload.get("everyone")), "fallback": bool(payload.get("fallback"))}
             elif kind == "message.user" and int(event.get("seq") or 0) > source_seq:
-                end = None  # A later message of the user: its discussion has no end yet.
+                end, assigned = None, None  # A later message of the user: its discussion has no end yet.
         moved = int(page.get("cursor") or 0)
         if not page.get("has_more") or moved <= cursor:
-            return ends, end
+            return ends, end, assigned
         cursor = moved
 
 
@@ -387,6 +402,53 @@ def _engine_state(engine_id: str) -> Optional[dict]:
         return _rpc("groups.state", {"room_id": engine_id})
     except Refused:
         return None
+
+
+ROUTINGS = ("everyone", "lead", "auto")
+MAX_PURPOSE = 500
+MAX_NOTES = 8000
+
+
+def _context_of(room: dict) -> dict:
+    """The purpose, the shared notes and the routing that the record keeps for a room. The engine
+    room changes with the members, so the record is where they last."""
+    saved = room.get("context") if isinstance(room.get("context"), dict) else {}
+    routing = str(saved.get("routing") or "everyone")
+    return {"purpose": str(saved.get("purpose") or ""), "notes": str(saved.get("notes") or ""),
+            "routing": routing if routing in ROUTINGS else "everyone", "lead": str(saved.get("lead") or "")}
+
+
+def _push_context(engine_id: str, context: dict) -> None:
+    """Give the engine room the context of the record, when it has another one. Every member reads it
+    on its next turn."""
+    state = _engine_state(engine_id) or {}
+    now = state.get("context") if isinstance(state.get("context"), dict) else {}
+    wanted = {"purpose": context["purpose"], "notes": context["notes"], "routing": context["routing"],
+              "lead_member_id": context["lead"] if context["routing"] == "lead" else ""}
+    if all(str(now.get(key) or "") == str(value or "") for key, value in wanted.items()) or (not any(now.values()) and wanted == {
+            "purpose": "", "notes": "", "routing": "everyone", "lead_member_id": ""}):
+        return
+    params = {"room_id": engine_id, "event_id": f"ctx-{uuid.uuid4().hex[:16]}", "purpose": wanted["purpose"], "notes": wanted["notes"],
+              "routing": wanted["routing"]}
+    if wanted["lead_member_id"]:
+        params["lead_member_id"] = wanted["lead_member_id"]
+    _rpc("groups.context", params)
+
+
+def _team(state: Optional[dict], room: dict) -> dict:
+    """How the room works as a team: its context, the routings this host offers, the limit of a
+    discussion, and what each bot does at this moment (``member_activity`` of the engine)."""
+    status = ((state or {}).get("driver_status") or {}) if isinstance(state, dict) else {}
+    ms = lambda at: int(float(at) * 1000) if at else 0  # noqa: E731
+    activity = []
+    for row in status.get("member_activity") or []:
+        if isinstance(row, dict) and row.get("member_id"):
+            activity.append({"member": str(row["member_id"]), "status": str(row.get("status") or ""), "tool": str(row.get("tool") or ""),
+                             "started_at": ms(row.get("started_at")), "progress_at": ms(row.get("progress_at")),
+                             "round": int(row["round_index"]) + 1 if isinstance(row.get("round_index"), int) else 0})
+    modes = [str(mode) for mode in status.get("routing_modes") or [] if str(mode) in ROUTINGS] or ["everyone", "lead"]
+    return {"context": _context_of(room), "routings": modes, "activity": activity,
+            "max_rounds": int(status.get("max_rounds") or 0), "max_continues": int(status.get("max_continues") or 0)}
 
 
 def _shown(key: str, room: dict, working: bool = False) -> dict:
@@ -453,7 +515,8 @@ def read_room(room_id: str) -> dict:
                 record, _revision, _profiles = _read()
         # Between two members the engine rests for a moment: the follower says that the round goes on.
         shown = _shown(key, record["rooms"][_key(record, room_id)], working or _following(room_id))
-        return {**shown, **(_round(engine_id, state) if state is not None else {"round": [], "actions": [], "round_end": None})}
+        team = _team(state, record["rooms"][_key(record, room_id)])
+        return {**shown, "team": team, **(_round(engine_id, state) if state is not None else {"round": [], "actions": [], "round_end": None, "assigned": None})}
     return _guard(work)
 
 
@@ -572,6 +635,15 @@ def change_room(room_id: str, body: RoomChange) -> dict:
     def work():
         shown = _write(change)
         _name_in_bots(shown["name"], [str(row.get("name")) for row in shown["members"]], old.get("name"))
+        if body.name is not None and shown["name"] != old.get("name"):
+            try:
+                # The engine room carries the name into each bot's turn: it renames with the room.
+                record, _revision, _profiles = _read()
+                engine_id = _engine_id(record["rooms"][_key(record, room_id)])
+                if _engine_state(engine_id) is not None:
+                    _rpc("groups.rename", {"room_id": engine_id, "event_id": f"ren-{uuid.uuid4().hex[:16]}", "name": shown["name"][:200]})
+            except Refused:
+                pass  # The record has the new name. The engine takes it with its next room.
         return shown
     return _guard(work)
 
@@ -624,7 +696,7 @@ def post_message(room_id: str, body: NewMessage) -> dict:
     def change(record, _revision, profiles):
         key = _key(record, room_id)
         room = record["rooms"][key]
-        found.update(engine_id=_engine_id(room), members=_engine_members(room, profiles), name=str(room.get("name") or "Room"))
+        found.update(engine_id=_engine_id(room), members=_engine_members(room, profiles), name=str(room.get("name") or "Room"), context=_context_of(room))
         log = room.setdefault("log", [])
         now = int(time.time() * 1000)
         if not any(entry.get("id") == message_id for entry in log):
@@ -647,6 +719,7 @@ def post_message(room_id: str, body: NewMessage) -> dict:
             # The engine room exists under the name the room had before a rename.
             if _engine_state(found["engine_id"]) is None:
                 raise
+        _push_context(found["engine_id"], found["context"])
         sent = _rpc("groups.send", {"room_id": found["engine_id"], "event_id": message_id, "payload": {"text": text, "thread_id": re.sub(r"[^A-Za-z0-9._:-]+", "-", found["thread"])}})
         _follow(room_id, found["engine_id"], int((sent.get("event") or {}).get("seq") or 0))
         return shown
@@ -738,4 +811,81 @@ def stop_round(room_id: str) -> dict:
     def work():
         record, _revision, _profiles = _read()
         return {"cancelled": int(_rpc("groups.stop", {"room_id": _engine_id(record["rooms"][_key(record, room_id)]), "cancel_id": f"stop-{uuid.uuid4().hex[:8]}"}).get("cancelled") or 0)}
+    return _guard(work)
+
+
+class TeamContext(BaseModel):
+    purpose: str = ""
+    notes: str = ""
+    # everyone: every bot answers. lead: one bot hands out the work. auto: the router of the host chooses.
+    routing: str = "everyone"
+    lead: Optional[str] = None
+
+
+@router.put("/rooms/{room_id}/context")
+def set_context(room_id: str, body: TeamContext) -> dict:
+    """Set the purpose, the shared notes and the routing of a room. Every bot reads them on its next
+    turn. The record keeps them, and each new engine room of the room gets them."""
+    if body.routing not in ROUTINGS:
+        raise HTTPException(status_code=400, detail="The routing is everyone, lead or auto.")
+    purpose, notes = body.purpose.strip(), body.notes.strip()
+    if len(purpose) > MAX_PURPOSE:
+        raise HTTPException(status_code=400, detail=f"Keep the purpose to {MAX_PURPOSE} characters.")
+    if len(notes.encode()) > MAX_NOTES:
+        raise HTTPException(status_code=400, detail="The shared notes are too long. Make them shorter.")
+    found: dict = {}
+
+    def change(record, revision, profiles):
+        key = _key(record, room_id)
+        room = record["rooms"][key]
+        members = [str(row.get("name")) for row in room.get("members") or [] if isinstance(row, dict)]
+        lead = (body.lead or "").strip()
+        if body.routing == "lead" and lead not in members:
+            raise HTTPException(status_code=400, detail="Choose the lead bot from the bots of the room.")
+        room["context"] = {"purpose": purpose, "notes": notes, "routing": body.routing, "lead": lead if body.routing == "lead" else ""}
+        room["revision"] = revision
+        found.update(engine_id=_engine_id(room), members=_engine_members(room, profiles), name=str(room.get("name") or "Room"), context=_context_of(room))
+        return _context_of(room)
+
+    def work():
+        context = _write(change)
+        try:
+            _rpc("groups.create", {"room_id": found["engine_id"], "name": found["name"][:200], "members": found["members"]})
+        except Refused:
+            if _engine_state(found["engine_id"]) is None:
+                raise
+        _push_context(found["engine_id"], found["context"])
+        return {"context": context}
+    return _guard(work)
+
+
+class Resume(BaseModel):
+    # The message that started the discussion: ``discussion`` of ``round_end``.
+    discussion: str
+
+
+@router.post("/rooms/{room_id}/continue")
+def continue_discussion(room_id: str, body: Resume) -> dict:
+    """Give a discussion that stopped at its limit one more set of rounds."""
+    def work():
+        engine_id = _engine_of(room_id)
+        result = _rpc("groups.continue", {"room_id": engine_id, "discussion_event_id": body.discussion[:128]})
+        _follow(room_id, engine_id, max(0, int((_rpc("groups.state", {"room_id": engine_id}).get("room") or {}).get("latest_seq") or 0) - 1))
+        return {"continued": bool(result.get("continued", True))}
+    return _guard(work)
+
+
+class Discard(BaseModel):
+    member: str
+    execution_generation: int
+
+
+@router.post("/rooms/{room_id}/turns/{task_id}/discard")
+def discard_turn(room_id: str, task_id: str, body: Discard) -> dict:
+    """Let go of a turn of which the engine does not know the end. Its work is not run again."""
+    def work():
+        engine_id = _engine_of(room_id)
+        result = _rpc("groups.discard", {"room_id": engine_id, "member_id": body.member, "task_id": task_id,
+                                         "execution_generation": body.execution_generation})
+        return {"discarded": bool(result.get("discarded", True))}
     return _guard(work)
