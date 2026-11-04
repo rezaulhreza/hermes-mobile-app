@@ -24,6 +24,8 @@ export interface Preferences {
   language: string
   /** A call plays through the loudspeaker. False: the earpiece, as a phone call. */
   speaker: boolean
+  /** The Kanban boards pinned on this phone, by workspace id: they come first in the list of boards. */
+  pinnedBoards: Record<string, string[]>
 }
 
 export type AppearanceChoice = 'system' | 'light' | 'dark'
@@ -34,7 +36,7 @@ function applyAppearance(choice: AppearanceChoice): void {
 }
 
 const STORAGE_KEY = 'hermes.preferences'
-const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [], appearance: 'system', voice: '', language: '', speaker: true }
+const DEFAULTS: Preferences = { engine: 'auto', wake: false, roots: [], appearance: 'system', voice: '', language: '', speaker: true, pinnedBoards: {} }
 const ENGINES: readonly string[] = ['auto', 'deepgram', 'relay', 'gpt-live']
 
 export const $preferences = atom<Preferences>(DEFAULTS)
@@ -50,12 +52,23 @@ export async function loadPreferences(): Promise<void> {
       appearance: stored.appearance === 'light' || stored.appearance === 'dark' ? stored.appearance : 'system',
       voice: typeof stored.voice === 'string' ? stored.voice : '',
       language: typeof stored.language === 'string' ? stored.language : '',
-      speaker: stored.speaker !== false
+      speaker: stored.speaker !== false,
+      pinnedBoards: pinnedBoardsOf(stored.pinnedBoards)
     })
     applyAppearance($preferences.get().appearance)
   } catch {
     // Unreadable text is the same as no choice.
   }
+}
+
+function pinnedBoardsOf(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([workspace, slugs]) => [workspace, Array.isArray(slugs) ? slugs.filter((slug): slug is string => typeof slug === 'string') : []])
+  )
 }
 
 export function setPreference<K extends keyof Preferences>(key: K, value: Preferences[K]): void {

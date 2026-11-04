@@ -178,3 +178,17 @@ export function cardFault(words: string): string {
 
   return waits ? `This card waits for another card: ${waits[1]}` : words
 }
+
+/** The boards in the order of the list: the pinned ones first, in the order they were pinned, then the rest. */
+export function boardsInOrder(boards: readonly Board[], pinned: readonly string[]): Board[] {
+  const at = (slug: string) => {
+    const index = pinned.indexOf(slug)
+
+    return index < 0 ? Infinity : index
+  }
+
+  return [...boards].sort((a, b) => at(a.slug) - at(b.slug))
+}
+
+/** Pin a board, or unpin it. A newly pinned board goes last. */
+export const togglePinned = (pinned: readonly string[], slug: string): string[] => (pinned.includes(slug) ? pinned.filter(known => known !== slug) : [...pinned, slug])

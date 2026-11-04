@@ -12,7 +12,9 @@ import { type Bot, botsByAnyName } from '@/core/bots'
 import { faultWords, relativeTime } from '@/core/format'
 import { type Card, type CardDetail, cardFault, columnName, firstColumn, moveChoices, moveDetail, moveQuestion } from '@/core/kanban'
 import { $bots } from '@/store/bots'
-import { $boards, $boardSlug, $columns, clearKanban, commentCard, createCard, deleteCard, loadBoard, loadBoards, loadCard, showBoard, updateCard } from '@/store/kanban'
+import { $boards, $boardSlug, $columns, clearKanban, commentCard, createCard, deleteCard, loadBoard, loadBoards, loadCard, pinnedBoards, showBoard, togglePinnedBoard, updateCard } from '@/store/kanban'
+import { $preferences } from '@/store/preferences'
+import { boardsInOrder } from '@/core/kanban'
 import { $linkState } from '@/store/link'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
@@ -27,6 +29,9 @@ export default function Kanban() {
   const t = useTheme()
   const linkState = useStore($linkState)
   const boards = useStore($boards)
+  // The pins live in the preferences of this phone: a change draws the list again.
+  useStore($preferences)
+  const pinned = pinnedBoards()
   const slug = useStore($boardSlug)
   const columns = useStore($columns)
   const bots = useStore($bots)
@@ -72,7 +77,19 @@ export default function Kanban() {
           ListEmptyComponent={<Notice icon="inbox" title={`No card in “${columnName(shownKey)}”`} />}
           ListHeaderComponent={
             <View style={styles.top}>
-              <ChoiceRow icon="layout" label="Board" onPress={() => setChoosing('board')} value={board?.name ?? 'The board of the host'} />
+              <View style={styles.boardLine}>
+                <View style={styles.fill}>
+                  <ChoiceRow icon="layout" label="Board" onPress={() => setChoosing('board')} value={board?.name ?? 'The board of the host'} />
+                </View>
+                {board ? (
+                  <IconButton
+                    icon="bookmark"
+                    filled={pinned.includes(board.slug)}
+                    label={pinned.includes(board.slug) ? `Unpin ${board.name}` : `Pin ${board.name}: it comes first in the list of boards`}
+                    onPress={() => togglePinnedBoard(board.slug)}
+                  />
+                ) : null}
+              </View>
               <ChoiceRow icon="columns" label="Column" onPress={() => setChoosing('column')} value={`${columnName(shownKey)} · ${shown?.cards.length ?? 0}`} />
             </View>
           }
@@ -88,7 +105,11 @@ export default function Kanban() {
 
       {choosing === 'board' ? (
         <ChoiceSheet
-          choices={(boards ?? []).map(item => ({ id: item.slug, label: item.name, detail: [`${item.total} ${item.total === 1 ? 'card' : 'cards'}`, item.description].filter(Boolean).join(' · ') }))}
+          choices={boardsInOrder(boards ?? [], pinned).map(item => ({
+            id: item.slug,
+            label: item.name,
+            detail: [pinned.includes(item.slug) ? 'Pinned' : '', `${item.total} ${item.total === 1 ? 'card' : 'cards'}`, item.description].filter(Boolean).join(' · ')
+          }))}
           current={board?.slug}
           onClose={() => setChoosing(null)}
           onPick={picked => (setChoosing(null), setColumn(null), showBoard(picked))}
@@ -289,6 +310,7 @@ function NewCardSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => 
 }
 
 const styles = StyleSheet.create({
+  boardLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },

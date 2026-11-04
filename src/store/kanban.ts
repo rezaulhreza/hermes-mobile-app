@@ -1,8 +1,10 @@
 /** The Kanban boards of the active workspace. Filled while the Board screen is open, emptied when it closes. */
 
 import { atom } from 'nanostores'
+import { $preferences, setPreference } from './preferences'
+import { $activeWorkspace } from './workspaces'
 
-import { type Board, boardColumns, boardRows, type CardDetail, cardDetail, type Column } from '@/core/kanban'
+import { type Board, boardColumns, boardRows, type CardDetail, cardDetail, type Column, togglePinned } from '@/core/kanban'
 
 import { currentApi } from './link'
 
@@ -82,4 +84,17 @@ export function clearKanban(): void {
   $boards.set(null)
   $boardSlug.set(null)
   $columns.set(null)
+}
+
+/** The boards pinned on this phone for the active workspace. */
+export function pinnedBoards(): string[] {
+  return $preferences.get().pinnedBoards[$activeWorkspace.get()?.id ?? ''] ?? []
+}
+
+/** Pin a board of the active workspace, or unpin it. Only this phone keeps the pins, as the desktop app keeps its own. */
+export function togglePinnedBoard(slug: string): void {
+  const workspace = $activeWorkspace.get()?.id ?? ''
+  const all = $preferences.get().pinnedBoards
+
+  setPreference('pinnedBoards', { ...all, [workspace]: togglePinned(all[workspace] ?? [], slug) })
 }

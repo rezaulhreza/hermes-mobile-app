@@ -1,4 +1,4 @@
-import { boardColumns, boardRows, cardDetail, cardFault, columnName, firstColumn, moveChoices, moveQuestion } from '../kanban'
+import { boardsInOrder, togglePinned, boardColumns, boardRows, cardDetail, cardFault, columnName, firstColumn, moveChoices, moveQuestion } from '../kanban'
 
 describe('boards and columns', () => {
   it('lists the boards that are not archived', () => {
@@ -63,5 +63,18 @@ describe('moving a card', () => {
     expect(cardFault('completion blocked: t_1 has no result or summary evidence')).toBe('The host closes a card only with a line about what was done.')
     expect(cardFault("Cannot set status to 'running' directly; use the dispatcher/claim path")).toMatch(/Only a bot/)
     expect(cardFault('Something new')).toBe('Something new')
+  })
+})
+
+describe('pinned boards', () => {
+  const board = (slug: string) => ({ slug, name: slug, description: '', total: 0, current: false })
+
+  it('puts the pinned boards first, in the order they were pinned', () => {
+    expect(boardsInOrder([board('a'), board('b'), board('c')], ['c', 'gone', 'a']).map(known => known.slug)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('pins and unpins', () => {
+    expect(togglePinned(['a'], 'b')).toEqual(['a', 'b'])
+    expect(togglePinned(['a', 'b'], 'a')).toEqual(['b'])
   })
 })
