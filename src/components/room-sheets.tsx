@@ -4,14 +4,15 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { type Bot, knownSections, type Room, roomMembersProblem } from '@/core/bots'
+import { contextProblem, type RoomContext, type RoomTeam, ROUTINGS } from '@/core/rounds'
 import { faultWords } from '@/core/format'
 import { $bots, $filing, setRoomSection } from '@/store/bots'
-import { changeRoom, closeRoom, makeRoom } from '@/store/rooms'
+import { changeRoom, closeRoom, makeRoom, setRoomContext } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
 import { BotAvatar, SectionSheet, SheetFrame } from './bot-sheet'
-import { ChoiceRow } from './choice'
+import { ChoiceRow, ChoiceSheet } from './choice'
 import { Button, Field } from './ui'
 
 /** The bots of the host as a list with a mark on each member. A tap puts a bot in or takes it out. */
@@ -86,7 +87,7 @@ export function NewRoomSheet({ onClose, onMade }: { onClose: () => void; onMade:
 }
 
 /** A group chat's name, its bots, and the way to close it. Each part saves by itself. */
-export function RoomSettingsSheet({ room, onClose, onClosed }: { room: Room; onClose: () => void; onClosed: () => void }) {
+export function RoomSettingsSheet({ room, team, onClose, onClosed }: { room: Room; team: RoomTeam | null; onClose: () => void; onClosed: () => void }) {
   const t = useTheme()
   const all = useStore($bots) ?? []
   // The members come first. A bot that is put away shows only when it is a member already.
@@ -117,6 +118,8 @@ export function RoomSettingsSheet({ room, onClose, onClosed }: { room: Room; onC
       {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
       <Field autoCapitalize="sentences" label="Name" onChangeText={setName} value={name} />
       <Button busy={busy === 'name'} disabled={!name.trim() || name.trim() === room.name} label="Save the name" onPress={() => run('name', () => changeRoom(room.id, { name }))} />
+
+      {team ? <TeamSettings bots={all} room={room} team={team} /> : null}
 
       <ChoiceRow disabled={busy === 'section'} icon="folder" label="Section of the Bots list" onPress={() => setFiling(true)} value={section?.name ?? 'Unassigned'} />
       {filing ? (
@@ -152,7 +155,90 @@ export function RoomSettingsSheet({ room, onClose, onClosed }: { room: Room; onC
   )
 }
 
+/**
+ * How the bots of a room work together: who answers a message that names no
+ * bot, the purpose of the room, and the shared notes. Every bot reads the
+ * purpose and the notes at the start of its turn. They save together.
+ */
+function TeamSettings({ room, team, bots }: { room: Room; team: RoomTeam; bots: readonly Bot[] }) {
+  const t = useTheme()
+  const [draft, setDraft] = useState<RoomContext>(team.context)
+  const [choosing, setChoosing] = useState<'routing' | 'lead' | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [fault, setFault] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const title = (name: string) => bots.find(bot => bot.name === name)?.title ?? name
+  const changed = (['purpose', 'notes', 'routing', 'lead'] as const).some(key => (key === 'lead' && draft.routing !== 'lead' ? false : draft[key].trim() !== team.context[key].trim()))
+  const problem = contextProblem(draft, room.members)
+  const routings = ROUTINGS.filter(routing => team.routings.includes(routing.id))
+  const routing = ROUTINGS.find(known => known.id === draft.routing) ?? ROUTINGS[0]
+
+  const save = () => {
+    setBusy(true)
+    setFault(null)
+    setSaved(false)
+    setRoomContext(room.id, draft)
+      .then(() => setSaved(true), error => setFault(faultWords(error)))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <View style={styles.team}>
+      <Text style={[type.small, styles.heading, { color: t.muted }]}>How the bots work together</Text>
+      <ChoiceRow icon="git-branch" label="Who answers a message that names no bot" onPress={() => setChoosing('routing')} value={routing.label} />
+      {draft.routing === 'lead' ? (
+        <ChoiceRow
+          icon="award"
+          label="Lead bot"
+          lead={bots.find(bot => bot.name === draft.lead) ? <BotAvatar bot={bots.find(bot => bot.name === draft.lead) as Bot} size={28} t={t} /> : undefined}
+          onPress={() => setChoosing('lead')}
+          value={draft.lead ? title(draft.lead) : 'Choose a bot'}
+        />
+      ) : null}
+      <Field autoCapitalize="sentences" label="Purpose" onChangeText={purpose => (setSaved(false), setDraft({ ...draft, purpose }))} placeholder="Plan and ship the launch" value={draft.purpose} />
+      <Field
+        autoCapitalize="sentences"
+        label="Shared notes"
+        multiline
+        onChangeText={notes => (setSaved(false), setDraft({ ...draft, notes }))}
+        placeholder="The brief, the rules and the links every bot works from"
+        style={styles.notes}
+        value={draft.notes}
+      />
+      <Text style={[type.small, { color: t.muted }]}>Every bot reads the purpose and the notes at the start of its turn. A change applies from the next message.</Text>
+      {fault || (changed && problem) ? <Text style={[type.small, { color: t.red }]}>{fault ?? problem}</Text> : null}
+      {saved && !changed ? <Text style={[type.small, { color: t.green }]}>Saved.</Text> : null}
+      <Button busy={busy} disabled={!changed || Boolean(problem)} label="Save how they work" onPress={save} />
+
+      {choosing === 'routing' ? (
+        <ChoiceSheet
+          choices={routings.map(known => ({ id: known.id, label: known.label, detail: known.detail }))}
+          current={draft.routing}
+          onClose={() => setChoosing(null)}
+          onPick={id => (setChoosing(null), setSaved(false), setDraft({ ...draft, routing: id as RoomContext['routing'] }))}
+          title="Who answers"
+        />
+      ) : null}
+      {choosing === 'lead' ? (
+        <ChoiceSheet
+          choices={room.members.map(name => {
+            const bot = bots.find(known => known.name === name)
+
+            return { id: name, label: title(name), detail: bot?.description, lead: bot ? <BotAvatar bot={bot} size={32} t={t} /> : undefined }
+          })}
+          current={draft.lead}
+          onClose={() => setChoosing(null)}
+          onPick={name => (setChoosing(null), setSaved(false), setDraft({ ...draft, lead: name }))}
+          title="Lead bot"
+        />
+      ) : null}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  team: { gap: space.sm },
+  notes: { minHeight: 110, textAlignVertical: 'top', paddingTop: space.md },
   fill: { flex: 1 },
   heading: { fontWeight: '700', marginTop: space.sm },
   list: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },

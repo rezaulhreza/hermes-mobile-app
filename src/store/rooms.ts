@@ -9,7 +9,7 @@ import { atom } from 'nanostores'
 
 import { logMessages, type Room, type RoomMessage, roomRow, withRoom } from '@/core/bots'
 import { type HistoryPage, historyPagePath, pageMessages } from '@/core/history-page'
-import { NO_ROUND, type Round, type RoundAction, roundOf, turnWork } from '@/core/rounds'
+import { NO_ROUND, type Round, type RoomContext, type RoomTeam, type RoundAction, roundOf, teamOf, turnWork } from '@/core/rounds'
 import { transcriptFromHistory, type TranscriptItem } from '@/core/transcript'
 
 import { $rooms } from './bots'
@@ -26,6 +26,8 @@ export const $roomsWritable = atom<boolean | null>(null)
 export const $roomWorking = atom<string | null>(null)
 /** The round in the room on screen: which bot works, which one waits, and what waits for the user. No turn when the host gives none. */
 export const $roomRound = atom<Round>(NO_ROUND)
+/** How the room on screen works as a team: its purpose, notes, routing and what each bot does now. Null from an older plugin. */
+export const $roomTeam = atom<RoomTeam | null>(null)
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let watched: string | null = null
@@ -55,6 +57,7 @@ function take(answer: unknown): Room {
   // Only a read of the room has the turns. An answer to a write must not empty the list.
   if (watched === room.id && Array.isArray((answer as { round?: unknown }).round)) {
     $roomRound.set(roundOf(answer))
+    $roomTeam.set(teamOf(answer))
   }
 
   if ((answer as { working?: unknown }).working === true) {
@@ -115,6 +118,7 @@ export function unwatchRoom(): void {
   watched = null
   $roomWorking.set(null)
   $roomRound.set(NO_ROUND)
+  $roomTeam.set(null)
 
   if (timer) {
     clearTimeout(timer)
@@ -213,6 +217,25 @@ export async function answerApproval(id: string, action: Extract<RoundAction, { 
     method: 'POST',
     body: { task_id: action.taskId, member: action.member, request_id: action.requestId, execution_generation: action.generation, choice }
   })
+  await readRoom(id)
+}
+
+/** Let go of a turn of which the engine does not know the end. Its work does not run again. */
+export async function discardTurn(id: string, action: Extract<RoundAction, { kind: 'discard' }>): Promise<void> {
+  await api().request({ path: `${at(id)}/turns/${encodeURIComponent(action.taskId)}/discard`, method: 'POST', body: { member: action.member, execution_generation: action.generation } })
+  await readRoom(id)
+}
+
+/** Give a discussion that stopped at its limit one more set of rounds, and follow the room while the bots answer. */
+export async function continueRoom(id: string, discussion: string): Promise<void> {
+  await api().request({ path: `${at(id)}/continue`, method: 'POST', body: { discussion }, timeoutMs: 60_000 })
+  $roomWorking.set(id)
+  await readRoom(id)
+}
+
+/** Set the purpose, the shared notes and the routing of a room. Every bot reads them on its next turn. */
+export async function setRoomContext(id: string, context: RoomContext): Promise<void> {
+  await api().request({ path: `${at(id)}/context`, method: 'PUT', body: { purpose: context.purpose.trim(), notes: context.notes.trim(), routing: context.routing, lead: context.routing === 'lead' ? context.lead : null }, timeoutMs: 60_000 })
   await readRoom(id)
 }
 

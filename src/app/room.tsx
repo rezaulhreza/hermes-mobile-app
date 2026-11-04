@@ -17,13 +17,14 @@ import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
 import { type Attachment, promptWithAttachments, sentAttachment, splitStoredPrompt } from '@/core/attachments'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
+import { leadOf } from '@/core/rounds'
 import { faultWords, relativeTime } from '@/core/format'
 import { currentThread, shownRows, threadFolds, type ThreadRow, threadRows, threadTitle } from '@/core/threads'
 import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPart, typedMention } from '@/core/mentions'
 import { $attachments, addAttachments, type AttachSource, removeAttachment, roomFilesKey, takeAttachments } from '@/store/attachments'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomRound, $roomsWritable, $roomWorking, answerApproval, checkRoomsWritable, forgetGroup, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomTeam, $roomWorking, answerApproval, checkRoomsWritable, continueRoom, discardTurn, forgetGroup, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -80,6 +81,8 @@ export default function RoomScreen() {
   const writable = useStore($roomsWritable)
   const working = useStore($roomWorking) === id
   const round = useStore($roomRound)
+  const team = useStore($roomTeam)
+  const lead = leadOf(team)
   const [draft, setDraft] = useState('')
   const field = useRef<TextInput>(null)
   // The thread the user chose for the next message, or a new thread (null). No choice: the newest thread while it is recent.
@@ -220,7 +223,7 @@ export default function RoomScreen() {
           </Text>
           {room ? (
             <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-              {room.members.map(name => byName.get(name)?.title ?? name).join(', ')}
+              {room.members.map(name => `${byName.get(name)?.title ?? name}${name === lead ? ' (lead)' : ''}`).join(', ')}
             </Text>
           ) : null}
         </View>
@@ -375,7 +378,7 @@ export default function RoomScreen() {
               ))}
             </View>
           ) : null}
-          <RoomActivity bots={byName} marked={marked} onApproval={(action, choice) => answerApproval(id, action, choice)} onRetry={taskId => retryTurn(id, taskId)} onStop={() => stopRoom(id)} onStopTurn={taskId => stopTurn(id, taskId)} round={round} working={working} />
+          <RoomActivity bots={byName} marked={marked} onApproval={(action, choice) => answerApproval(id, action, choice)} onContinue={discussion => continueRoom(id, discussion)} onDiscard={action => discardTurn(id, action)} onRetry={taskId => retryTurn(id, taskId)} team={team} onStop={() => stopRoom(id)} onStopTurn={taskId => stopTurn(id, taskId)} round={round} working={working} />
           {fault ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
           {answerLine ? <Text style={[type.small, { color: t.muted }]}>{answerLine}</Text> : null}
           {thread ? (
@@ -444,7 +447,7 @@ export default function RoomScreen() {
           </View>
         </View>
       ) : null}
-      {settings && room ? <RoomSettingsSheet onClose={() => setSettings(false)} onClosed={() => router.back()} room={room} /> : null}
+      {settings && room ? <RoomSettingsSheet onClose={() => setSettings(false)} onClosed={() => router.back()} room={room} team={team} /> : null}
       </KeyboardAvoidingView>
       <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
     </SafeAreaView>

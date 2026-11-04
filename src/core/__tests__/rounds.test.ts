@@ -1,4 +1,4 @@
-import { afterRound, NO_ROUND, roundLine, roundOf, turnTime, turnWords, turnWork } from '../rounds'
+import { activityWords, afterRound, assignedLine, contextProblem, leadOf, NO_ROUND, roundLine, roundOf, teamOf, turnTime, turnWords, turnWork } from '../rounds'
 
 const turn = (member: string, status: string, started_at = 0, ended_at = 0, extra: Record<string, unknown> = {}) => ({ task_id: `t-${member}`, member, status, started_at, ended_at, ...extra })
 const title = (member: string) => member.toUpperCase()
@@ -75,7 +75,7 @@ describe('what a round waits for', () => {
 
   it('reads a turn to run again and a question of a bot', () => {
     expect(roundOf(answer).actions).toEqual([
-      { kind: 'retry', taskId: 't-a', member: 'a' },
+      { kind: 'retry', taskId: 't-a', member: 'a', generation: 0 },
       { kind: 'approval', taskId: 't-b', member: 'b', requestId: 'q1', generation: 2, asks: 'rm -rf build' }
     ])
   })
@@ -108,4 +108,68 @@ it('takes the work of a turn from the session of a bot: the rows after the last 
   expect(turnWork(rows)).toEqual([{ kind: 'thinking' }, { kind: 'tool' }])
   expect(turnWork([{ kind: 'tool' }])).toEqual([{ kind: 'tool' }])
   expect(turnWork([])).toEqual([])
+})
+
+describe('a room that works as a team', () => {
+  it('reads who the room gave a message to', () => {
+    const routed = roundOf({ round: [], assigned: { by: 'router', members: ['builder', 'scout'], lead: '', everyone: false, fallback: false } })
+    const handed = roundOf({ round: [], assigned: { by: 'lead', members: ['builder'], lead: 'critic', everyone: false, fallback: false } })
+
+    expect(assignedLine(routed.assigned, title)).toBe('Assigned to BUILDER and SCOUT.')
+    expect(assignedLine(handed.assigned, title)).toBe('CRITIC gave this to BUILDER.')
+    expect(assignedLine(roundOf({ assigned: { by: 'router', members: [], everyone: true } }).assigned, title)).toBe('Given to every bot.')
+    expect(assignedLine(roundOf({ assigned: { by: 'router', fallback: true } }).assigned, title)).toContain('could not choose')
+    expect(assignedLine(null, title)).toBeNull()
+  })
+
+  it('knows a discussion that stopped at its limit and can go on', () => {
+    const paused = roundOf({ round: [], round_end: { status: 'bounded', reason: 'max_rounds', discussion: 'user:abc' } })
+
+    expect(paused.paused).toBe('user:abc')
+    expect(afterRound(paused, title)).toBe('The bots stopped at the limit of the discussion.')
+    expect(roundOf({ round_end: { status: 'settled', discussion: 'user:abc' } }).paused).toBeNull()
+  })
+
+  it('reads a turn to let go, with its generation', () => {
+    const { actions } = roundOf({ actions: [{ kind: 'discard', task_id: 't1', member: 'scout', execution_generation: 3 }, { kind: 'retry', task_id: 't2', member: 'builder' }] })
+
+    expect(actions).toEqual([
+      { kind: 'discard', taskId: 't1', member: 'scout', generation: 3 },
+      { kind: 'retry', taskId: 't2', member: 'builder', generation: 0 }
+    ])
+  })
+
+  it('reads the team: context, routings and what each bot does', () => {
+    const team = teamOf({
+      team: {
+        context: { purpose: 'Ship v2', notes: 'Brief', routing: 'lead', lead: 'critic' },
+        routings: ['everyone', 'lead', 'auto', 'odd'],
+        activity: [{ member: 'scout', status: 'running', tool: 'web_search', started_at: 1000, progress_at: 5000, round: 2 }, { status: 'running' }],
+        max_rounds: 3,
+        max_continues: 5
+      }
+    })
+
+    expect(team?.context).toEqual({ purpose: 'Ship v2', notes: 'Brief', routing: 'lead', lead: 'critic' })
+    expect(team?.routings).toEqual(['everyone', 'lead', 'auto'])
+    expect(team?.activity).toHaveLength(1)
+    expect(leadOf(team)).toBe('critic')
+    expect(leadOf(teamOf({ team: { context: { routing: 'everyone', lead: 'critic' } } }))).toBe('')
+    expect(teamOf({})).toBeNull()
+  })
+
+  it('says what a bot does now, like the desktop app', () => {
+    const row = { member: 'scout', status: 'running', tool: 'terminal', startedAt: 10_000, progressAt: 16_000, round: 1 }
+
+    expect(activityWords(row, title, 17_000)).toBe('SCOUT · terminal · 7s')
+    expect(activityWords({ ...row, tool: 'web_search' }, title, 85_000)).toBe('SCOUT · web search · 1m 15s')
+    expect(activityWords(row, title, 16_000 + 180_000)).toContain('no progress for 3 min')
+    expect(activityWords({ ...row, status: 'queued' }, title, 0)).toBe('SCOUT · waiting')
+  })
+
+  it('needs a lead bot from the room for lead routing', () => {
+    expect(contextProblem({ purpose: '', notes: '', routing: 'lead', lead: '' }, ['a', 'b'])).toBe('Choose the lead bot.')
+    expect(contextProblem({ purpose: '', notes: '', routing: 'lead', lead: 'a' }, ['a', 'b'])).toBeNull()
+    expect(contextProblem({ purpose: 'x'.repeat(501), notes: '', routing: 'everyone', lead: '' }, [])).toContain('500')
+  })
 })

@@ -26,18 +26,34 @@ export interface Turn {
 /** What the engine waits for from the user. */
 export type RoundAction =
   /** The engine does not know how this turn ended. The user can run it again. */
-  | { kind: 'retry'; taskId: string; member: string }
+  | { kind: 'retry'; taskId: string; member: string; generation: number }
+  /** The engine does not know how this turn ended. The user can let it go: its work does not run again. */
+  | { kind: 'discard'; taskId: string; member: string; generation: number }
   /** A bot wants to do something that needs a yes. `asks` is what, in the words of the host. */
   | { kind: 'approval'; taskId: string; member: string; requestId: string; generation: number; asks: string }
+
+/** Who the room gave a message to, before any bot answered. */
+export interface Assignment {
+  /** `lead`: the lead bot handed it out. `router`: the room chose. */
+  by: 'lead' | 'router'
+  members: string[]
+  lead: string
+  everyone: boolean
+  /** The choice failed, so every bot answers. */
+  fallback: boolean
+}
 
 export interface Round {
   turns: Turn[]
   actions: RoundAction[]
   /** Why the engine ended the round before the bots were done. Null: it ended by itself, or it runs. */
   capped: string | null
+  /** The message that started a discussion that stopped at its limit. Continue gives it more rounds. Null: nothing to continue. */
+  paused: string | null
+  assigned: Assignment | null
 }
 
-export const NO_ROUND: Round = { turns: [], actions: [], capped: null }
+export const NO_ROUND: Round = { turns: [], actions: [], capped: null, paused: null, assigned: null }
 
 /** The states of the engine, in the words of the phone. A state the phone does not know is a turn that waits. */
 const STATES: Record<string, TurnState> = {
@@ -79,7 +95,12 @@ function text(value: unknown): string {
 
 /** The round in the answer of the host for a room. No turn for a host that gives none. */
 export function roundOf(answer: unknown): Round {
-  const { round, actions, round_end } = (answer ?? {}) as { round?: unknown; actions?: unknown; round_end?: { status?: unknown; reason?: unknown } | null }
+  const { round, actions, round_end, assigned } = (answer ?? {}) as {
+    round?: unknown
+    actions?: unknown
+    round_end?: { status?: unknown; reason?: unknown; discussion?: unknown } | null
+    assigned?: Record<string, unknown> | null
+  }
 
   const turns = (Array.isArray(round) ? round : []).flatMap((entry): Turn[] => {
     const { task_id, member, status, started_at, ended_at, passed, reason, error, session } = (entry ?? {}) as Record<string, unknown>
@@ -110,14 +131,47 @@ export function roundOf(answer: unknown): Round {
         return []
       }
 
-      return kind === 'retry'
-        ? [{ kind, taskId: text(task_id), member: text(member) }]
+      const generation = typeof execution_generation === 'number' ? execution_generation : 0
+
+      return kind === 'retry' || kind === 'discard'
+        ? [{ kind, taskId: text(task_id), member: text(member), generation }]
         : kind === 'approval' && text(request_id)
-          ? [{ kind, taskId: text(task_id), member: text(member), requestId: text(request_id), generation: typeof execution_generation === 'number' ? execution_generation : 0, asks: text(asks).trim() }]
+          ? [{ kind, taskId: text(task_id), member: text(member), requestId: text(request_id), generation, asks: text(asks).trim() }]
           : []
     }),
-    capped: round_end?.status === 'bounded' ? (CAPS[text(round_end.reason)] ?? 'The bots stopped at the limit of a round. Send a message to go on.') : null
+    capped: round_end?.status === 'bounded' ? (CAPS[text(round_end.reason)] ?? 'The bots stopped at the limit of a round. Send a message to go on.') : null,
+    paused: round_end?.status === 'bounded' && text(round_end.discussion) ? text(round_end.discussion) : null,
+    assigned:
+      assigned && typeof assigned === 'object'
+        ? {
+            by: assigned.by === 'lead' ? 'lead' : 'router',
+            members: (Array.isArray(assigned.members) ? assigned.members : []).filter((member): member is string => typeof member === 'string' && member !== ''),
+            lead: text(assigned.lead),
+            everyone: assigned.everyone === true,
+            fallback: assigned.fallback === true
+          }
+        : null
   }
+}
+
+/** "Assigned to Builder", "Assigned to Builder and Scout", or every bot. Null: the room gave the message to no one in particular. */
+export function assignedLine(assigned: Assignment | null, title: (member: string) => string): string | null {
+  if (!assigned) {
+    return null
+  }
+
+  if (assigned.fallback) {
+    return assigned.by === 'lead' ? 'The lead bot could not choose, so every bot answers.' : 'The room could not choose, so every bot answers.'
+  }
+
+  if (assigned.everyone || !assigned.members.length) {
+    return assigned.by === 'lead' && assigned.lead ? `${title(assigned.lead)} gave this to every bot.` : 'Given to every bot.'
+  }
+
+  const names = assigned.members.map(title)
+  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
+
+  return assigned.by === 'lead' && assigned.lead ? `${title(assigned.lead)} gave this to ${who}.` : `Assigned to ${who}.`
 }
 
 const live = (turn: Turn) => turn.state === 'working' || turn.state === 'stopping'
@@ -181,8 +235,10 @@ export function roundLine(round: Round, title: (member: string) => string): stri
 export function afterRound(round: Round, title: (member: string) => string): string | null {
   const failed = [...new Set(round.turns.filter(turn => turn.state === 'failed').map(turn => title(turn.member)))]
   const said = failed.length ? `${failed.join(' and ')} did not answer.` : ''
+  // A discussion that can go on says so: the button is next to the line.
+  const capped = round.paused ? 'The bots stopped at the limit of the discussion.' : (round.capped ?? '')
 
-  return [said, round.capped ?? ''].filter(Boolean).join(' ') || null
+  return [said, capped].filter(Boolean).join(' ') || null
 }
 
 /**
@@ -195,4 +251,117 @@ export function turnWork<Item extends { kind: string; text?: string }>(items: re
   const given = items.map(item => item.kind === 'user').lastIndexOf(true)
 
   return items.slice(given + 1)
+}
+
+/** How the room picks who answers a message that names no bot. */
+export type Routing = 'everyone' | 'lead' | 'auto'
+
+export const ROUTINGS: readonly { id: Routing; label: string; detail: string }[] = [
+  { id: 'everyone', label: 'Every bot', detail: 'Each bot reads the message and answers in turn.' },
+  { id: 'lead', label: 'A lead bot', detail: 'One bot reads it first and hands out the work.' },
+  { id: 'auto', label: 'The room chooses', detail: 'The host picks the bots the message is for.' }
+]
+
+export interface RoomContext {
+  purpose: string
+  notes: string
+  routing: Routing
+  lead: string
+}
+
+/** What one bot does now: its tool and its times, from the process that runs its turn. */
+export interface MemberActivity {
+  member: string
+  status: string
+  tool: string
+  startedAt: number
+  progressAt: number
+  round: number
+}
+
+/** How a room works as a team. From the `group-rooms` plugin; an older plugin gives none. */
+export interface RoomTeam {
+  context: RoomContext
+  /** The routings this host offers. */
+  routings: Routing[]
+  activity: MemberActivity[]
+  maxRounds: number
+  maxContinues: number
+}
+
+export const NO_TEAM: RoomTeam = { context: { purpose: '', notes: '', routing: 'everyone', lead: '' }, routings: ['everyone'], activity: [], maxRounds: 0, maxContinues: 0 }
+
+const routingOf = (value: unknown): Routing => (value === 'lead' || value === 'auto' ? value : 'everyone')
+const msOf = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+
+/** The team of a room in the answer of the host. Null for a host whose plugin does not give one. */
+export function teamOf(answer: unknown): RoomTeam | null {
+  const team = (answer as { team?: Record<string, unknown> } | null)?.team
+
+  if (!team || typeof team !== 'object') {
+    return null
+  }
+
+  const context = (team.context ?? {}) as Record<string, unknown>
+  const routings = (Array.isArray(team.routings) ? team.routings : []).filter((mode): mode is Routing => mode === 'everyone' || mode === 'lead' || mode === 'auto')
+
+  return {
+    context: { purpose: text(context.purpose), notes: text(context.notes), routing: routingOf(context.routing), lead: text(context.lead) },
+    routings: routings.length ? routings : ['everyone', 'lead'],
+    activity: (Array.isArray(team.activity) ? team.activity : []).flatMap((row): MemberActivity[] => {
+      const { member, status, tool, started_at, progress_at, round } = (row ?? {}) as Record<string, unknown>
+
+      return text(member) ? [{ member: text(member), status: text(status), tool: text(tool), startedAt: msOf(started_at), progressAt: msOf(progress_at), round: msOf(round) }] : []
+    }),
+    maxRounds: msOf(team.max_rounds),
+    maxContinues: msOf(team.max_continues)
+  }
+}
+
+/** The lead bot of a room, when the room has one. */
+export const leadOf = (team: RoomTeam | null): string => (team?.context.routing === 'lead' ? team.context.lead : '')
+
+// A turn with no new frame for this long is probably stuck. The desktop app uses the same time.
+const STALLED_MS = 120_000
+
+const seconds = (ms: number) => {
+  const total = Math.max(0, Math.round(ms / 1000))
+
+  return total < 60 ? `${total}s` : `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, '0')}s`
+}
+
+/** "Scout · terminal · 7s": a bot that works, its tool, and how long it works. A bot with no frame for two minutes says so. */
+export function activityWords(row: MemberActivity, title: (member: string) => string, nowMs: number): string {
+  if (row.status === 'queued') {
+    return `${title(row.member)} · waiting`
+  }
+
+  const parts = [title(row.member)]
+
+  if (row.tool) {
+    parts.push(row.tool.replace(/_/g, ' '))
+  }
+
+  if (row.startedAt) {
+    parts.push(seconds(nowMs - row.startedAt))
+  }
+
+  if (row.progressAt && nowMs - row.progressAt > STALLED_MS) {
+    parts.push(`no progress for ${Math.floor((nowMs - row.progressAt) / 60_000)} min`)
+  }
+
+  return parts.join(' · ')
+}
+
+/** Why a context cannot be saved. Null when it can. */
+export function contextProblem(context: RoomContext, members: readonly string[]): string | null {
+  if (context.routing === 'lead' && !members.includes(context.lead)) {
+    return 'Choose the lead bot.'
+  }
+
+  if (context.purpose.trim().length > 500) {
+    return 'Keep the purpose to 500 characters.'
+  }
+
+  return null
 }
