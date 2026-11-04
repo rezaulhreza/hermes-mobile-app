@@ -131,6 +131,22 @@ export default function Settings() {
             <Feather color={t.muted} name="chevron-right" size={20} />
           </Pressable>
           <Pressable
+            accessibilityHint="Linear, Notion and the other apps a bot can use after one sign-in"
+            accessibilityLabel="Connected apps"
+            accessibilityRole="button"
+            onPress={() => router.push('/connectors')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="grid" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Connected apps</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                Linear, Notion and more, after one sign-in
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+          <Pressable
             accessibilityHint="The state of Hermes, its usage, its logs and its care"
             accessibilityLabel="The host"
             accessibilityRole="button"
