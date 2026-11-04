@@ -27,7 +27,29 @@ export interface Schedule {
   scriptOnly: boolean
   /** The Hermes folder of the bot on the host. The text of a run is a file under it. */
   home: string
+  /** A run is in flight now: Stop can reach it. */
+  running: boolean
+  /** The newest run was stopped, and why ("" when no reason was given). Null when it was not stopped. */
+  cancelled: string | null
+  /** Runs missed while Hermes was off: true runs one when back, false skips them, null follows the default of the host. */
+  catchUp: boolean | null
 }
+
+/** The missed-run choice of a schedule. `default` stores nothing: the job follows the setting of the host. */
+export type CatchUpChoice = 'default' | 'run' | 'skip'
+
+export const CATCH_UP_CHOICES: readonly { id: CatchUpChoice; label: string }[] = [
+  { id: 'default', label: 'Use the default' },
+  { id: 'run', label: 'Run once when back' },
+  { id: 'skip', label: 'Skip them' }
+]
+
+export const catchUpChoice = (value: boolean | null): CatchUpChoice => (value === true ? 'run' : value === false ? 'skip' : 'default')
+
+export const catchUpValue = (choice: CatchUpChoice): boolean | null => (choice === 'run' ? true : choice === 'skip' ? false : null)
+
+/** What a Stop did, in words. The host answers `cancelled: false` when the run ended first. */
+export const stopWords = (result: unknown): string => ((result as { cancelled?: unknown } | null)?.cancelled === true ? 'The run stopped.' : 'Nothing was running. The run ended first.')
 
 interface WireJob {
   id?: unknown
@@ -46,7 +68,13 @@ interface WireJob {
   profile?: unknown
   no_agent?: unknown
   hermes_home?: unknown
+  catch_up?: unknown
+  latest_execution?: { status?: unknown; error?: unknown } | null
+  live_execution?: unknown
 }
+
+// A claimed or running attempt is the run that Stop can reach.
+const IN_FLIGHT = new Set(['claimed', 'running'])
 
 function time(value: unknown): number | null {
   const at = typeof value === 'string' && value ? Date.parse(value) : NaN
@@ -81,7 +109,10 @@ export function scheduleRows(jobs: unknown): Schedule[] {
         deliver: text(job.deliver) || 'local',
         profile: text(job.profile) || 'default',
         scriptOnly: job.no_agent === true,
-        home: text(job.hermes_home)
+        home: text(job.hermes_home),
+        running: IN_FLIGHT.has(text(job.latest_execution?.status)) || Boolean(job.live_execution),
+        cancelled: text(job.latest_execution?.status) === 'cancelled' ? text(job.latest_execution?.error).trim() : null,
+        catchUp: typeof job.catch_up === 'boolean' ? job.catch_up : null
       } satisfies Schedule
     })
     .sort((a, b) => rank(a) - rank(b) || (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity) || a.name.localeCompare(b.name))
@@ -183,10 +214,18 @@ export function whenWords(when: string, now = new Date()): string {
 
 /** The line under the name of a schedule. */
 export function scheduleLine(schedule: Schedule, now: number): string {
-  const state =
-    schedule.state === 'paused' ? 'Paused' : schedule.state === 'completed' ? 'Finished' : schedule.nextRunAt ? `Next ${untilWords(schedule.nextRunAt, now)}` : 'Waiting'
+  const state = schedule.running
+    ? 'Running now'
+    : schedule.state === 'paused'
+      ? 'Paused'
+      : schedule.state === 'completed'
+        ? 'Finished'
+        : schedule.nextRunAt
+          ? `Next ${untilWords(schedule.nextRunAt, now)}`
+          : 'Waiting'
+  const last = schedule.running ? '' : schedule.cancelled !== null ? 'the last run was stopped' : schedule.failed ? 'the last run failed' : ''
 
-  return [whenWords(schedule.when, new Date(now)), state, schedule.failed ? 'the last run failed' : ''].filter(Boolean).join(' · ')
+  return [whenWords(schedule.when, new Date(now)), state, last].filter(Boolean).join(' · ')
 }
 
 const RUN_FILE_PREFIX = 'cron_output:'

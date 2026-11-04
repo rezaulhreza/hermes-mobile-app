@@ -1,4 +1,4 @@
-import { scheduleLine, scheduleRows, scheduleRuns, untilWords, whenWords } from '../cron'
+import { catchUpChoice, catchUpValue, scheduleLine, scheduleRows, scheduleRuns, stopWords, untilWords, whenWords } from '../cron'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 
@@ -10,6 +10,34 @@ const rows = scheduleRows([
   { id: 'bad', name: 'Backup', state: 'scheduled', enabled: true, schedule_display: 'every 1h', next_run_at: '2026-10-09T13:00:00Z', last_status: 'error', last_error: 'disk full', failure_streak: 2 },
   { name: 'no id' }
 ])
+
+describe('a run in flight and the missed runs', () => {
+  const [live, stopped, plain] = scheduleRows([
+    { id: 'live', name: 'A', state: 'scheduled', schedule_display: 'every 1h', latest_execution: { status: 'running' }, catch_up: true },
+    { id: 'stopped', name: 'B', state: 'scheduled', schedule_display: 'every 1h', latest_execution: { status: 'cancelled', error: 'cancelled on request (Stop)' }, catch_up: false },
+    { id: 'plain', name: 'C', state: 'scheduled', schedule_display: 'every 1h', live_execution: { id: 'x' } }
+  ]).sort((a, b) => a.name.localeCompare(b.name))
+
+  it('knows a run that Stop can reach, and a run that was stopped', () => {
+    expect(live).toMatchObject({ running: true, cancelled: null, catchUp: true })
+    expect(stopped).toMatchObject({ running: false, cancelled: 'cancelled on request (Stop)', catchUp: false })
+    expect(plain).toMatchObject({ running: true, catchUp: null })
+    expect(scheduleLine(live, NOW)).toBe('Every hour · Running now')
+    expect(scheduleLine(stopped, NOW)).toContain('the last run was stopped')
+  })
+
+  it('turns the missed-run choice into the value of the host and back', () => {
+    expect([true, false, null].map(value => catchUpChoice(value))).toEqual(['run', 'skip', 'default'])
+    expect(catchUpValue('run')).toBe(true)
+    expect(catchUpValue('skip')).toBe(false)
+    expect(catchUpValue('default')).toBeNull()
+  })
+
+  it('says what a Stop did', () => {
+    expect(stopWords({ cancelled: true })).toBe('The run stopped.')
+    expect(stopWords({ cancelled: false })).toContain('Nothing was running')
+  })
+})
 
 describe('scheduleRows', () => {
   it('puts a failing schedule first, then by the next run, then paused, then finished', () => {

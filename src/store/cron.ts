@@ -2,7 +2,7 @@
 
 import { atom } from 'nanostores'
 
-import { type Blueprint, blueprintRows, type DeliveryTarget, runFilePath, type Schedule, type ScheduleRun, scheduleRows, scheduleRuns } from '@/core/cron'
+import { type Blueprint, blueprintRows, type DeliveryTarget, runFilePath, type Schedule, stopWords, type ScheduleRun, scheduleRows, scheduleRuns } from '@/core/cron'
 
 import { readCached, writeCached } from './cache'
 import { currentApi, onGatewayEvent } from './link'
@@ -58,7 +58,16 @@ export async function deleteSchedule(schedule: Schedule): Promise<void> {
   await loadSchedules()
 }
 
-export async function updateSchedule(schedule: Schedule, updates: { name?: string; prompt?: string; schedule?: string; deliver?: string }): Promise<void> {
+/** Stop the run in flight. The times of the schedule stay. Answers what the Stop did, in words. */
+export async function stopScheduleRun(schedule: Schedule): Promise<string> {
+  const result = await jobRequest(schedule, '/cancel', 'POST')
+
+  await loadSchedules()
+
+  return stopWords(result)
+}
+
+export async function updateSchedule(schedule: Schedule, updates: { name?: string; prompt?: string; schedule?: string; deliver?: string; catch_up?: boolean | null }): Promise<void> {
   await jobRequest(schedule, '', 'PUT', { updates })
   await loadSchedules()
 }

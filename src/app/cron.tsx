@@ -10,7 +10,7 @@ import { type Choice, ChoiceRow, ChoiceSheet } from '@/components/choice'
 import { Markdown } from '@/components/markdown'
 import { Button, Field, IconButton, Notice } from '@/components/ui'
 import { WhenPicker } from '@/components/when-picker'
-import { type Blueprint, blueprintDefaults, blueprintMissing, deliveryLabel, type Schedule, scheduleLine, type ScheduleRun } from '@/core/cron'
+import { type Blueprint, blueprintDefaults, blueprintMissing, CATCH_UP_CHOICES, type CatchUpChoice, catchUpChoice, catchUpValue, deliveryLabel, type Schedule, scheduleLine, type ScheduleRun } from '@/core/cron'
 import { faultWords, relativeTime } from '@/core/format'
 import { parseWhen, type When, whenProblem, whenText } from '@/core/when'
 import { $bots } from '@/store/bots'
@@ -27,6 +27,7 @@ import {
   loadSchedules,
   pauseSchedule,
   runSchedule,
+  stopScheduleRun,
   updateSchedule
 } from '@/store/cron'
 import { $linkState } from '@/store/link'
@@ -182,6 +183,9 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
   const problem = changed ? (prompt.trim() ? whenProblem(when, new Date(now)) : 'Write what the agent must do.') : null
   const delivery = useDelivery()
   const [delivering, setDelivering] = useState(false)
+  const [catchingUp, setCatchingUp] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopNote, setStopNote] = useState<string | null>(null)
   // The whole text of one run, open over the sheet.
   const [reading, setReading] = useState<{ title: string; text: string | null } | null>(null)
 
@@ -238,6 +242,25 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
           title="The result goes to"
         />
       ) : null}
+      {schedule.state === 'completed' ? null : (
+        <ChoiceRow icon="rotate-ccw" label="Missed runs" onPress={() => setCatchingUp(true)} value={CATCH_UP_CHOICES.find(choice => choice.id === catchUpChoice(schedule.catchUp))?.label ?? ''} />
+      )}
+      {catchingUp ? (
+        <ChoiceSheet
+          choices={CATCH_UP_CHOICES.map(choice => ({ ...choice, detail: choice.id === 'default' ? 'What the host does for every schedule' : undefined }))}
+          current={catchUpChoice(schedule.catchUp)}
+          footer={<Text style={[type.small, { color: t.muted }]}>What to do with the runs missed while Hermes was not running.</Text>}
+          onClose={() => setCatchingUp(false)}
+          onPick={id => {
+            setCatchingUp(false)
+            run('catch-up', () => updateSchedule(schedule, { catch_up: catchUpValue(id as CatchUpChoice) }))
+          }}
+          title="Missed runs"
+        />
+      ) : null}
+      {schedule.cancelled !== null && !schedule.running ? (
+        <Text style={[type.small, { color: t.muted }]}>{schedule.cancelled ? `The last run was stopped: ${schedule.cancelled}` : 'The last run was stopped.'}</Text>
+      ) : null}
       {schedule.failed && schedule.lastError ? <Text style={[type.small, styles.error, { color: t.red, backgroundColor: t.redBg }]}>{schedule.lastError}</Text> : null}
 
       <View style={styles.actions}>
@@ -250,8 +273,28 @@ function ScheduleSheet({ schedule, now, onClose }: { schedule: Schedule; now: nu
             style={styles.fill}
           />
         )}
-        <Button busy={busy === 'run'} icon="zap" label="Run now" onPress={() => run('run', () => runSchedule(schedule))} style={styles.fill} />
+        {schedule.running ? (
+          <Button icon="square" label="Stop the run" onPress={() => (setStopNote(null), setStopping(true))} style={styles.fill} tone="danger" />
+        ) : (
+          <Button busy={busy === 'run'} icon="zap" label="Run now" onPress={() => run('run', () => runSchedule(schedule))} style={styles.fill} />
+        )}
       </View>
+      {stopping && schedule.running ? (
+        <View style={[styles.confirm, { backgroundColor: t.redBg }]}>
+          <Text style={[type.small, { color: t.ink }]}>Stop the run of “{schedule.name}” now? What it did so far stays. The schedule runs again at its next time.</Text>
+          <View style={styles.actions}>
+            <Button label="Let it run" onPress={() => setStopping(false)} style={styles.fill} />
+            <Button
+              busy={busy === 'stop'}
+              label="Stop it"
+              onPress={() => run('stop', () => stopScheduleRun(schedule).then(words => (setStopNote(words), setStopping(false))))}
+              style={styles.fill}
+              tone="danger"
+            />
+          </View>
+        </View>
+      ) : null}
+      {stopNote ? <Text style={[type.small, { color: t.ink }]}>{stopNote}</Text> : null}
 
       <Field label="What the agent does" multiline onChangeText={setPrompt} style={styles.prompt} value={prompt} />
       <Text style={[type.small, { color: t.muted, fontWeight: '600' }]}>When</Text>
@@ -459,6 +502,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH + 16, paddingHorizontal: space.lg, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   sheet: { padding: space.lg, gap: space.md },
   actions: { flexDirection: 'row', gap: space.md },
+  confirm: { gap: space.sm, padding: space.md, borderRadius: radius.md },
   error: { padding: space.md, borderRadius: radius.md, overflow: 'hidden' },
   prompt: { minHeight: 96, textAlignVertical: 'top', paddingTop: space.md },
   heading: { fontWeight: '700', marginTop: space.sm },
