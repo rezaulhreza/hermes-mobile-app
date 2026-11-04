@@ -117,3 +117,14 @@ export function configReasoning(config: unknown): string {
 export function reasoningLabel(level: string): string {
   return isReasoningLevel(level) ? REASONING_LABEL[level] : level || 'The default of the host'
 }
+
+/** `/model reset`: the conversation drops the model it was switched to and goes back to the default of its bot. */
+export const isModelReset = (arg: string): boolean => arg.trim().toLowerCase() === 'reset'
+
+/** What a reset did, from the answer of `config.set`. A reset during an answer applies at the next turn. */
+export function modelResetWords(result: { value?: unknown; deferred?: unknown } | null | undefined): string {
+  const model = typeof result?.value === 'string' && result.value && result.value !== 'reset' ? result.value : ''
+  const back = model ? `Back to the default model: ${model}.` : 'Back to the default model.'
+
+  return result?.deferred === true ? `${back} It applies from the next answer.` : back
+}

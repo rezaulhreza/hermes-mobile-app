@@ -30,7 +30,7 @@ import { storedToolOutput } from '@/core/tools'
 import { isSlashCommand, slashOutcome, splitSlash, type Trigger } from '@/core/composer'
 import type { Bot } from '@/core/bots'
 import { mentionNote, withoutMentionNote } from '@/core/mentions'
-import { type ModelChoice, type ReasoningLevel, sessionModelValue } from '@/core/models'
+import { isModelReset, type ModelChoice, modelResetWords, type ReasoningLevel, sessionModelValue } from '@/core/models'
 import {
   type Delivery,
   EMPTY_TRANSCRIPT,
@@ -492,7 +492,18 @@ const ACTIONS: Record<PhoneAction, (sessionId: string, arg: string) => Promise<D
   },
 
   // A name after the command is what the user looks for. The sheet finds it; the user confirms with a tap.
-  model: async (_sessionId, arg) => ({ kind: 'sheet', sheet: 'model', query: arg }),
+  model: async (sessionId, arg) => {
+    if (!isModelReset(arg)) {
+      return { kind: 'sheet', sheet: 'model', query: arg }
+    }
+
+    // The gateway owns the pin of the conversation: it drops it and reports the default it adopts.
+    const result = await rpc<{ value?: unknown; deferred?: unknown }>('config.set', { session_id: sessionId, key: 'model', value: 'reset' })
+
+    note(sessionId, modelResetWords(result))
+
+    return NOTHING
+  },
   help: async () => ({ kind: 'sheet', sheet: 'commands' }),
   sessions: async (_sessionId, arg) => {
     $sessionQuery.set(arg)

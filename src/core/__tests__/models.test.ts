@@ -1,4 +1,4 @@
-import { configReasoning, filterSections, modelLabel, modelSections, reasoningLabel, sessionModelValue } from '../models'
+import { isModelReset, modelResetWords, configReasoning, filterSections, modelLabel, modelSections, reasoningLabel, sessionModelValue } from '../models'
 
 const options = {
   provider: 'anthropic',
@@ -54,4 +54,18 @@ it('names a level, and shows one the phone does not offer as the host wrote it',
   expect(reasoningLabel('xhigh')).toBe('Max')
   expect(reasoningLabel('ultra')).toBe('ultra')
   expect(reasoningLabel('')).toBe('The default of the host')
+})
+
+describe('/model reset', () => {
+  it('knows the word, in any case and with spaces', () => {
+    expect(isModelReset(' Reset ')).toBe(true)
+    expect(isModelReset('gpt-5')).toBe(false)
+    expect(isModelReset('')).toBe(false)
+  })
+
+  it('says the default the conversation goes back to', () => {
+    expect(modelResetWords({ value: 'claude-sonnet' })).toBe('Back to the default model: claude-sonnet.')
+    expect(modelResetWords({ value: 'reset', deferred: true })).toBe('Back to the default model. It applies from the next answer.')
+    expect(modelResetWords(null)).toBe('Back to the default model.')
+  })
 })
