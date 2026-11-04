@@ -13,6 +13,7 @@ import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
 import { type ToolDetail, toolDetail, toolInput, toolOutput, toolPicture } from './tools'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
+import { type LimitCard, limitOf } from './limits'
 
 /**
  * What the backend did with a message sent during a turn. `queued`: it runs as
@@ -33,6 +34,8 @@ export type TranscriptItem =
   /** What a slash command printed. Not part of the conversation with the model. */
   | { kind: 'output'; key: string; command: string; text: string }
   | { kind: 'notice'; key: string; text: string; tone: 'info' | 'error' }
+  /** A turn stopped at the limit of a plan. The card offers the ways on. */
+  | { kind: 'limit'; key: string; limit: LimitCard }
 
 export interface Transcript {
   items: TranscriptItem[]
@@ -270,7 +273,11 @@ function completeTurn(
     next = push(next, key => ({ kind: 'assistant', key, text: finalText, streaming: false }))
   }
 
-  if (payload?.status === 'error') {
+  const limit = payload?.status === 'error' ? limitOf(payload.error_surface) : null
+
+  if (limit) {
+    next = push(next, key => ({ kind: 'limit', key, limit }))
+  } else if (payload?.status === 'error') {
     const text = payload.error || payload.failure_reason || 'The turn failed.'
 
     next = push(next, key => ({ kind: 'notice', key, text, tone: 'error' }))

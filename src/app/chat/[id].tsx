@@ -33,6 +33,7 @@ import { SentAttachments, StagedAttachment } from '@/components/attachments'
 import { BotAvatar, BotSheet } from '@/components/bot-sheet'
 import { CommandsSheet } from '@/components/commands-sheet'
 import { SayToAgent } from '@/components/draft-card'
+import { ChatSessionContext, LimitCard } from '@/components/limit-card'
 import { Markdown } from '@/components/markdown'
 import { MentionText } from '@/components/mention-text'
 import { SourcesButton, SourcesSheet } from '@/components/sources'
@@ -499,6 +500,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
         ) : (
           <View style={styles.fill}>
             <SayToAgent.Provider value={sayToAgent}>
+            <ChatSessionContext.Provider value={sessionId}>
             <FlatList
               ListEmptyComponent={<Notice icon="message-circle" title="Ask, explore, or make something" />}
               // The list is upside down: its header is under the newest message. That is where the answer will come.
@@ -528,6 +530,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
               renderItem={({ item }) => <Row final={finals.has(item.key)} item={item} onOpen={setViewing} onTool={setTool} />}
               windowSize={7}
             />
+            </ChatSessionContext.Provider>
             </SayToAgent.Provider>
             {awayFromEnd ? (
               <View style={styles.toEnd}>
@@ -935,6 +938,9 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
           {item.text}
         </Text>
       )
+
+    case 'limit':
+      return <LimitCard limit={item.limit} />
   }
 }
 

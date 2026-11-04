@@ -280,6 +280,10 @@ function WorkRow({ item, running, marked, onTool, onOpen }: WorkRowProps) {
     case 'notice':
       return <Text style={[type.small, { color: item.tone === 'error' ? t.red : t.muted }]}>{item.text}</Text>
 
+    // A turn of a group that stopped at the limit of a plan: the room is not a chat, so the card has no buttons here.
+    case 'limit':
+      return <Text style={[type.small, { color: t.red }]}>{item.limit.message}</Text>
+
     // What the bot was given in its turn and nobody in the group wrote: the message of another bot,
     // the end of a background task, and the line of Hermes when it saved a skill or a memory.
     case 'arrival':

@@ -718,6 +718,28 @@ export async function switchModel(sessionId: string, choice: ModelChoice, confir
   return { done: true }
 }
 
+/**
+ * A way on from the limit of a plan, then the turn again: the gateway runs
+ * `/retry` once the change applied. `switch` changes the model of this
+ * conversation only; the default of the bot stays. Answers the question of an
+ * expensive model, if the host asks one, before anything runs.
+ */
+export async function recoverFromLimit(sessionId: string, way: { kind: 'switch'; model: string; provider: string; label: string; confirmed?: boolean } | { kind: 'credits' }): Promise<ModelSwitch> {
+  if (way.kind === 'switch') {
+    const switched = await switchModel(sessionId, { model: way.model, provider: way.provider, label: way.label, current: false }, way.confirmed)
+
+    if (!switched.done) {
+      return switched
+    }
+  } else {
+    await rpc('billing.keep_going_on_credits', { enabled: true, profile: botOfChat($conversations.get()[sessionId]?.profile) })
+  }
+
+  await sendDraft(sessionId, '/retry')
+
+  return { done: true }
+}
+
 export async function setReasoning(sessionId: string, level: ReasoningLevel): Promise<void> {
   const result = await rpc<{ value?: unknown }>('config.set', { session_id: sessionId, key: 'reasoning', value: level })
   const applied = typeof result?.value === 'string' ? result.value : level

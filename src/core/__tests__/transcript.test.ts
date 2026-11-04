@@ -12,7 +12,7 @@ const run = (events: unknown[], start = EMPTY_TRANSCRIPT) =>
   events.reduce<typeof EMPTY_TRANSCRIPT>((t, e) => reduceTranscript(t, e as GatewayEvent), start)
 
 const delta = (text: string) => ({ type: 'message.delta', payload: { text } })
-const shape = (t: typeof EMPTY_TRANSCRIPT) => t.items.map(i => (i.kind === 'tool' ? `tool:${i.name}:${i.state}` : i.kind === 'arrival' ? `arrival:${i.arrival.kind}` : `${i.kind}:${i.text}`))
+const shape = (t: typeof EMPTY_TRANSCRIPT) => t.items.map(i => (i.kind === 'tool' ? `tool:${i.name}:${i.state}` : i.kind === 'arrival' ? `arrival:${i.arrival.kind}` : i.kind === 'limit' ? `limit:${i.limit.message}` : `${i.kind}:${i.text}`))
 
 describe('transcript', () => {
   it('joins streamed deltas into one assistant message and settles it on complete', () => {
@@ -196,5 +196,22 @@ describe('transcript', () => {
 
     expect(t.items[0]).toMatchObject({ kind: 'output', command: '/btw why?', text: 'Because.' })
     expect(t.running).toBe(false)
+  })
+})
+
+describe('a turn at the limit of a plan', () => {
+  it('becomes a limit card, not an error line', () => {
+    const t = run([
+      { type: 'message.start', payload: {} },
+      { type: 'message.complete', payload: { status: 'error', error: 'limit', error_surface: { layer: 'billing', code: 'usage_window', retryable: false, usage_limit: { gauge_id: 'day', scope: 'account', limit_name: 'today', message: 'Today is used up.' } } } }
+    ])
+
+    expect(shape(t)).toEqual(['limit:Today is used up.'])
+  })
+
+  it('stays an error line for any other failure', () => {
+    const t = run([{ type: 'message.start', payload: {} }, { type: 'message.complete', payload: { status: 'error', error: 'Boom' } }])
+
+    expect(shape(t)).toEqual(['notice:Boom'])
   })
 })
