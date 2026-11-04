@@ -51,26 +51,67 @@ type Of<K extends AgentRequest['kind']> = { request: Extract<AgentRequest, { kin
 
 function Approval({ request, onAnswer }: Of<'approval'>) {
   const t = useTheme()
+  // "Always" stays for every chat of the bot: it asks once more. "Deny" can carry words for the agent.
+  const [step, setStep] = useState<'choose' | 'always' | 'tell'>('choose')
+  const [words, setWords] = useState('')
 
   return (
     <>
+      {request.smartDenied ? (
+        <Text style={[type.small, { color: t.ink }]}>Smart approvals judged this risky and stopped it. You can still allow it this once.</Text>
+      ) : null}
       {request.description ? <Text style={[type.body, { color: t.ink }]}>{request.description}</Text> : null}
       {request.command ? (
         <Text selectable style={[styles.code, { backgroundColor: t.paper, color: t.ink }]}>
           {request.command}
         </Text>
       ) : null}
-      <View style={styles.actions}>
-        {request.choices.map(choice => (
-          <Button
-            key={choice}
-            label={CHOICE_LABEL[choice]}
-            onPress={() => onAnswer({ kind: 'approval', choice })}
-            style={styles.action}
-            tone={choice === 'once' ? 'primary' : choice === 'deny' ? 'danger' : 'plain'}
+
+      {step === 'always' ? (
+        <View style={styles.block}>
+          <Text style={[type.small, { color: t.ink }]}>Always allow commands like this one? Hermes then runs them in every chat of this bot without asking.</Text>
+          <View style={styles.actions}>
+            <Button label="Back" onPress={() => setStep('choose')} style={styles.action} />
+            <Button label="Always allow" onPress={() => onAnswer({ kind: 'approval', choice: 'always' })} style={styles.action} tone="primary" />
+          </View>
+        </View>
+      ) : step === 'tell' ? (
+        <View style={styles.block}>
+          <TextInput
+            accessibilityLabel="What Hermes must do instead"
+            autoFocus
+            multiline
+            onChangeText={setWords}
+            placeholder="What Hermes must do instead"
+            placeholderTextColor={t.muted}
+            style={[type.body, styles.tell, { color: t.ink, backgroundColor: t.paper, borderColor: t.line }]}
+            value={words}
           />
-        ))}
-      </View>
+          <View style={styles.actions}>
+            <Button label="Back" onPress={() => setStep('choose')} style={styles.action} />
+            <Button disabled={!words.trim()} label="Deny and tell Hermes" onPress={() => onAnswer({ kind: 'approval', choice: 'deny', tell: words })} style={styles.action} tone="danger" />
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={styles.actions}>
+            {request.choices.map(choice => (
+              <Button
+                key={choice}
+                label={CHOICE_LABEL[choice]}
+                onPress={() => (choice === 'always' ? setStep('always') : onAnswer({ kind: 'approval', choice }))}
+                style={styles.action}
+                tone={choice === 'once' ? 'primary' : choice === 'deny' ? 'danger' : 'plain'}
+              />
+            ))}
+          </View>
+          {request.choices.includes('deny') ? (
+            <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setStep('tell')}>
+              <Text style={[type.small, { color: t.ink, textDecorationLine: 'underline' }]}>No, and tell Hermes what to do instead</Text>
+            </Pressable>
+          ) : null}
+        </>
+      )}
     </>
   )
 }
@@ -220,6 +261,7 @@ function Input(props: React.ComponentProps<typeof TextInput>) {
 }
 
 const styles = StyleSheet.create({
+  tell: { minHeight: 72, padding: space.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, textAlignVertical: 'top' },
   card: { gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   block: { gap: space.sm },

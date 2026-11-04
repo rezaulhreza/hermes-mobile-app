@@ -1,4 +1,4 @@
-import { agentRequestFrom, requestSummary, wireResult } from '../requests'
+import { agentRequestFrom, requestSummary, tellWords, wireResult } from '../requests'
 
 describe('agentRequestFrom', () => {
   it('models an approval and keeps only the choices the backend allows', () => {
@@ -68,5 +68,17 @@ describe('a message in the place of a form', () => {
       b: null,
       c: null
     })
+  })
+
+  it('reads a Smart refusal: allow once or deny, never for the chat', () => {
+    const request = agentRequestFrom('approval', 'r9', { session_id: 's1', command: 'rm -rf build', smart_denied: true })
+
+    expect(request).toMatchObject({ smartDenied: true, choices: ['once', 'deny'] })
+    expect(agentRequestFrom('approval', 'r9', { session_id: 's1' })).toMatchObject({ smartDenied: false })
+  })
+
+  it('sends a plain deny on the wire: the words for the agent go apart', () => {
+    expect(wireResult({ kind: 'approval', choice: 'deny', tell: 'Use the staging folder' })).toEqual({ choice: 'deny' })
+    expect(tellWords('  Use staging  ')).toBe('Use staging')
   })
 })

@@ -1,9 +1,9 @@
 import { atom } from 'nanostores'
 
 import type { GatewayEvent } from '@/core/gateway/gateway-events'
-import { type AgentAnswer, type AgentRequest, agentRequestFrom, wireResult } from '@/core/requests'
+import { type AgentAnswer, type AgentRequest, agentRequestFrom, tellWords, wireResult } from '@/core/requests'
 
-import { onGatewayEvent, onGatewayRequest } from './link'
+import { onGatewayEvent, onGatewayRequest, rpc } from './link'
 
 /** Every request that waits for the user, oldest first, across all sessions. */
 export const $requests = atom<AgentRequest[]>([])
@@ -25,8 +25,17 @@ function drop(match: (request: AgentRequest) => boolean): void {
 }
 
 export function answerRequest(id: string, answer: AgentAnswer): void {
+  const sessionId = $requests.get().find(request => request.id === id)?.sessionId
+
   responders.get(id)?.(wireResult(answer))
   drop(request => request.id === id)
+
+  // "No, and tell Hermes instead": the deny goes first, then the words reach the turn that waits on it.
+  const words = answer.kind === 'approval' && answer.choice === 'deny' ? tellWords(answer.tell ?? '') : ''
+
+  if (words && sessionId) {
+    void rpc('session.steer', { session_id: sessionId, text: words }).catch(() => undefined)
+  }
 }
 
 /** The approvals of one conversation were answered from outside this screen (a button of a notification). */

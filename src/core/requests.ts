@@ -27,13 +27,21 @@ export interface ClarifyQuestion {
 }
 
 export type AgentRequest =
-  | (Base & { kind: 'approval'; command: string; description: string; choices: ApprovalChoice[] })
+  | (Base & {
+      kind: 'approval'
+      command: string
+      description: string
+      choices: ApprovalChoice[]
+      /** Smart approvals judged the command risky and refused it. The owner can still allow it once. */
+      smartDenied: boolean
+    })
   | (Base & { kind: 'clarify'; questions: ClarifyQuestion[] })
   | (Base & { kind: 'value'; title: string; detail: string; placeholder: string; numeric: boolean })
   | (Base & { kind: 'login'; site: string })
 
 export type AgentAnswer =
-  | { kind: 'approval'; choice: ApprovalChoice }
+  /** `tell`: with a deny, what the agent must do instead. It reaches the turn that waits, as a steer. */
+  | { kind: 'approval'; choice: ApprovalChoice; tell?: string }
   | { kind: 'clarify'; answers: Record<string, string | null> }
   | { kind: 'value'; value: string }
   | { kind: 'login'; identifier: string; password: string }
@@ -49,6 +57,10 @@ export function answerInOwnWords(questions: readonly ClarifyQuestion[], words: s
 }
 
 const DEFAULT_CHOICES: ApprovalChoice[] = ['once', 'session', 'deny']
+const SMART_DENIED_CHOICES: ApprovalChoice[] = ['once', 'deny']
+
+/** The words a deny gives the agent, trimmed. Empty: a plain deny. */
+export const tellWords = (words: string): string => words.trim().slice(0, 2000)
 const APPROVAL_CHOICES: ReadonlySet<string> = new Set(['once', 'session', 'always', 'deny'])
 
 /**
@@ -64,13 +76,16 @@ export function agentRequestFrom(method: string, id: string, params: Record<stri
       const choices = Array.isArray(params.choices)
         ? params.choices.filter((c): c is ApprovalChoice => typeof c === 'string' && APPROVAL_CHOICES.has(c))
         : []
+      const smartDenied = params.smart_denied === true
 
       return {
         ...base,
         kind: 'approval',
         command: text(params.command),
         description: text(params.description),
-        choices: choices.length ? choices : DEFAULT_CHOICES
+        // After a Smart refusal the owner can allow it this once, or deny: never for the chat or always.
+        choices: choices.length ? choices : smartDenied ? SMART_DENIED_CHOICES : DEFAULT_CHOICES,
+        smartDenied
       }
     }
 
