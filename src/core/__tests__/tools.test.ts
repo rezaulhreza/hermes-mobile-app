@@ -1,4 +1,4 @@
-import { diffLines, finalAnswerKeys, hasToolDetail, storedToolOutput, toolDetail, toolInput, toolOutput } from '../tools'
+import { progressWords, diffLines, finalAnswerKeys, hasToolDetail, storedToolOutput, toolDetail, toolInput, toolOutput } from '../tools'
 
 describe('toolInput', () => {
   it('shows one text argument as it is', () => {
@@ -111,5 +111,15 @@ describe('toolPicture', () => {
 
   it('finds no picture in a normal result', () => {
     expect(toolPicture({ output: 'done' }, 'done')).toBeUndefined()
+  })
+})
+
+describe('the progress of a long tool call', () => {
+  it('says how far it is', () => {
+    expect(progressWords({ progress: 42, percent: 42.4, message: ' Indexing  files ' })).toBe('42% · Indexing files')
+    expect(progressWords({ progress: 3, total: 10 })).toBe('3 of 10')
+    expect(progressWords({ progress: 3, message: 'Working' })).toBe('Working')
+    expect(progressWords({ percent: 140 })).toBe('100%')
+    expect(progressWords(null)).toBe('')
   })
 })

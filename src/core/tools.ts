@@ -191,3 +191,14 @@ export function finalAnswerKeys(items: readonly { kind: string; key: string; str
 
   return keys
 }
+
+/** "42% · Indexing files", "3 of 10", or the message alone: how far a long call of a tool is. Empty when the host said nothing usable. */
+export function progressWords(payload: { progress?: unknown; total?: unknown; percent?: unknown; message?: unknown } | null | undefined): string {
+  const message = typeof payload?.message === 'string' ? payload.message.trim().replace(/\s+/g, ' ').slice(0, 80) : ''
+  const percent = typeof payload?.percent === 'number' && Number.isFinite(payload.percent) ? Math.max(0, Math.min(100, Math.round(payload.percent))) : null
+  const progress = typeof payload?.progress === 'number' && Number.isFinite(payload.progress) ? payload.progress : null
+  const total = typeof payload?.total === 'number' && payload.total > 0 ? payload.total : null
+  const amount = percent !== null ? `${percent}%` : progress !== null && total !== null ? `${progress} of ${total}` : ''
+
+  return [amount, message].filter(Boolean).join(' · ')
+}

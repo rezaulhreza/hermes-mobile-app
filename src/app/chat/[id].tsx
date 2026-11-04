@@ -84,6 +84,7 @@ import { markBotChatRead, $bots, loadBots } from '@/store/bots'
 import { $previews } from '@/store/browser'
 import { unwatchBackground, watchBackground } from '@/store/background'
 import { closeSide } from '@/store/side-chat'
+import { $toolProgress } from '@/store/tool-progress'
 import { $linkState } from '@/store/link'
 import { type AgentRequest, answerInOwnWords } from '@/core/requests'
 import { $requests, answerRequest } from '@/store/requests'
@@ -924,6 +925,7 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
           ) : null}
           {opens || item.state === 'done' ? <Feather color={t.muted} name="chevron-right" size={15} /> : null}
         </Pressable>
+        {item.state === 'running' ? <ToolProgress id={item.toolId} /> : null}
           {capture.length ? <SentAttachments items={capture} onOpen={index => onOpen({ items: capture, index })} /> : null}
         </View>
       )
@@ -942,6 +944,18 @@ function Row({ item, final, onOpen, onTool }: RowProps) {
     case 'limit':
       return <LimitCard limit={item.limit} />
   }
+}
+
+/** How far a long tool call is, as its MCP server reports it. Only this line draws again on each report. */
+function ToolProgress({ id }: { id: string }) {
+  const t = useTheme()
+  const words = useStore($toolProgress, { keys: [id] })[id]
+
+  return words ? (
+    <Text numberOfLines={1} style={[type.small, styles.toolProgress, { color: t.muted }]}>
+      {words}
+    </Text>
+  ) : null
 }
 
 /** The words of a dictation while the user talks. They go into the message field when the user stops. */
@@ -1036,6 +1050,7 @@ function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  toolProgress: { paddingLeft: 23, fontVariant: ['tabular-nums'] },
   thinking: { gap: space.sm },
   answer: { gap: space.sm },
   answerActions: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 24 },
