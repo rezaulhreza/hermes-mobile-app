@@ -8,9 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Card, IconButton } from '@/components/ui'
 import { EngineChoices } from '@/components/voice-engines'
 import { $linkState } from '@/store/link'
-import { DEEPGRAM_VOICES, voiceName } from '@/core/live-voice'
+import { DEEPGRAM_VOICES, LANGUAGES, languageName, voiceName } from '@/core/live-voice'
 import { $preferences, setPreference } from '@/store/preferences'
-import { $engines, hostVoice, loadEngines } from '@/store/voice'
+import { $engines, hostLanguage, hostVoice, loadEngines } from '@/store/voice'
 import { $wake, setWake, syncWake } from '@/store/wake'
 import { space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -20,11 +20,15 @@ export default function Voice() {
   const t = useTheme()
   const wake = useStore($wake)
   const linkState = useStore($linkState)
-  const chosen = useStore($preferences).voice
+  const preferences = useStore($preferences)
+  const chosen = preferences.voice
+  const language = preferences.language
   const engines = useStore($engines)
-  const [picking, setPicking] = useState(false)
-  // The voice the host is set to. The phone can take another one for its own calls.
+  const [picking, setPicking] = useState<'voice' | 'language' | null>(null)
+  // The voice and language the host is set to. The phone can take others for its own calls.
   const ofHost = hostVoice()
+  const hostTalks = hostLanguage()
+  const hostLanguageName = hostTalks ? `${languageName(hostTalks)}, as on the host` : 'As on the host'
   const deepgram = engines?.find(engine => engine.name === 'deepgram' && !engine.reason)
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export default function Voice() {
             accessibilityLabel={`Voice: ${chosen ? voiceName(chosen) : 'The voice of the host'}`}
             accessibilityRole="button"
             disabled={!deepgram}
-            onPress={() => setPicking(true)}
+            onPress={() => setPicking('voice')}
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.soft }]}
           >
             <Feather color={t.muted} name="volume-2" size={20} />
@@ -66,6 +70,21 @@ export default function Voice() {
               <Text style={[type.small, { color: t.muted }]}>
                 {deepgram ? 'For Live voice on the Deepgram engine, from this phone.' : 'The other engines speak with the voice set on your Hermes host.'}
               </Text>
+            </View>
+            {deepgram ? <Feather color={t.muted} name="chevron-right" size={18} /> : null}
+          </Pressable>
+          <Pressable
+            accessibilityHint={deepgram ? 'Opens the list of languages' : undefined}
+            accessibilityLabel={`Language: ${language ? languageName(language) : hostLanguageName}`}
+            accessibilityRole="button"
+            disabled={!deepgram}
+            onPress={() => setPicking('language')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="globe" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>{language ? languageName(language) : hostLanguageName}</Text>
+              <Text style={[type.small, { color: t.muted }]}>The language you speak.</Text>
             </View>
             {deepgram ? <Feather color={t.muted} name="chevron-right" size={18} /> : null}
           </Pressable>
@@ -94,11 +113,36 @@ export default function Voice() {
         </Text>
       </ScrollView>
 
-      <Modal animationType="slide" onRequestClose={() => setPicking(false)} presentationStyle="pageSheet" visible={picking}>
+      <Modal animationType="slide" onRequestClose={() => setPicking(null)} presentationStyle="pageSheet" visible={picking === 'language'}>
+        <View style={[styles.fill, { backgroundColor: t.bg }]}>
+          <View style={[styles.header, styles.sheetHead, { borderBottomColor: t.line }]}>
+            <Text style={[type.heading, styles.fill, { color: t.ink }]}>Language</Text>
+            <IconButton icon="x" label="Close" onPress={() => setPicking(null)} />
+          </View>
+          <FlatList
+            data={[{ code: '', name: hostLanguageName }, ...LANGUAGES]}
+            keyExtractor={item => item.code || 'host'}
+            renderItem={({ item }) => (
+              <Pressable
+                accessibilityLabel={`Language: ${item.name}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: item.code === language }}
+                onPress={() => (setPreference('language', item.code), setPicking(null))}
+                style={({ pressed }) => [styles.row, { borderBottomColor: t.line, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+              >
+                <Text style={[type.label, styles.fill, { color: t.ink }]}>{item.name}</Text>
+                {item.code === language ? <Feather color={t.accent} name="check" size={18} /> : null}
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
+
+      <Modal animationType="slide" onRequestClose={() => setPicking(null)} presentationStyle="pageSheet" visible={picking === 'voice'}>
         <View style={[styles.fill, { backgroundColor: t.bg }]}>
           <View style={[styles.header, styles.sheetHead, { borderBottomColor: t.line }]}>
             <Text style={[type.heading, styles.fill, { color: t.ink }]}>Voice of Hermes</Text>
-            <IconButton icon="x" label="Close" onPress={() => setPicking(false)} />
+            <IconButton icon="x" label="Close" onPress={() => setPicking(null)} />
           </View>
           <FlatList
             data={[{ id: '', name: ofHost ? `${voiceName(ofHost)}, the voice of the host` : 'The voice of the host', tone: 'What your Hermes host is set to' }, ...DEEPGRAM_VOICES]}
@@ -108,7 +152,7 @@ export default function Voice() {
                 accessibilityLabel={`Voice: ${item.name}`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: item.id === chosen }}
-                onPress={() => (setPreference('voice', item.id), setPicking(false))}
+                onPress={() => (setPreference('voice', item.id), setPicking(null))}
                 style={({ pressed }) => [styles.row, { borderBottomColor: t.line, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
               >
                 <View style={styles.fill}>

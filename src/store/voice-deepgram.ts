@@ -20,6 +20,7 @@ import {
   speakableLine,
   speakParts,
   speakUrl,
+  isFluxVoice,
   type TurnInfo,
   type UserTurn
 } from '@/core/live-voice'
@@ -71,12 +72,16 @@ export class DeepgramEngine implements VoiceEngine {
   private readonly sentences = new SentenceFeed()
   private readonly echo = new EchoMemory()
   private readonly samples = new SampleJoiner()
+  /** The voice is a Flux voice: it speaks on /v2/speak, with other messages than Aura. */
+  private readonly flux: boolean
 
   constructor(
     private readonly api: HermesApi,
     private readonly settings: DeepgramSettings,
     private readonly events: EngineEvents
-  ) {}
+  ) {
+    this.flux = isFluxVoice(settings)
+  }
 
   async start(): Promise<void> {
     this.active = true
@@ -164,7 +169,8 @@ export class DeepgramEngine implements VoiceEngine {
 
     void this.ensureSpeak()
       .then(socket => {
-        for (const part of speakParts(line)) {
+        // Flux joins the text of a turn as it is, so each line ends with a space.
+        for (const part of speakParts(this.flux ? `${line} ` : line)) {
           socket.send(JSON.stringify({ text: part, type: 'Speak' }))
         }
 
@@ -183,8 +189,18 @@ export class DeepgramEngine implements VoiceEngine {
     this.unflushed = false
     this.sentences.clear()
     if (this.speak?.readyState === WebSocket.OPEN) {
-      this.speak.send(JSON.stringify({ type: 'Clear' }))
-      this.dropUntil = Date.now() + CLEAR_WAIT_MS
+      if (this.flux) {
+        // Flux's Interrupt cancels only the line being spoken, not the ones queued after it.
+        // Closing the socket drops them all; the next line opens a new one.
+        const socket = this.speak
+
+        this.speak = null
+        this.speakOpening = null
+        socket.close()
+      } else {
+        this.speak.send(JSON.stringify({ type: 'Clear' }))
+        this.dropUntil = Date.now() + CLEAR_WAIT_MS
+      }
     }
 
     this.samples.reset()
@@ -320,7 +336,8 @@ export class DeepgramEngine implements VoiceEngine {
       return
     }
 
-    const wait = flushWait(this.lastFlushAt, Date.now())
+    // Flux has no limit on Flush. Aura does.
+    const wait = this.flux ? 0 : flushWait(this.lastFlushAt, Date.now())
 
     if (wait > 0) {
       this.flushTimer = setTimeout(() => {

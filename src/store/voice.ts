@@ -35,6 +35,7 @@ import {
   stillWorkingWait,
   toolLine,
   type UserTurn,
+  withLanguage,
   withVoice
 } from '@/core/live-voice'
 import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
@@ -146,6 +147,11 @@ let host: Host | null = null
 /** The voice the host is set to for the Deepgram engine. Null before the engines were asked for, or with no such engine. */
 export function hostVoice(): string | null {
   return host?.deepgram?.voice ?? null
+}
+
+/** The language the host is set to, for the Deepgram engine. */
+export function hostLanguage(): string | null {
+  return host?.deepgram?.language ?? null
 }
 
 /** Ask the host which engines it has. The answer is kept for the link. */
@@ -616,7 +622,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     const events = engineEvents(sessionId, mine)
     const next: VoiceEngine =
       name === 'deepgram' && host?.deepgram
-        ? new DeepgramEngine(api, withVoice(host.deepgram, $preferences.get().voice), events)
+        ? new DeepgramEngine(api, withLanguage(withVoice(host.deepgram, $preferences.get().voice), $preferences.get().language), events)
         : name === 'gpt-live'
           ? new GptLiveEngine(api, () => liveHistory(spokenTurns(sessionId)), events)
           : new RelayEngine(api, host?.liveStt ?? false, events)

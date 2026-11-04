@@ -2,16 +2,21 @@ import {
   advanceTurn,
   approvalQuestion,
   bytesBase64,
+  DEEPGRAM_VOICES,
   type DeepgramSettings,
   EchoMemory,
   flushWait,
+  isFluxVoice,
   isStopPhrase,
+  LANGUAGES,
   listenUrl,
   NEW_TURN,
   pcmBytes,
   SentenceFeed,
   speakableLine,
   speakParts,
+  voiceName,
+  withLanguage,
   speakUrl,
   spokenVerdict,
   toolLine,
@@ -44,6 +49,39 @@ describe('the socket addresses', () => {
     expect(listenUrl(SETTINGS)).toContain('numerals=true')
     expect(listenUrl({ ...SETTINGS, numerals: true })).toContain('numerals=true')
     expect(listenUrl({ ...SETTINGS, numerals: false })).toContain('numerals=false')
+  })
+
+  it('speaks a Flux voice on the second speak address, with its expressivity', () => {
+    const flux = speakUrl({ ...SETTINGS, voice: 'flux-colin-en', expressivity: 1 })
+
+    expect(flux).toContain('wss://api.deepgram.com/v2/speak?')
+    expect(flux).toContain('model=flux-colin-en')
+    expect(flux).toContain('expressivity=1')
+    expect(speakUrl({ ...SETTINGS, voice: 'flux-colin-en' })).not.toContain('expressivity')
+    expect(speakUrl({ ...SETTINGS, expressivity: 2 })).toContain('wss://api.deepgram.com/v1/speak?')
+    expect(speakUrl({ ...SETTINGS, expressivity: 2 })).not.toContain('expressivity')
+    expect(isFluxVoice({ ...SETTINGS, voice: 'flux-kit-en' })).toBe(true)
+    expect(isFluxVoice(SETTINGS)).toBe(false)
+  })
+
+  it('hears the language the host or the phone chose', () => {
+    expect(listenUrl({ ...SETTINGS, listen_model: 'flux-general-multi', language_hint: 'fr' })).toContain('language_hint=fr')
+    expect(listenUrl(SETTINGS)).not.toContain('language_hint')
+
+    const french = withLanguage(SETTINGS, 'fr')
+
+    expect(french.listen_model).toBe('flux-general-multi')
+    expect(french.language_hint).toBe('fr')
+    expect(withLanguage(SETTINGS, 'en-US').listen_model).toBe('flux-general-en')
+    expect(withLanguage(SETTINGS, 'en-US').language_hint).toBeNull()
+    expect(withLanguage(SETTINGS, 'multi').language_hint).toBeNull()
+    expect(withLanguage(SETTINGS, '')).toBe(SETTINGS)
+  })
+
+  it('names Flux voices', () => {
+    expect(voiceName('flux-colin-en')).toBe('Colin')
+    expect(DEEPGRAM_VOICES.some(voice => voice.id === 'flux-colin-en')).toBe(true)
+    expect(LANGUAGES.some(language => language.code === 'en-GB')).toBe(true)
   })
 
   it('names the speed only when it is not 1', () => {

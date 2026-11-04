@@ -21,6 +21,12 @@ export interface DeepgramSettings {
   speed: number
   keyterms: string[]
   mip_opt_out: boolean
+  /** The language the host is set to: en-GB, fr, multi, … */
+  language?: string | null
+  /** A language for the multilingual listening model, from the host or the phone. */
+  language_hint?: string | null
+  /** How lively a Flux voice sounds, -2 (calm) to 2 (animated). */
+  expressivity?: number
   /** Spoken numbers as digits ("25", "10 pm"). On when the host does not say. */
   numerals?: boolean
 }
@@ -33,7 +39,74 @@ export interface VoiceChoice {
   tone: string
 }
 
-/** Voices of Deepgram's second Aura family, English. The id is the model name the speak socket takes. */
+/** The languages a phone can choose for Live voice. Deepgram's live listening covers these. */
+export const LANGUAGES: readonly { code: string; name: string }[] = [
+  { code: 'en-GB', name: 'English (UK)' },
+  { code: 'en-US', name: 'English (US)' },
+  { code: 'en-AU', name: 'English (Australia)' },
+  { code: 'en-IN', name: 'English (India)' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'it', name: 'Italian' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'multi', name: 'Any of these' }
+]
+
+/** The language name for a code, or the code itself. */
+export function languageName(code: string): string {
+  return LANGUAGES.find(language => language.code === code)?.name ?? code
+}
+
+/** The host's settings with the phone's own language. English has its own listening model; any other language uses the multilingual one. Empty: the host's language. */
+export function withLanguage(settings: DeepgramSettings, chosen: string): DeepgramSettings {
+  if (!chosen) {
+    return settings
+  }
+
+  if (chosen.toLowerCase().startsWith('en')) {
+    return { ...settings, language: chosen, listen_model: 'flux-general-en', language_hint: null }
+  }
+
+  return { ...settings, language: chosen, listen_model: 'flux-general-multi', language_hint: chosen === 'multi' ? null : chosen.split('-')[0] }
+}
+
+/** A Flux voice speaks on Deepgram's second speak address. */
+export function isFluxVoice(settings: DeepgramSettings): boolean {
+  return settings.voice.startsWith('flux-')
+}
+
+const FLUX_VOICES: readonly VoiceChoice[] = [
+  { id: 'flux-colin-en', name: 'Colin', tone: 'Flux. British, warm and trusted' },
+  { id: 'flux-kit-en', name: 'Kit', tone: 'Flux. British, friendly and lively' },
+  { id: 'flux-gemma-en', name: 'Gemma', tone: 'Flux. British, kind and happy' },
+  { id: 'flux-jack-en', name: 'Jack', tone: 'Flux. British, clear and thoughtful' },
+  { id: 'flux-sean-en', name: 'Sean', tone: 'Flux. British, calm and mature' },
+  { id: 'flux-maeve-en', name: 'Maeve', tone: 'Flux. Irish, friendly and gentle' },
+  { id: 'flux-hannah-en', name: 'Hannah', tone: 'Flux. American, clear and sure' },
+  { id: 'flux-alexis-en', name: 'Alexis', tone: 'Flux. American, calm and caring' },
+  { id: 'flux-miles-en', name: 'Miles', tone: 'Flux. American, calm and sincere' },
+  { id: 'flux-drew-en', name: 'Drew', tone: 'Flux. American, relaxed and soft' },
+  { id: 'flux-camille-fr', name: 'Camille', tone: 'Flux. French' },
+  { id: 'flux-julien-fr', name: 'Julien', tone: 'Flux. French' },
+  { id: 'flux-nadine-de', name: 'Nadine', tone: 'Flux. German' },
+  { id: 'flux-moritz-de', name: 'Moritz', tone: 'Flux. German' },
+  { id: 'flux-carmen-es', name: 'Carmen', tone: 'Flux. Spanish' },
+  { id: 'flux-rafael-es', name: 'Rafael', tone: 'Flux. Spanish' },
+  { id: 'flux-sofia-it', name: 'Sofia', tone: 'Flux. Italian' },
+  { id: 'flux-matteo-it', name: 'Matteo', tone: 'Flux. Italian' },
+  { id: 'flux-mariana-pt', name: 'Mariana', tone: 'Flux. Portuguese' },
+  { id: 'flux-sanne-nl', name: 'Sanne', tone: 'Flux. Dutch' },
+  { id: 'flux-anjali-hi', name: 'Anjali', tone: 'Flux. Hindi' },
+  { id: 'flux-natalia-ru', name: 'Natalia', tone: 'Flux. Russian' },
+  { id: 'flux-sayaka-ja', name: 'Sayaka', tone: 'Flux. Japanese' }
+]
+
+/** Voices of Deepgram's second Aura family, English, then the Flux voices. The id is the model name the speak socket takes. */
 export const DEEPGRAM_VOICES: readonly VoiceChoice[] = [
   { id: 'aura-2-thalia-en', name: 'Thalia', tone: 'Clear and bright' },
   { id: 'aura-2-andromeda-en', name: 'Andromeda', tone: 'Easy and warm' },
@@ -46,7 +119,8 @@ export const DEEPGRAM_VOICES: readonly VoiceChoice[] = [
   { id: 'aura-2-orion-en', name: 'Orion', tone: 'Calm and polite' },
   { id: 'aura-2-zeus-en', name: 'Zeus', tone: 'Deep and steady' },
   { id: 'aura-2-pandora-en', name: 'Pandora', tone: 'British, smooth and calm' },
-  { id: 'aura-2-draco-en', name: 'Draco', tone: 'British, warm and deep' }
+  { id: 'aura-2-draco-en', name: 'Draco', tone: 'British, warm and deep' },
+  ...FLUX_VOICES
 ]
 
 /** The name of a voice for a person: "Thalia" for `aura-2-thalia-en`. A voice the list does not have shows its own middle word. */
@@ -57,7 +131,7 @@ export function voiceName(id: string): string {
     return known.name
   }
 
-  const word = id.replace(/^aura(-\d+)?-/, '').replace(/-[a-z]{2}$/, '')
+  const word = id.replace(/^(aura(-\d+)?|flux)-/, '').replace(/-[a-z]{2}$/, '')
 
   return word ? word.charAt(0).toUpperCase() + word.slice(1) : 'The voice of the host'
 }
@@ -107,7 +181,8 @@ export function listenUrl(settings: DeepgramSettings): string {
     ['model', settings.listen_model],
     ['numerals', String(settings.numerals !== false)],
     ['sample_rate', String(INPUT_SAMPLE_RATE)],
-    ...(settings.keyterms ?? []).map(term => ['keyterm', term])
+    ...(settings.keyterms ?? []).map(term => ['keyterm', term]),
+    ...(settings.language_hint ? [['language_hint', settings.language_hint]] : [])
   ]
 
   return `wss://api.deepgram.com/v2/listen?${query(params)}`
@@ -125,7 +200,15 @@ export function speakUrl(settings: DeepgramSettings): string {
     params.push(['speed', String(settings.speed)])
   }
 
-  return `wss://api.deepgram.com/v1/speak?${query(params)}`
+  if (!isFluxVoice(settings)) {
+    return `wss://api.deepgram.com/v1/speak?${query(params)}`
+  }
+
+  if (Number(settings.expressivity)) {
+    params.push(['expressivity', String(Math.trunc(Number(settings.expressivity)))])
+  }
+
+  return `wss://api.deepgram.com/v2/speak?${query(params)}`
 }
 
 function query(params: string[][]): string {
