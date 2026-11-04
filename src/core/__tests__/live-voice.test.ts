@@ -40,6 +40,12 @@ describe('the socket addresses', () => {
     expect(url).toContain('mip_opt_out=true')
   })
 
+  it('asks for numbers as digits unless the host turns it off', () => {
+    expect(listenUrl(SETTINGS)).toContain('numerals=true')
+    expect(listenUrl({ ...SETTINGS, numerals: true })).toContain('numerals=true')
+    expect(listenUrl({ ...SETTINGS, numerals: false })).toContain('numerals=false')
+  })
+
   it('names the speed only when it is not 1', () => {
     expect(speakUrl(SETTINGS)).not.toContain('speed')
     expect(speakUrl({ ...SETTINGS, speed: 1.2 })).toContain('speed=1.2')

@@ -21,6 +21,8 @@ export interface DeepgramSettings {
   speed: number
   keyterms: string[]
   mip_opt_out: boolean
+  /** Spoken numbers as digits ("25", "10 pm"). On when the host does not say. */
+  numerals?: boolean
 }
 
 /** A voice of the Deepgram speech model that a call can use. */
@@ -103,6 +105,7 @@ export function listenUrl(settings: DeepgramSettings): string {
     ['eot_timeout_ms', String(settings.eot_timeout_ms)],
     ['mip_opt_out', String(settings.mip_opt_out !== false)],
     ['model', settings.listen_model],
+    ['numerals', String(settings.numerals !== false)],
     ['sample_rate', String(INPUT_SAMPLE_RATE)],
     ...(settings.keyterms ?? []).map(term => ['keyterm', term])
   ]
