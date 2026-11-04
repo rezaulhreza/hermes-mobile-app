@@ -82,6 +82,28 @@ export async function setCapability(kind: CapabilityKind, id: string, on: boolea
   }
 }
 
+/**
+ * Lock a skill of the bot on screen against rewrites by the agent, or unlock
+ * it. The user's own edits stay allowed. The mark moves at once and goes back
+ * when the host refuses.
+ */
+export async function setSkillGuarded(id: string, guarded: boolean): Promise<void> {
+  const profile = $capabilityProfile.get()
+  const mark = (value: boolean) => $capabilities.setKey('skills', ($capabilities.get().skills ?? []).map(item => (item.id === id ? { ...item, guarded: value } : item)))
+
+  mark(guarded)
+
+  try {
+    await api().request({ path: `/api/skills/lock${of(profile)}`, method: 'PUT', body: { name: id, locked: guarded, profile } })
+  } catch (error) {
+    if (profile === $capabilityProfile.get()) {
+      mark(!guarded)
+    }
+
+    throw error
+  }
+}
+
 export function clearCapabilities(): void {
   $capabilityProfile.set('')
   $capabilities.set({})

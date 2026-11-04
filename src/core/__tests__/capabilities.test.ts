@@ -9,8 +9,12 @@ describe('capabilities of a bot', () => {
 
   it('reads the skills', () => {
     expect(skillRows([{ name: 'apple-notes', description: 'Manage  notes.', category: 'apple', enabled: true }, { description: 'no name' }])).toEqual([
-      { id: 'apple-notes', title: 'Apple notes', detail: 'Manage notes.', group: 'Apple', on: true, locked: '' }
+      { id: 'apple-notes', title: 'Apple notes', detail: 'Manage notes.', group: 'Apple', on: true, locked: '', guarded: false }
     ])
+  })
+
+  it('reads a skill the agent may not rewrite', () => {
+    expect(skillRows([{ name: 'house-style', enabled: true, locked: true }])[0].guarded).toBe(true)
   })
 
   it('locks a group of tools the host cannot run', () => {

@@ -10,7 +10,7 @@ import { IconButton, Notice } from '@/components/ui'
 import { CAPABILITY_KINDS, type Capability, capabilityCount, type CapabilityKind, shownCapabilities } from '@/core/capabilities'
 import { faultWords } from '@/core/format'
 import { $bots } from '@/store/bots'
-import { $capabilities, $capabilityProfile, clearCapabilities, loadCapabilities, setCapability, showCapabilitiesOf } from '@/store/capabilities'
+import { $capabilities, $capabilityProfile, clearCapabilities, loadCapabilities, setCapability, setSkillGuarded, showCapabilitiesOf } from '@/store/capabilities'
 import { $linkState } from '@/store/link'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { usePull } from '@/theme/use-pull'
@@ -60,6 +60,15 @@ export default function Capabilities() {
     setNote(null)
     setCapability(kind, item.id, on).then(
       restart => restart && setNote(`${item.title} changes when Hermes starts again.`),
+      error => setFault(`${item.title}: ${faultWords(error)}`)
+    )
+  }
+
+  const guard = (item: Capability, guarded: boolean) => {
+    setFault(null)
+    setNote(null)
+    setSkillGuarded(item.id, guarded).then(
+      () => setNote(guarded ? `${item.title} is locked. The agent cannot change it. You still can.` : `${item.title} is unlocked. The agent can improve it again.`),
       error => setFault(`${item.title}: ${faultWords(error)}`)
     )
   }
@@ -115,7 +124,7 @@ export default function Capabilities() {
         keyExtractor={item => item.id}
         refreshing={pull.refreshing}
         onRefresh={pull.onRefresh}
-        renderItem={({ item }) => <Row item={item} onFlip={flip} />}
+        renderItem={({ item }) => <Row item={item} onFlip={flip} onGuard={kind === 'skills' ? guard : undefined} />}
         windowSize={7}
       />
 
@@ -141,7 +150,7 @@ export default function Capabilities() {
   )
 }
 
-const Row = memo(function Row({ item, onFlip }: { item: Capability; onFlip: (item: Capability, on: boolean) => void }) {
+const Row = memo(function Row({ item, onFlip, onGuard }: { item: Capability; onFlip: (item: Capability, on: boolean) => void; /** Skills only: lock against rewrites by the agent. */ onGuard?: (item: Capability, guarded: boolean) => void }) {
   const t = useTheme()
 
   return (
@@ -161,6 +170,13 @@ const Row = memo(function Row({ item, onFlip }: { item: Capability; onFlip: (ite
           </Text>
         ) : null}
       </View>
+      {onGuard ? (
+        <IconButton
+          icon={item.guarded ? 'lock' : 'unlock'}
+          label={item.guarded ? `${item.title}: locked against changes by the agent. Unlock it` : `${item.title}: the agent can change it. Lock it`}
+          onPress={() => onGuard(item, !item.guarded)}
+        />
+      ) : null}
       <Switch accessibilityLabel={`${item.title}: ${item.on ? 'on' : 'off'}`} disabled={Boolean(item.locked)} onValueChange={on => onFlip(item, on)} trackColor={{ true: t.accent }} value={item.on} />
     </View>
   )

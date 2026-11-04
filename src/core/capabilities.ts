@@ -24,6 +24,8 @@ export interface Capability {
   on: boolean
   /** Why the user cannot switch it here. Empty: the user can. */
   locked: string
+  /** A skill only: the agent cannot rewrite it. The user's own edits still work. Undefined for the other kinds. */
+  guarded?: boolean
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
@@ -40,7 +42,7 @@ const firstSentence = (words: string) => words.replace(/\s+/g, ' ').trim()
 
 export function skillRows(result: unknown): Capability[] {
   return rows(result).flatMap(row =>
-    text(row.name) ? [{ id: text(row.name), title: readableName(text(row.name)), detail: firstSentence(text(row.description)), group: readableName(text(row.category) || 'other'), on: row.enabled === true, locked: '' }] : []
+    text(row.name) ? [{ id: text(row.name), title: readableName(text(row.name)), detail: firstSentence(text(row.description)), group: readableName(text(row.category) || 'other'), on: row.enabled === true, locked: '', guarded: row.locked === true }] : []
   )
 }
 
