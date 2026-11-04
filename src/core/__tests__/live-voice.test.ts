@@ -10,6 +10,7 @@ import {
   isStopPhrase,
   LANGUAGES,
   listenUrl,
+  NovaTurns,
   NEW_TURN,
   pcmBytes,
   SentenceFeed,
@@ -76,6 +77,40 @@ describe('the socket addresses', () => {
     expect(withLanguage(SETTINGS, 'en-US').language_hint).toBeNull()
     expect(withLanguage(SETTINGS, 'multi').language_hint).toBeNull()
     expect(withLanguage(SETTINGS, '')).toBe(SETTINGS)
+  })
+
+  it('sends a language Flux does not hear to Nova-3', () => {
+    const bangla = withLanguage(SETTINGS, 'bn')
+
+    expect(bangla.listen_engine).toBe('nova')
+    expect(bangla.language_hint).toBe('bn')
+
+    const url = listenUrl(bangla)
+
+    expect(url).toContain('wss://api.deepgram.com/v1/listen?')
+    expect(url).toContain('model=nova-3')
+    expect(url).toContain('language=multi')
+    expect(url).toContain('language_hint=bn')
+    expect(url).toContain('utterance_end_ms=1000')
+    expect(url).toContain('keyterm=Hermes')
+    expect(withLanguage(SETTINGS, 'multi').listen_engine).toBe('nova')
+    expect(withLanguage(SETTINGS, 'multi').language_hint).toBeNull()
+    expect(withLanguage(SETTINGS, 'fr').listen_engine).toBe('flux')
+    expect(LANGUAGES.some(language => language.code === 'ko')).toBe(true)
+  })
+
+  it('makes Flux turn messages from Nova-3 results', () => {
+    const turns = new NovaTurns()
+    const result = (transcript: string, final: boolean) => ({ type: 'Results', is_final: final, channel: { alternatives: [{ transcript }] } })
+    const events = [
+      ...turns.feed(result('one', false)),
+      ...turns.feed(result('one two', true)),
+      ...turns.feed({ type: 'UtteranceEnd' }),
+      ...turns.feed({ type: 'UtteranceEnd' })
+    ]
+
+    expect(events.map(event => `${event.event}:${event.transcript}`)).toEqual(['StartOfTurn:one', 'Update:one', 'Update:one two', 'EndOfTurn:one two'])
+    expect(turns.feed({ type: 'Metadata' })).toEqual([{ type: 'Metadata' }])
   })
 
   it('names Flux voices', () => {

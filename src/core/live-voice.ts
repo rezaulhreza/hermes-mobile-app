@@ -25,6 +25,8 @@ export interface DeepgramSettings {
   language?: string | null
   /** A language for the multilingual listening model, from the host or the phone. */
   language_hint?: string | null
+  /** flux (ten languages, with turn events) or nova (every other language; a pause ends a turn). */
+  listen_engine?: 'flux' | 'nova'
   /** How lively a Flux voice sounds, -2 (calm) to 2 (animated). */
   expressivity?: number
   /** Spoken numbers as digits ("25", "10 pm"). On when the host does not say. */
@@ -39,23 +41,22 @@ export interface VoiceChoice {
   tone: string
 }
 
-/** The languages a phone can choose for Live voice. Deepgram's live listening covers these. */
+/** The languages a phone can choose for Live voice: every language Deepgram hears live. */
 export const LANGUAGES: readonly { code: string; name: string }[] = [
-  { code: 'en-GB', name: 'English (UK)' },
-  { code: 'en-US', name: 'English (US)' },
-  { code: 'en-AU', name: 'English (Australia)' },
-  { code: 'en-IN', name: 'English (India)' },
-  { code: 'nl', name: 'Dutch' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'it', name: 'Italian' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'multi', name: 'Any of these' }
-]
+  ['en-GB', 'English (UK)'], ['en-US', 'English (US)'], ['en-AU', 'English (Australia)'], ['en-IN', 'English (India)'],
+  ['en-NZ', 'English (New Zealand)'], ['en-CA', 'English (Canada)'], ['multi', 'Any language'],
+  ['af', 'Afrikaans'], ['ar', 'Arabic'], ['bn', 'Bangla'], ['be', 'Belarusian'], ['bs', 'Bosnian'], ['bg', 'Bulgarian'],
+  ['zh-HK', 'Cantonese'], ['ca', 'Catalan'], ['zh', 'Chinese (Mandarin)'], ['hr', 'Croatian'], ['cs', 'Czech'], ['da', 'Danish'],
+  ['nl', 'Dutch'], ['et', 'Estonian'], ['fi', 'Finnish'], ['nl-BE', 'Flemish'], ['fr', 'French'], ['gl', 'Galician'], ['de', 'German'],
+  ['el', 'Greek'], ['gu', 'Gujarati'], ['he', 'Hebrew'], ['hi', 'Hindi'], ['hu', 'Hungarian'], ['id', 'Indonesian'], ['it', 'Italian'],
+  ['ja', 'Japanese'], ['kn', 'Kannada'], ['ko', 'Korean'], ['lv', 'Latvian'], ['lt', 'Lithuanian'], ['mk', 'Macedonian'], ['ms', 'Malay'],
+  ['mr', 'Marathi'], ['no', 'Norwegian'], ['fa', 'Persian'], ['pl', 'Polish'], ['pt', 'Portuguese'], ['ro', 'Romanian'], ['ru', 'Russian'],
+  ['sr', 'Serbian'], ['sk', 'Slovak'], ['sl', 'Slovenian'], ['es', 'Spanish'], ['sv', 'Swedish'], ['tl', 'Tagalog'], ['ta', 'Tamil'],
+  ['te', 'Telugu'], ['th', 'Thai'], ['tr', 'Turkish'], ['uk', 'Ukrainian'], ['vi', 'Vietnamese'], ['xh', 'Xhosa'], ['zu', 'Zulu']
+].map(([code, name]) => ({ code, name }))
+
+/** The languages Flux hears, with its turn events. Every other one goes to Nova-3. */
+const FLUX_LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'hi', 'ru', 'pt', 'ja', 'it', 'nl'])
 
 /** The language name for a code, or the code itself. */
 export function languageName(code: string): string {
@@ -68,11 +69,17 @@ export function withLanguage(settings: DeepgramSettings, chosen: string): Deepgr
     return settings
   }
 
-  if (chosen.toLowerCase().startsWith('en')) {
-    return { ...settings, language: chosen, listen_model: 'flux-general-en', language_hint: null }
+  const base = chosen.split('-')[0].toLowerCase()
+
+  if (base === 'en') {
+    return { ...settings, language: chosen, listen_engine: 'flux', listen_model: 'flux-general-en', language_hint: null }
   }
 
-  return { ...settings, language: chosen, listen_model: 'flux-general-multi', language_hint: chosen === 'multi' ? null : chosen.split('-')[0] }
+  if (FLUX_LANGUAGES.has(base)) {
+    return { ...settings, language: chosen, listen_engine: 'flux', listen_model: 'flux-general-multi', language_hint: base }
+  }
+
+  return { ...settings, language: chosen, listen_engine: 'nova', listen_model: 'nova-3', language_hint: chosen === 'multi' ? null : chosen }
 }
 
 /** A Flux voice speaks on Deepgram's second speak address. */
@@ -173,6 +180,10 @@ const SPOKEN_CHARS_PER_SECOND = 14
 export const TOOL_LINE_QUIET_MS = 2500
 
 export function listenUrl(settings: DeepgramSettings): string {
+  if (settings.listen_engine === 'nova') {
+    return novaListenUrl(settings)
+  }
+
   const params = [
     ['encoding', 'linear16'],
     ['eot_threshold', String(settings.eot_threshold)],
@@ -186,6 +197,84 @@ export function listenUrl(settings: DeepgramSettings): string {
   ]
 
   return `wss://api.deepgram.com/v2/listen?${query(params)}`
+}
+
+/** Nova-3 with many languages: the chosen one as a hint. A second of quiet sends UtteranceEnd. */
+function novaListenUrl(settings: DeepgramSettings): string {
+  const params = [
+    ['encoding', 'linear16'],
+    ['endpointing', '300'],
+    ['interim_results', 'true'],
+    ['language', 'multi'],
+    ['mip_opt_out', String(settings.mip_opt_out !== false)],
+    ['model', 'nova-3'],
+    ['numerals', 'true'],
+    ['sample_rate', String(INPUT_SAMPLE_RATE)],
+    ['smart_format', 'true'],
+    ['utterance_end_ms', '1000'],
+    ...(settings.keyterms ?? []).map(term => ['keyterm', term]),
+    ...(settings.language_hint ? [['language_hint', settings.language_hint]] : [])
+  ]
+
+  return `wss://api.deepgram.com/v1/listen?${query(params)}`
+}
+
+/** Turns from Nova-3: the first words start a turn, a second of quiet (UtteranceEnd) ends it.
+ *  It gives the TurnInfo messages Flux sends, so the call code stays the same. Other messages pass through. */
+export class NovaTurns {
+  private finals: string[] = []
+  private interim = ''
+  private active = false
+
+  private words(): string {
+    return [...this.finals, this.interim].filter(Boolean).join(' ')
+  }
+
+  feed(message: Record<string, unknown> | null): Record<string, unknown>[] {
+    if (!message) {
+      return []
+    }
+
+    if (message.type === 'Results') {
+      const channel = message.channel as { alternatives?: { transcript?: string }[] } | undefined
+      const text = String(channel?.alternatives?.[0]?.transcript ?? '').trim()
+
+      if (!text) {
+        return []
+      }
+
+      if (message.is_final) {
+        this.finals.push(text)
+        this.interim = ''
+      } else {
+        this.interim = text
+      }
+
+      const events: Record<string, unknown>[] = []
+
+      if (!this.active) {
+        this.active = true
+        events.push({ type: 'TurnInfo', event: 'StartOfTurn', transcript: this.words() })
+      }
+
+      events.push({ type: 'TurnInfo', event: 'Update', transcript: this.words() })
+
+      return events
+    }
+
+    if (message.type === 'UtteranceEnd') {
+      const said = this.words()
+      const ended = this.active && Boolean(said)
+
+      this.finals = []
+      this.interim = ''
+      this.active = false
+
+      return ended ? [{ type: 'TurnInfo', event: 'EndOfTurn', transcript: said }] : []
+    }
+
+    return [message]
+  }
 }
 
 export function speakUrl(settings: DeepgramSettings): string {

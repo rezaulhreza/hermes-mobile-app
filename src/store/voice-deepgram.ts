@@ -21,6 +21,7 @@ import {
   speakParts,
   speakUrl,
   isFluxVoice,
+  NovaTurns,
   type TurnInfo,
   type UserTurn
 } from '@/core/live-voice'
@@ -244,9 +245,22 @@ export class DeepgramEngine implements VoiceEngine {
       return
     }
 
+    // Nova-3 (languages Flux does not hear) sends results; they become Flux turn messages.
+    const nova = this.settings.listen_engine === 'nova' ? new NovaTurns() : null
+
     socket.onmessage = event => {
-      if (typeof event.data === 'string') {
+      if (typeof event.data !== 'string') {
+        return
+      }
+
+      if (!nova) {
         this.onListenMessage(event.data)
+
+        return
+      }
+
+      for (const message of nova.feed(parse(event.data) as Record<string, unknown> | null)) {
+        this.onListenMessage(JSON.stringify(message))
       }
     }
     socket.onclose = () => {
