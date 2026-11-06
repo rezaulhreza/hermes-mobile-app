@@ -173,20 +173,20 @@ export async function loadEngines(): Promise<EngineChoice[]> {
   const choices: EngineChoice[] = [
     {
       name: 'deepgram',
-      label: 'Deepgram live',
-      detail: 'The fastest. The same voice path as the desktop plugin.',
+      label: 'Deepgram',
+      detail: 'Your speech goes from this phone to Deepgram.',
       reason: deepgram ? null : 'The deepgram-live plugin is not ready on this host.'
     },
     {
       name: 'relay',
       label: 'Hermes voice',
-      detail: 'The speech providers of your Hermes host.',
+      detail: 'Your speech goes through your Hermes host and its speech settings.',
       reason: null
     },
     {
       name: 'gpt-live',
       label: 'GPT-Live',
-      detail: 'OpenAI’s voice model talks with you and hands the work to your agent.',
+      detail: 'An OpenAI voice talks with you and passes tasks to your agent.',
       reason: live?.available ? null : gptLiveReason(live)
     }
   ]

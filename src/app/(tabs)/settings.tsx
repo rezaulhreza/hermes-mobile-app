@@ -147,6 +147,22 @@ export default function Settings() {
             <Feather color={t.muted} name="chevron-right" size={20} />
           </Pressable>
           <Pressable
+            accessibilityHint="How you talk with your agent: Live voice and the wake word"
+            accessibilityLabel="Voice"
+            accessibilityRole="button"
+            onPress={() => router.push('/voice')}
+            style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+          >
+            <Feather color={t.muted} name="mic" size={20} />
+            <View style={styles.fill}>
+              <Text style={[type.label, { color: t.ink }]}>Voice</Text>
+              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
+                Live voice and the wake word
+              </Text>
+            </View>
+            <Feather color={t.muted} name="chevron-right" size={20} />
+          </Pressable>
+          <Pressable
             accessibilityHint="The state of Hermes, its usage, its logs and its care"
             accessibilityLabel="The host"
             accessibilityRole="button"
@@ -196,7 +212,7 @@ export default function Settings() {
           </Pressable>
         </Card>
 
-        <Text style={[type.small, styles.section, { color: t.muted }]}>This phone</Text>
+        <Text style={[type.small, styles.section, { color: t.muted }]}>App</Text>
         <Card style={styles.card}>
           <View style={styles.row}>
             <Feather color={t.muted} name="sun" size={20} />
@@ -220,22 +236,6 @@ export default function Settings() {
               })}
             </View>
           </View>
-          <Pressable
-            accessibilityHint="The speech engine of Live voice and the wake word"
-            accessibilityLabel="Voice"
-            accessibilityRole="button"
-            onPress={() => router.push('/voice')}
-            style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.soft }]}
-          >
-            <Feather color={t.muted} name="mic" size={20} />
-            <View style={styles.fill}>
-              <Text style={[type.label, { color: t.ink }]}>Voice</Text>
-              <Text numberOfLines={1} style={[type.small, { color: t.muted }]}>
-                The speech engine of a call, and the wake word
-              </Text>
-            </View>
-            <Feather color={t.muted} name="chevron-right" size={20} />
-          </Pressable>
           <Pressable
             accessibilityHint="Opens the notification settings of this app"
             accessibilityLabel="Notifications"

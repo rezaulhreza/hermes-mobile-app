@@ -10,7 +10,7 @@ import { Appearance } from 'react-native'
 import type { EngineName } from './voice-engine'
 
 export interface Preferences {
-  /** `auto` takes the fastest engine the host has. */
+  /** `auto` takes the first engine the host can run. */
   engine: EngineName | 'auto'
   /** This phone listens for the wake word while the app is open. */
   wake: boolean
