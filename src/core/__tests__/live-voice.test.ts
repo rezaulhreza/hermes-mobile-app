@@ -5,6 +5,8 @@ import {
   DEEPGRAM_VOICES,
   type DeepgramSettings,
   EchoMemory,
+  EXPRESSIVITY,
+  expressivityName,
   flushWait,
   isFluxVoice,
   isStopPhrase,
@@ -17,6 +19,7 @@ import {
   speakableLine,
   speakParts,
   voiceName,
+  withExpressivity,
   withLanguage,
   speakUrl,
   spokenVerdict,
@@ -397,3 +400,26 @@ describe('the voice of a call', () => {
     expect(withVoice(settings, '')).toBe(settings)
   })
 })
+
+describe('expressivity of this phone', () => {
+  it('keeps the host setting when the phone chose none', () => {
+    expect(withExpressivity(SETTINGS, null)).toBe(SETTINGS)
+  })
+
+  it('puts the chosen level in the speak address of a Flux voice', () => {
+    const lively = withExpressivity({ ...SETTINGS, voice: 'flux-kit-en', expressivity: -2 }, 1)
+
+    expect(speakUrl(lively)).toContain('expressivity=1')
+  })
+
+  it('keeps a level in range', () => {
+    expect(withExpressivity(SETTINGS, 9).expressivity).toBe(2)
+    expect(withExpressivity(SETTINGS, -9).expressivity).toBe(-2)
+  })
+
+  it('names the levels as Brah does', () => {
+    expect(EXPRESSIVITY.map(level => level.name)).toEqual(['Calm', 'Quiet', 'Normal', 'Lively', 'Animated'])
+    expect(expressivityName(2)).toBe('Animated')
+  })
+})
+

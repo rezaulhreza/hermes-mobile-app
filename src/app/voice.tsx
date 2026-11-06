@@ -8,9 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Card, IconButton } from '@/components/ui'
 import { EngineChoices } from '@/components/voice-engines'
 import { $linkState } from '@/store/link'
-import { DEEPGRAM_VOICES, LANGUAGES, languageName, voiceName } from '@/core/live-voice'
+import { DEEPGRAM_VOICES, EXPRESSIVITY, expressivityName, LANGUAGES, languageName, voiceName } from '@/core/live-voice'
 import { $preferences, setPreference } from '@/store/preferences'
-import { $engines, hostLanguage, hostVoice, loadEngines } from '@/store/voice'
+import { $engines, hostExpressivity, hostLanguage, hostVoice, loadEngines } from '@/store/voice'
 import { $wake, setWake, syncWake } from '@/store/wake'
 import { space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
@@ -24,12 +24,16 @@ export default function Voice() {
   const chosen = preferences.voice
   const language = preferences.language
   const engines = useStore($engines)
-  const [picking, setPicking] = useState<'voice' | 'language' | null>(null)
+  const [picking, setPicking] = useState<'voice' | 'language' | 'expressivity' | null>(null)
   // The voice and language the host is set to. The phone can take others for its own calls.
   const ofHost = hostVoice()
   const hostTalks = hostLanguage()
   const hostLanguageName = hostTalks ? `${languageName(hostTalks)}, as on the host` : 'As on the host'
   const deepgram = engines?.find(engine => engine.name === 'deepgram' && !engine.reason)
+  // Only a Flux voice changes with expressivity: the row shows for one only.
+  const flux = (chosen || ofHost || '').startsWith('flux-')
+  const lively = preferences.expressivity
+  const hostLively = `${expressivityName(hostExpressivity())}, as on the host`
 
   useEffect(() => {
     if (linkState === 'open') {
@@ -88,6 +92,22 @@ export default function Voice() {
             </View>
             {deepgram ? <Feather color={t.muted} name="chevron-right" size={18} /> : null}
           </Pressable>
+          {deepgram && flux ? (
+            <Pressable
+              accessibilityHint="Opens the list of levels"
+              accessibilityLabel={`Expressivity: ${lively === null ? hostLively : expressivityName(lively)}`}
+              accessibilityRole="button"
+              onPress={() => setPicking('expressivity')}
+              style={({ pressed }) => [styles.row, { borderTopColor: t.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+            >
+              <Feather color={t.muted} name="activity" size={20} />
+              <View style={styles.fill}>
+                <Text style={[type.label, { color: t.ink }]}>{lively === null ? hostLively : expressivityName(lively)}</Text>
+                <Text style={[type.small, { color: t.muted }]}>How lively the voice sounds.</Text>
+              </View>
+              <Feather color={t.muted} name="chevron-right" size={18} />
+            </Pressable>
+          ) : null}
         </Card>
 
         <Text style={[type.small, styles.section, { color: t.muted }]}>Wake word</Text>
@@ -132,6 +152,31 @@ export default function Voice() {
               >
                 <Text style={[type.label, styles.fill, { color: t.ink }]}>{item.name}</Text>
                 {item.code === language ? <Feather color={t.accent} name="check" size={18} /> : null}
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
+
+      <Modal animationType="slide" onRequestClose={() => setPicking(null)} presentationStyle="pageSheet" visible={picking === 'expressivity'}>
+        <View style={[styles.fill, { backgroundColor: t.bg }]}>
+          <View style={[styles.header, styles.sheetHead, { borderBottomColor: t.line }]}>
+            <Text style={[type.heading, styles.fill, { color: t.ink }]}>Expressivity</Text>
+            <IconButton icon="x" label="Close" onPress={() => setPicking(null)} />
+          </View>
+          <FlatList
+            data={[{ value: null as number | null, name: hostLively }, ...EXPRESSIVITY]}
+            keyExtractor={item => (item.value === null ? 'host' : String(item.value))}
+            renderItem={({ item }) => (
+              <Pressable
+                accessibilityLabel={`Expressivity: ${item.name}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: item.value === lively }}
+                onPress={() => (setPreference('expressivity', item.value), setPicking(null))}
+                style={({ pressed }) => [styles.row, { borderBottomColor: t.line, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: t.soft }]}
+              >
+                <Text style={[type.label, styles.fill, { color: t.ink }]}>{item.name}</Text>
+                {item.value === lively ? <Feather color={t.accent} name="check" size={18} /> : null}
               </Pressable>
             )}
           />

@@ -148,6 +148,25 @@ export function withVoice(settings: DeepgramSettings, chosen: string): DeepgramS
   return chosen ? { ...settings, voice: chosen } : settings
 }
 
+/** How lively a Flux voice sounds. The same names and order as the desktop plugin and Brah. Aura voices ignore it. */
+export const EXPRESSIVITY: readonly { value: number; name: string }[] = [
+  { value: -2, name: 'Calm' },
+  { value: -1, name: 'Quiet' },
+  { value: 0, name: 'Normal' },
+  { value: 1, name: 'Lively' },
+  { value: 2, name: 'Animated' }
+]
+
+/** The name of an expressivity level: "Lively" for 1. */
+export function expressivityName(value: number): string {
+  return EXPRESSIVITY.find(level => level.value === value)?.name ?? 'Normal'
+}
+
+/** The settings of a call, with the expressivity this phone chose. Null: the host's. */
+export function withExpressivity(settings: DeepgramSettings, chosen: number | null): DeepgramSettings {
+  return chosen === null ? settings : { ...settings, expressivity: Math.max(-2, Math.min(2, Math.trunc(chosen))) }
+}
+
 export const INPUT_SAMPLE_RATE = 16_000
 export const OUTPUT_SAMPLE_RATE = 24_000
 /** The listening model is tuned for frames of this length. */
