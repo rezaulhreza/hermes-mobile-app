@@ -39,7 +39,7 @@ import {
 } from '@/core/live-voice'
 import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
 import { requestSummary } from '@/core/requests'
-import { type CallPhase, speakable } from '@/core/voice'
+import { CALL_QUIET_LINE, type CallPhase, callQuietTooLong, DICTATION_QUIET_MS, dictationQuietNotice, speakable } from '@/core/voice'
 import { duplexAudio } from '@/native/duplex-audio'
 
 import { $conversations, sendDraft, stopTurn } from './chat'
@@ -71,6 +71,8 @@ export interface Call {
 export const $call = atom<Call | null>(null)
 /** Why the last call ended by itself (a lost connection). Null after the user has read it. */
 export const $callEnded = atom<string | null>(null)
+/** Why the last dictation ended on its own, for the message field. Null: it did not. */
+export const $dictationNotice = atom<string | null>(null)
 /**
  * One-shot dictation into the message field: off, the microphone opens, it is
  * open and waits for words, it hears the user, or the text is on its way.
@@ -491,6 +493,50 @@ $requests.listen(requests => {
 
 const STILL_WORKING_TICK_MS = 1000
 let quietMs = 0
+/** The last moment of the call with something going on: speech, work of the agent, or sound. */
+let busySince = 0
+/** The call says goodbye after a long quiet and ends a moment later. */
+let quietEnding = false
+/** Time for the goodbye line to play before the call ends. */
+const QUIET_GOODBYE_MS = 6000
+
+/** A call left open with nobody speaking ends after two minutes, with one line that says why. */
+function watchQuiet(): void {
+  const call = $call.get()
+
+  if (!call || !engine || quietEnding) {
+    return
+  }
+
+  const running = $conversations.get()[call.sessionId]?.transcript.running ?? false
+  const busy = call.phase !== 'listening' || running || Boolean(turn && !turn.done) || Boolean(approval) || engine.speaking() || engine.audible()
+  const now = Date.now()
+
+  if (busy) {
+    busySince = now
+  } else if (callQuietTooLong(busySince, now)) {
+    const mine = generation
+
+    quietEnding = true
+    engine.say(CALL_QUIET_LINE)
+    void wait(QUIET_GOODBYE_MS).then(() => {
+      quietEnding = false
+      const phase = $call.get()?.phase
+
+      // The person spoke during the goodbye: the call goes on.
+      if (phase === 'hearing' || phase === 'transcribing' || phase === 'thinking') {
+        busySince = Date.now()
+
+        return
+      }
+
+      if (generation === mine) {
+        endCall()
+        $callEnded.set(CALL_QUIET_LINE)
+      }
+    })
+  }
+}
 
 /**
  * A long silence while the agent works: the voice says that it still works,
@@ -710,9 +756,11 @@ export async function startCall(sessionId: string, options: { greeting?: string 
         }
       })
     ]
-    const company = setInterval(keepCompany, STILL_WORKING_TICK_MS)
+    const company = setInterval(() => (keepCompany(), watchQuiet()), STILL_WORKING_TICK_MS)
 
     quietMs = 0
+    busySince = Date.now()
+    quietEnding = false
     subscriptions.push({ remove: () => clearInterval(company) })
     await next.start()
 
@@ -866,6 +914,7 @@ export async function dictate(): Promise<string> {
   stopPlayback?.()
   $dictation.set('starting')
   $dictationWords.set('')
+  $dictationNotice.set(null)
   dictating = true
 
   const listeners: { remove(): void }[] = []
@@ -904,7 +953,12 @@ export async function dictate(): Promise<string> {
       // A listen that hears nothing does not hold the microphone open for ever. The words said so far are kept.
       const waitForSpeech = () => {
         clearTimeout(idle ?? undefined)
-        idle = setTimeout(() => !inTurn && done(), DICTATION_QUIET_MS)
+        idle = setTimeout(() => {
+          if (!inTurn) {
+            $dictationNotice.set(dictationQuietNotice(Boolean(words())))
+            done()
+          }
+        }, DICTATION_QUIET_MS)
       }
 
       waitForSpeech()
@@ -980,12 +1034,6 @@ let dictationEngine: RelayEngine | null = null
 let dictating = false
 /** How long a dictation waits to learn what the host can do, before it starts with no live words. */
 const HOST_WAIT_MS = 1500
-/**
- * A dictation with no speech for this long ends, and gives the words it has. A person stops to think in
- * the middle of a message, so a short quiet is not the end. A quiet this long is a microphone that was
- * forgotten.
- */
-const DICTATION_QUIET_MS = 90_000
 
 export function cancelDictation(): void {
   endDictation?.('')

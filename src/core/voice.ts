@@ -147,3 +147,25 @@ const GOODBYE = /^(stop|goodbye|bye|end (the )?call|hang up|that'?s all( thanks)
 export function isGoodbye(transcript: string): boolean {
   return GOODBYE.test(transcript.trim())
 }
+
+/**
+ * A microphone left on by mistake: dictation and Live voice end after this long with nobody
+ * speaking. A person stops to think mid-message, so the limits are minutes, not seconds.
+ */
+export const DICTATION_QUIET_MS = 60_000
+export const CALL_QUIET_MS = 120_000
+
+const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`
+
+/** What the field says after a dictation ended on its own. */
+export function dictationQuietNotice(keptWords: boolean): string {
+  return `Dictation stopped: no speech for ${minutes(DICTATION_QUIET_MS)}.${keptWords ? ' Your words are kept.' : ''}`
+}
+
+/** What Hermes says, and the chat then shows, when a call ends on its own. */
+export const CALL_QUIET_LINE = `Nobody has spoken for ${minutes(CALL_QUIET_MS)}, so I am ending Live voice.`
+
+/** True when nothing has happened in a call since `idleSince`: nobody spoke and the agent did nothing. */
+export function callQuietTooLong(idleSince: number, now: number): boolean {
+  return now - idleSince >= CALL_QUIET_MS
+}

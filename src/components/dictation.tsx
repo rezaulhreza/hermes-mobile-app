@@ -3,7 +3,7 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useRef } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { $dictation, $dictationWords, cancelDictation, dictate } from '@/store/voice'
+import { $dictation, $dictationNotice, $dictationWords, cancelDictation, dictate } from '@/store/voice'
 import { space, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -85,9 +85,29 @@ export function DictationLine() {
   const t = useTheme()
   const words = useStore($dictationWords)
   const state = useStore($dictation)
+  const notice = useStore($dictationNotice)
+
+  // A dictation that ended on its own says why for a short time.
+  useEffect(() => {
+    if (!notice) {
+      return
+    }
+
+    const timer = setTimeout(() => $dictationNotice.set(null), NOTICE_MS)
+
+    return () => clearTimeout(timer)
+  }, [notice])
 
   if (state === 'off') {
-    return null
+    return notice ? (
+      <View accessibilityLiveRegion="polite" style={[styles.line, { backgroundColor: t.soft }]}>
+        <Feather color={t.muted} name="mic-off" size={14} />
+        <Text style={[type.small, styles.words, { color: t.ink }]}>{notice}</Text>
+        <Pressable accessibilityLabel="Close the message" accessibilityRole="button" hitSlop={10} onPress={() => $dictationNotice.set(null)}>
+          <Feather color={t.muted} name="x" size={16} />
+        </Pressable>
+      </View>
+    ) : null
   }
 
   return (
@@ -103,6 +123,9 @@ export function DictationLine() {
     </View>
   )
 }
+
+/** How long the reason for an automatic stop stays above the message field. */
+const NOTICE_MS = 10_000
 
 const styles = StyleSheet.create({
   line: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },

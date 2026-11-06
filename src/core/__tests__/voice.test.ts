@@ -1,4 +1,4 @@
-import { advanceListen, audioExtension, callTimer, dataUrlParts, isGoodbye, type Listen, NEW_LISTEN, speakable } from '../voice'
+import { advanceListen, audioExtension, CALL_QUIET_LINE, CALL_QUIET_MS, callQuietTooLong, callTimer, dataUrlParts, dictationQuietNotice, isGoodbye, type Listen, NEW_LISTEN, speakable } from '../voice'
 
 function feed(levels: number[], stepMs = 100, start: Listen = NEW_LISTEN) {
   let listen = start
@@ -89,3 +89,17 @@ describe('audio details', () => {
     expect(isGoodbye('stop the build and say goodbye to the old branch')).toBe(false)
   })
 })
+
+describe('a microphone left on', () => {
+  it('ends a call after two quiet minutes, not before', () => {
+    expect(callQuietTooLong(0, CALL_QUIET_MS - 1)).toBe(false)
+    expect(callQuietTooLong(0, CALL_QUIET_MS)).toBe(true)
+    expect(CALL_QUIET_LINE).toBe('Nobody has spoken for 2 minutes, so I am ending Live voice.')
+  })
+
+  it('says why a dictation stopped, and whether the words stay', () => {
+    expect(dictationQuietNotice(true)).toBe('Dictation stopped: no speech for 1 minute. Your words are kept.')
+    expect(dictationQuietNotice(false)).toBe('Dictation stopped: no speech for 1 minute.')
+  })
+})
+
