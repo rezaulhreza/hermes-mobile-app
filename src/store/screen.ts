@@ -215,7 +215,7 @@ export type ScreenInput =
   | { action: 'click' | 'double_click' | 'right_click'; x: number; y: number }
   | { action: 'type'; text: string }
   | { action: 'key'; keys: string }
-  | { action: 'scroll'; direction: 'up' | 'down'; x?: number; y?: number }
+  | { action: 'scroll'; direction: 'up' | 'down'; amount?: number; x?: number; y?: number }
   | { action: 'drag'; x: number; y: number; to_x: number; to_y: number }
 
 /** One tap, text, key or scroll into the window of the picture. Resolves with a problem to show, or null. */
