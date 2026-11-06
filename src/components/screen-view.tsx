@@ -43,7 +43,7 @@ type FingerMode = 'trackpad' | 'touch'
 /**
  * The agent's screen work, live: the window it works in, on the host. The
  * user can stop the agent with a reason and take the screen; taps, text and
- * keys then go to that window. "Hand back" lets the agent go on.
+ * keys then go to that window. "Give back" lets the agent go on.
  */
 export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
   const t = useTheme()
@@ -140,8 +140,8 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
                 <KeyButton icon="chevrons-down" label="Scroll down" onPress={() => act({ action: 'scroll', direction: 'down' })} />
               </View>
               <View style={styles.line}>
-                <Button busy={busy} label="Hand back" onPress={() => run(() => handScreenBack(sessionId, false))} style={styles.fill} />
-                <Button busy={busy} label="Hand back and continue" onPress={() => run(() => handScreenBack(sessionId, true))} style={styles.fill} tone="primary" />
+                <Button busy={busy} label="Give back" onPress={() => run(() => handScreenBack(sessionId, false))} style={styles.fill} />
+                <Button busy={busy} label="Give back and resume" onPress={() => run(() => handScreenBack(sessionId, true))} style={styles.fill} tone="primary" />
               </View>
             </>
           ) : (
@@ -149,7 +149,7 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
               <TextInput
                 accessibilityLabel="Reason for the stop"
                 onChangeText={setReason}
-                placeholder="Why do you stop it? (the agent is told)"
+                placeholder="Tell Hermes why (optional)"
                 placeholderTextColor={t.muted}
                 style={[styles.input, styles.reason, type.body, { color: t.ink, backgroundColor: t.soft }]}
                 value={reason}
