@@ -11,6 +11,7 @@ import { useTheme } from '@/theme/use-theme'
 import { DraftCard } from './draft-card'
 import { InfoCardView } from './info-card'
 import { MentionText } from './mention-text'
+import { RenderedBlock } from './render/rendered-block'
 import { OpenSource, SourcePill, SourcesSheet } from './sources'
 
 const THUMB = 56
@@ -95,6 +96,20 @@ function BlockView({ block, muted, after }: { block: Block; muted: boolean; /** 
           {/* Code scrolls sideways: wrapping it would break its indentation. */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <CodeText language={block.language} style={styles.codeText} text={block.text} />
+          </ScrollView>
+        </View>
+      )
+
+    case 'math':
+    case 'diagram':
+      // A block still streaming shows its source: drawing half a diagram would flash a fault.
+      return block.done ? (
+        <RenderedBlock kind={block.kind} source={block.kind === 'math' ? block.tex : block.code} />
+      ) : (
+        <View style={[styles.code, { backgroundColor: t.soft }]}>
+          <Text style={[styles.language, { color: t.muted }]}>{block.kind === 'math' ? 'math' : 'mermaid'}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <Text style={[styles.codeText, { color: t.ink }]}>{block.kind === 'math' ? block.tex : block.code}</Text>
           </ScrollView>
         </View>
       )
@@ -228,6 +243,13 @@ function Spans({ spans }: { spans: readonly Span[] }) {
           case 'image':
             // A picture in the middle of a sentence has no place in a line of text. Its words stand for it.
             return span.text
+          case 'math':
+            // Typeset math cannot stand in a line of text: the TeX as the characters it means.
+            return (
+              <Text accessibilityLabel={span.tex} key={index} style={styles.math}>
+                {span.text}
+              </Text>
+            )
         }
       })}
     </>
@@ -246,6 +268,7 @@ const styles = StyleSheet.create({
   inlineCode: { fontFamily: MONO, fontSize: 14 },
   strong: { fontWeight: '700' },
   em: { fontStyle: 'italic' },
+  math: { fontFamily: 'Georgia', fontStyle: 'italic' },
   link: { textDecorationLine: 'underline', textDecorationStyle: 'dotted' },
   arrow: { fontSize: 11 },
   rule: { height: StyleSheet.hairlineWidth },

@@ -11,6 +11,7 @@
 
 import { type Draft, draftFrom } from "./drafts";
 import { type InfoCard, infoCardFrom } from "./info-cards";
+import { texToText } from "./tex";
 
 export type Span =
   | { readonly kind: "text"; readonly text: string }
@@ -22,7 +23,9 @@ export type Span =
   // A mark for the page a sentence comes from: a link with no words of its
   // own, a bare address, or links alone in brackets. `text` is the name shown.
   | { readonly kind: "source"; readonly text: string; readonly links: readonly SourceLink[] }
-  | { readonly kind: "image"; readonly text: string; readonly url: string };
+  | { readonly kind: "image"; readonly text: string; readonly url: string }
+  // Inline math: `text` is the TeX as plain characters ("x² + α"), `tex` the source.
+  | { readonly kind: "math"; readonly text: string; readonly tex: string };
 
 export interface SourceLink {
   readonly text: string;
@@ -46,6 +49,11 @@ export type Block =
       readonly spans: readonly Span[];
     }
   | { readonly kind: "code"; readonly language: string | null; readonly text: string }
+  // A block of math ($$ ... $$, or a math fence), typeset by the web view of the answer.
+  // `done` is false while a streaming answer has not closed it yet.
+  | { readonly kind: "math"; readonly tex: string; readonly done: boolean }
+  // A Mermaid diagram (a mermaid fence), drawn as a picture once its fence is closed.
+  | { readonly kind: "diagram"; readonly code: string; readonly done: boolean }
   | {
       readonly kind: "table";
       readonly header: readonly (readonly Span[])[];
@@ -65,6 +73,11 @@ export type Block =
 export type Align = "left" | "center" | "right";
 
 const FENCE = /^\s*```(.*)$/;
+const MATH_FENCES = new Set(["math", "latex", "tex", "katex"]);
+// Inline math: $...$ that does not start or end with a space and is not a sum of money
+// ("$5 and $10"), or \( ... \). A code span is cut out first: its dollars are code.
+const INLINE_MATH = /(?<![\\$\w])\$(?![\s\d$])([^$\n]+?)(?<![\s\\])\$(?![\w$])|\\\((.+?)\\\)/g;
+const CODE_SPAN = /`[^`\n]*`/g;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const BULLET = /^(\s*)[-*+]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})[.)]\s+(.*)$/;
@@ -140,7 +153,39 @@ export function parseMarkdown(source: string): Block[] {
         index += 1;
       }
       const language = (fence[1] ?? "").trim();
-      blocks.push({ kind: "code", language: language.length > 0 ? language : null, text: body.join("\n") });
+      const done = index < lines.length;
+      const lower = language.toLowerCase();
+      if (lower === "mermaid") {
+        blocks.push({ kind: "diagram", code: body.join("\n"), done });
+      } else if (MATH_FENCES.has(lower)) {
+        blocks.push({ kind: "math", tex: body.join("\n").trim(), done });
+      } else {
+        blocks.push({ kind: "code", language: language.length > 0 ? language : null, text: body.join("\n") });
+      }
+      continue;
+    }
+
+    // A block of math: "$$" on a line of its own, or "$$ ... $$" on one line.
+    if (line.trim().startsWith("$$")) {
+      const opening = line.trim().slice(2);
+      const closes = opening.trimEnd().endsWith("$$") && opening.trim().length > 2;
+      if (closes) {
+        flush();
+        blocks.push({ kind: "math", tex: opening.trimEnd().slice(0, -2).trim(), done: true });
+        continue;
+      }
+      flush();
+      const body: string[] = opening.trim() ? [opening] : [];
+      index += 1;
+      while (index < lines.length && !(lines[index] ?? "").trimEnd().endsWith("$$")) {
+        body.push(lines[index] ?? "");
+        index += 1;
+      }
+      const done = index < lines.length;
+      if (done) {
+        body.push((lines[index] ?? "").trimEnd().slice(0, -2));
+      }
+      blocks.push({ kind: "math", tex: body.join("\n").trim(), done });
       continue;
     }
 
@@ -370,7 +415,38 @@ function sourceOf(links: readonly SourceLink[]): Span {
 }
 
 export function parseSpans(source: string): Span[] {
-  return parseMarks(source);
+  if (!source.includes("$") && !source.includes("\\(")) {
+    return parseMarks(source);
+  }
+
+  // The parts outside code spans can hold math. A code span goes to the marks whole.
+  const spans: Span[] = [];
+  let last = 0;
+  const outside = (text: string) => {
+    let at = 0;
+    for (const match of text.matchAll(INLINE_MATH)) {
+      const start = match.index ?? 0;
+      if (start > at) {
+        spans.push(...parseMarks(text.slice(at, start)));
+      }
+      const tex = (match[1] ?? match[2] ?? "").trim();
+      spans.push({ kind: "math", text: texToText(tex), tex });
+      at = start + match[0].length;
+    }
+    if (at < text.length) {
+      spans.push(...parseMarks(text.slice(at)));
+    }
+  };
+
+  for (const code of source.matchAll(CODE_SPAN)) {
+    const start = code.index ?? 0;
+    outside(source.slice(last, start));
+    spans.push(...parseMarks(code[0]));
+    last = start + code[0].length;
+  }
+  outside(source.slice(last));
+
+  return spans;
 }
 
 // A line break written as a tag is a line break. The tag is not said.

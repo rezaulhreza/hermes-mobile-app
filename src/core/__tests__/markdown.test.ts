@@ -152,3 +152,43 @@ describe("a picture after its words", () => {
     expect(kinds("Here they are:\n\n![a](https://p.test/a.jpg)\n\nOne line.\n\n![b](https://p.test/b.jpg)\n\nTwo line.")).toEqual(["paragraph", "card", "card"]);
   });
 });
+
+describe('math and diagrams', () => {
+  it('reads a block of math between $$ lines, and on one line', () => {
+    expect(parseMarkdown('Before\n$$\nE = mc^2\n$$\nAfter')).toEqual([
+      { kind: 'paragraph', spans: [{ kind: 'text', text: 'Before' }] },
+      { kind: 'math', tex: 'E = mc^2', done: true },
+      { kind: 'paragraph', spans: [{ kind: 'text', text: 'After' }] }
+    ])
+    expect(parseMarkdown('$$\\int_0^1 x\\,dx$$')).toEqual([{ kind: 'math', tex: '\\int_0^1 x\\,dx', done: true }])
+  })
+
+  it('keeps a block that a streaming answer has not closed as not done', () => {
+    expect(parseMarkdown('$$\n\\frac{a}{b')).toEqual([{ kind: 'math', tex: '\\frac{a}{b', done: false }])
+    expect(parseMarkdown('```mermaid\ngraph TD')).toEqual([{ kind: 'diagram', code: 'graph TD', done: false }])
+  })
+
+  it('reads a mermaid fence as a diagram and a math fence as math', () => {
+    expect(parseMarkdown('```mermaid\ngraph TD\nA-->B\n```')).toEqual([{ kind: 'diagram', code: 'graph TD\nA-->B', done: true }])
+    expect(parseMarkdown('```latex\nx^2\n```')).toEqual([{ kind: 'math', tex: 'x^2', done: true }])
+  })
+
+  it('reads inline math, and leaves money and code alone', () => {
+    expect(parseSpans('Area is $\\pi r^2$ here')).toEqual([
+      { kind: 'text', text: 'Area is ' },
+      { kind: 'math', text: 'π r²', tex: '\\pi r^2' },
+      { kind: 'text', text: ' here' }
+    ])
+    expect(parseSpans('It costs $5 and $10 today')).toEqual([{ kind: 'text', text: 'It costs $5 and $10 today' }])
+    expect(parseSpans('Run `echo $HOME$` now')).toEqual([
+      { kind: 'text', text: 'Run ' },
+      { kind: 'code', text: 'echo $HOME$' },
+      { kind: 'text', text: ' now' }
+    ])
+    expect(parseSpans('So \\(a^2\\) holds')).toEqual([
+      { kind: 'text', text: 'So ' },
+      { kind: 'math', text: 'a²', tex: 'a^2' },
+      { kind: 'text', text: ' holds' }
+    ])
+  })
+})
