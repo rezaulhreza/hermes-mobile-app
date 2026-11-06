@@ -16,10 +16,12 @@ import { $conversations, redirectTurn, sendDraft } from './chat'
 import { currentApi } from './link'
 
 const ROUTE = '/api/plugins/screen-remote'
-/** The wait after one picture before the next is asked for. A picture takes about 0.3 s on the host. */
+/** The wait after one picture before the next is asked for. A picture takes 0.3 to 1 s on the host. */
 const WATCH_MS = 1000
-/** While the user acts, the picture follows faster. */
-const HOLD_MS = 500
+/** While the user acts, the next picture is asked for almost at once: the capture on the host is the wait. */
+const HOLD_MS = 100
+/** After an input, the window on the host gets this long to draw the change before the next picture. */
+const AFTER_INPUT_MS = 120
 /** After a fault the view asks again, slower, so a host that is down is not flooded. */
 const RETRY_MS = 4000
 
@@ -48,6 +50,10 @@ interface Watch {
   /** The window the user chose, or the whole screen (to look at, with no input). Null follows the agent. */
   target: ScreenTarget
   timer: ReturnType<typeof setTimeout> | null
+  /** A picture is on its way. */
+  loading: boolean
+  /** An input came while a picture was on its way: that picture may be older than the input. */
+  again: boolean
 }
 
 /** What the picture shows: one window, every window (`whole`), or the window of the agent (null). */
@@ -76,6 +82,9 @@ async function nextFrame(current: Watch): Promise<void> {
 
   let delay = RETRY_MS
 
+  current.loading = true
+  current.again = false
+
   try {
     const { hold, image, unchanged: _unchanged, ...frame } = await api().request<FrameAnswer>({ path: `${ROUTE}/frame?${query}` })
 
@@ -102,13 +111,35 @@ async function nextFrame(current: Watch): Promise<void> {
     $screen.set({ frame: $screen.get().frame, problem: screenProblem(error) })
   }
 
-  current.timer = setTimeout(() => void nextFrame(current), delay)
+  current.loading = false
+  current.timer = setTimeout(() => void nextFrame(current), current.again ? AFTER_INPUT_MS : delay)
+}
+
+/** Ask for a picture soon after an input, so the user sees its effect without the wait of the loop. */
+function pictureSoon(): void {
+  const current = watch
+
+  if (!current) {
+    return
+  }
+
+  if (current.loading) {
+    current.again = true
+
+    return
+  }
+
+  if (current.timer) {
+    clearTimeout(current.timer)
+  }
+
+  current.timer = setTimeout(() => void nextFrame(current), AFTER_INPUT_MS)
 }
 
 /** Start the picture. `storedId` is the chat whose agent the view follows. */
 export function openScreen(storedId: string): void {
   closeScreen()
-  watch = { storedId, target: null, timer: null }
+  watch = { storedId, target: null, timer: null, loading: false, again: false }
   void nextFrame(watch)
 }
 
@@ -211,5 +242,7 @@ export async function sendScreenInput(input: ScreenInput): Promise<string | null
     return result.ok ? null : result.message || 'The host did not take the input.'
   } catch (error) {
     return screenProblem(error)
+  } finally {
+    pictureSoon()
   }
 }
