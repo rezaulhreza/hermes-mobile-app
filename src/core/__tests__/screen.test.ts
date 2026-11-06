@@ -1,4 +1,4 @@
-import { clampPan, clampZoom, isScreenTool, screenProblem, screenWork, stopMessage, tapPoint } from '../screen'
+import { clampPan, clampZoom, fitScale, followPan, isScreenTool, movePointer, picturePoint, pointerGain, SCROLL_STEP, screenProblem, screenWork, scrollSteps, stopMessage, tapPoint } from '../screen'
 
 describe('screen tools', () => {
   it('knows the tools that use the screen or a browser', () => {
@@ -90,8 +90,54 @@ describe('the zoom of the picture', () => {
   // there, and the throw closes the app.
   it.each([
     ['clampZoom', clampZoom],
-    ['clampPan', clampPan]
+    ['clampPan', clampPan],
+    ['fitScale', fitScale],
+    ['picturePoint', picturePoint],
+    ['pointerGain', pointerGain],
+    ['movePointer', movePointer],
+    ['followPan', followPan],
+    ['scrollSteps', scrollSteps]
   ])('%s is a worklet', (_name, fn) => {
     expect((fn as unknown as { __workletHash?: number }).__workletHash).toBeDefined()
+  })
+})
+
+describe('trackpad mode', () => {
+  const frame = { width: 1456, height: 850 }
+  const box = { width: 364, height: 500 }
+
+  it('puts a window position back on the picture', () => {
+    expect(fitScale(box, frame)).toBe(0.25)
+    expect(picturePoint(box, frame, { x: 728, y: 425 })).toEqual({ x: 182, y: 250 })
+    expect(tapPoint(box, frame, picturePoint(box, frame, { x: 400, y: 100 }))).toEqual({ x: 400, y: 100 })
+    expect(fitScale({ width: 0, height: 0 }, frame)).toBe(0)
+  })
+
+  it('moves the pointer exactly for a slow finger and further for a fast one', () => {
+    expect(pointerGain(0)).toBe(1)
+    expect(pointerGain(10)).toBeCloseTo(1.8)
+    expect(pointerGain(100)).toBe(3)
+    // One point on a picture at a quarter of the window is four pixels in the window.
+    expect(movePointer({ x: 100, y: 100 }, 1, 0, frame, 0.25).x).toBeCloseTo(104.32)
+  })
+
+  it('keeps the pointer in the window', () => {
+    expect(movePointer({ x: 10, y: 10 }, -50, -50, frame, 0.25)).toEqual({ x: 0, y: 0 })
+    expect(movePointer({ x: 1450, y: 845 }, 50, 50, frame, 0.25)).toEqual({ x: 1455, y: 849 })
+    expect(movePointer({ x: 5, y: 5 }, 10, 10, frame, 0)).toEqual({ x: 5, y: 5 })
+  })
+
+  it('moves the enlarged picture only when the pointer comes near an edge', () => {
+    // At zoom 2 a point at 300 of a 400 box shows at 400: on the edge.
+    expect(followPan(0, 300, 400, 2, 40)).toBe(-40)
+    expect(followPan(0, 200, 400, 2, 40)).toBe(0)
+    expect(followPan(0, 50, 400, 2, 40)).toBe(140)
+    expect(followPan(0, 400, 400, 2, 40)).toBe(-200)
+  })
+
+  it('scrolls like a Mac trackpad, in whole steps', () => {
+    expect(scrollSteps(SCROLL_STEP - 1)).toBeNull()
+    expect(scrollSteps(-SCROLL_STEP * 2 - 5)).toEqual({ direction: 'down', amount: 2, rest: -5 })
+    expect(scrollSteps(SCROLL_STEP + 3)).toEqual({ direction: 'up', amount: 1, rest: 3 })
   })
 })

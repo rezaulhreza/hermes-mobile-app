@@ -83,6 +83,98 @@ export function clampPan(offset: number, side: number, scale: number): number {
   return Math.max(-limit, Math.min(limit, offset))
 }
 
+export interface Point {
+  x: number
+  y: number
+}
+
+/** Picture points per window pixel when the picture is drawn whole in the box (`contain`). 0 before either has a size. */
+export function fitScale(box: Size, frame: Size): number {
+  'worklet'
+
+  return box.width && box.height && frame.width && frame.height ? Math.min(box.width / frame.width, box.height / frame.height) : 0
+}
+
+/** Where a position in the window is on its picture, at zoom 1. The opposite of `tapPoint`. */
+export function picturePoint(box: Size, frame: Size, point: Point): Point {
+  'worklet'
+
+  const scale = fitScale(box, frame)
+
+  return { x: (box.width - frame.width * scale) / 2 + point.x * scale, y: (box.height - frame.height * scale) / 2 + point.y * scale }
+}
+
+/**
+ * Trackpad mode: how much further the pointer goes than the finger. A slow
+ * move is exact, a fast move crosses the window. `speed` is the move of one
+ * touch event, in points.
+ */
+export function pointerGain(speed: number): number {
+  'worklet'
+
+  return Math.min(3, 1 + Math.abs(speed) * 0.08)
+}
+
+/**
+ * The pointer after a finger moved `dx`, `dy` points on the picture.
+ * `scale` is picture points per window pixel at the current zoom. The
+ * pointer stays in the window.
+ */
+export function movePointer(pointer: Point, dx: number, dy: number, frame: Size, scale: number): Point {
+  'worklet'
+
+  if (!scale || !frame.width || !frame.height) {
+    return pointer
+  }
+
+  const gain = pointerGain(Math.hypot(dx, dy))
+
+  return {
+    x: Math.max(0, Math.min(frame.width - 1, pointer.x + (dx * gain) / scale)),
+    y: Math.max(0, Math.min(frame.height - 1, pointer.y + (dy * gain) / scale))
+  }
+}
+
+/**
+ * The pan of the enlarged picture that keeps a point on the screen. `at` is
+ * the point on the picture at zoom 1, on one axis of a box with this `side`.
+ * A point nearer than `margin` to an edge moves the picture.
+ */
+export function followPan(offset: number, at: number, side: number, scale: number, margin: number): number {
+  'worklet'
+
+  const shown = side / 2 + (at - side / 2) * scale + offset
+  let next = offset
+
+  if (shown < margin) {
+    next += margin - shown
+  } else if (shown > side - margin) {
+    next -= shown - (side - margin)
+  }
+
+  return clampPan(next, side, scale)
+}
+
+/** A two-finger move scrolls one step for this many points. */
+export const SCROLL_STEP = 36
+
+/**
+ * The scroll for a two-finger move of `travel` points down (negative: up),
+ * as a Mac trackpad scrolls: fingers that go up show what is lower. `rest` is
+ * the travel that did not make a full step yet.
+ */
+export function scrollSteps(travel: number): { direction: 'up' | 'down'; amount: number; rest: number } | null {
+  'worklet'
+
+  const steps = Math.trunc(travel / SCROLL_STEP)
+
+  if (steps === 0) {
+    return null
+  }
+
+  return { direction: steps < 0 ? 'down' : 'up', amount: Math.abs(steps), rest: travel - steps * SCROLL_STEP }
+}
+
 /** A drag in the window on the host for a move of one finger on its picture. Null when an end is outside the window. */
 export function dragPoints(box: Size, frame: Size, from: { x: number; y: number }, to: { x: number; y: number }): { x: number; y: number; to_x: number; to_y: number } | null {
   const start = tapPoint(box, frame, from)
