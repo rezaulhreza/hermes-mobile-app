@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, type LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Image, Keyboard, KeyboardAvoidingView, type LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -123,12 +123,11 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
                   accessibilityLabel="Text to type"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  multiline
                   onChangeText={setText}
-                  onSubmitEditing={() => text && (act({ action: 'type', text }), setText(''))}
                   placeholder="Type on the host"
                   placeholderTextColor={t.muted}
-                  returnKeyType="send"
-                  style={[styles.input, type.body, { color: t.ink, backgroundColor: t.soft }]}
+                  style={[styles.input, styles.typing, type.body, { color: t.ink, backgroundColor: t.soft }]}
                   value={text}
                 />
                 <IconButton disabled={!text || busy} icon="send" label="Type the text" onPress={() => (act({ action: 'type', text }), setText(''))} />
@@ -369,7 +368,8 @@ function Picture({ held, mode, onInput }: { held: boolean; mode: FingerMode; onI
     <GestureHandlerRootView style={[styles.fill, styles.clip, { backgroundColor: t.soft }]}>
       {picture ? (
         <GestureDetector gesture={gestures}>
-          <View onLayout={(event: LayoutChangeEvent) => setBox(event.nativeEvent.layout)} style={styles.fill}>
+          {/* A touch on the picture puts the keyboard away, as a touch outside a field does in any app. */}
+          <View onLayout={(event: LayoutChangeEvent) => setBox(event.nativeEvent.layout)} onTouchStart={Keyboard.dismiss} style={styles.fill}>
             <GestureDetector gesture={dragging}>
               <Animated.View style={[styles.fill, moved]}>
                 <Pressable
@@ -543,6 +543,8 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   input: { flex: 1, minHeight: TOUCH, paddingHorizontal: space.md, borderRadius: radius.md },
   reason: { flex: 0 },
+  // Several lines for a message or an address; the field grows to four lines, then scrolls.
+  typing: { maxHeight: 112, paddingTop: space.sm + 2, paddingBottom: space.sm + 2 },
   keys: { flexDirection: 'row', gap: space.xs },
   key: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth },
   window: { minHeight: TOUCH + space.md, justifyContent: 'center', paddingHorizontal: space.lg, borderBottomWidth: StyleSheet.hairlineWidth },
