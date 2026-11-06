@@ -1,6 +1,6 @@
 manifest_version: 1
 name: group-rooms
-version: 0.2.0
+version: 0.3.0
 description: "Group chats of bots for the Hermes phone app: the host runs each round with its own room engine, and the room record that the desktop app reads stays in step. A client only reads and posts."
 author: hermes-native
 kind: backend

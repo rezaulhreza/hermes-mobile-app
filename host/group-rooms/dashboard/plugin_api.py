@@ -233,9 +233,12 @@ def _copy_answers(room_id: str, engine_id: str, since: int) -> tuple[int, bool, 
             payload = event.get("payload") or {}
             at = int(float(event.get("created_at") or time.time()) * 1000)
             if event.get("event_id") not in have and str(payload.get("text") or "").strip() and at >= oldest:
-                rows.append({
+                row = {
                     "id": event["event_id"], "from": {"kind": "member", "name": str((event.get("actor") or {}).get("id") or payload.get("member_id"))},
-                    "text": str(payload["text"]), "at": at, "thread": str(payload.get("thread_id") or "")})
+                    "text": str(payload["text"]), "at": at, "thread": str(payload.get("thread_id") or "")}
+                if _manifest(payload.get("attachments")):
+                    row["attachments"] = _manifest(payload.get("attachments"))
+                rows.append(row)
         return rows
 
     # A client reads an idle room every few seconds. The record is written only for a new answer.
@@ -477,6 +480,9 @@ class NewMessage(BaseModel):
     # that says neither gets the thread of the message before when that one is recent.
     thread: Optional[str] = None
     fresh: bool = False
+    # Room attachments uploaded first (POST /rooms/{id}/attachments): every bot of the room, also one
+    # on another machine, can open them. Each is the answer of that upload.
+    attachments: Optional[list[dict]] = None
 
 
 def _guard(work):
@@ -688,7 +694,8 @@ def forget_group(name: str) -> dict:
 @router.post("/rooms/{room_id}/messages")
 def post_message(room_id: str, body: NewMessage) -> dict:
     text = body.text.strip()
-    if not text:
+    files = _manifest(body.attachments)
+    if not text and not files:
         raise HTTPException(status_code=400, detail="The message is empty.")
     message_id = (body.id or uuid.uuid4().hex)[:96]
     found: dict = {}
@@ -705,7 +712,10 @@ def post_message(room_id: str, body: NewMessage) -> dict:
             if not thread and not body.fresh:
                 thread = str(last.get("thread") or "") if now - int(last.get("at") or 0) < THREAD_GAP_MS else ""
             found["thread"] = thread or f"t{_stamp(now)}-{uuid.uuid4().hex[:5]}"
-            log.append({"id": message_id, "from": {"kind": "user", "name": "You"}, "text": text, "at": now, "thread": found["thread"]})
+            entry = {"id": message_id, "from": {"kind": "user", "name": "You"}, "text": text, "at": now, "thread": found["thread"]}
+            if files:
+                entry["attachments"] = files
+            log.append(entry)
             _fit(room)
         else:
             found["thread"] = next(str(entry.get("thread") or "") for entry in log if entry.get("id") == message_id)
@@ -720,7 +730,10 @@ def post_message(room_id: str, body: NewMessage) -> dict:
             if _engine_state(found["engine_id"]) is None:
                 raise
         _push_context(found["engine_id"], found["context"])
-        sent = _rpc("groups.send", {"room_id": found["engine_id"], "event_id": message_id, "payload": {"text": text, "thread_id": re.sub(r"[^A-Za-z0-9._:-]+", "-", found["thread"])}})
+        payload = {"text": text, "thread_id": re.sub(r"[^A-Za-z0-9._:-]+", "-", found["thread"])}
+        if files:
+            payload["attachments"] = files
+        sent = _rpc("groups.send", {"room_id": found["engine_id"], "event_id": message_id, "payload": payload})
         _follow(room_id, found["engine_id"], int((sent.get("event") or {}).get("seq") or 0))
         return shown
     return _guard(work)
@@ -888,4 +901,56 @@ def discard_turn(room_id: str, task_id: str, body: Discard) -> dict:
         result = _rpc("groups.discard", {"room_id": engine_id, "member_id": body.member, "task_id": task_id,
                                          "execution_generation": body.execution_generation})
         return {"discarded": bool(result.get("discarded", True))}
+    return _guard(work)
+
+
+ATTACHMENT_FIELDS = ("attachment_id", "kind", "name", "mime", "size")
+MAX_ATTACHMENTS = 8
+
+
+def _manifest(files) -> list[dict]:
+    """The attachments of a message as the engine takes them: the fields of each upload, no bytes."""
+    rows = []
+    for item in (files or [])[:MAX_ATTACHMENTS]:
+        if isinstance(item, dict) and str(item.get("attachment_id") or "").strip():
+            rows.append({key: item[key] for key in ATTACHMENT_FIELDS if key in item})
+    return rows
+
+
+class Upload(BaseModel):
+    name: str
+    mime: str
+    # image, pdf or file, as the desktop app says it.
+    kind: str = "file"
+    data_base64: str
+
+
+@router.post("/rooms/{room_id}/attachments")
+def upload_attachment(room_id: str, body: Upload) -> dict:
+    """Put a file into the room itself, before the message that names it. The engine keeps it, so
+    every bot of the room can open it, and every client shows it as a file, not as a path."""
+    found: dict = {}
+
+    def work():
+        record, _revision, profiles = _read()
+        room = record["rooms"][_key(record, room_id)]
+        found.update(engine_id=_engine_id(room), members=_engine_members(room, profiles), name=str(room.get("name") or "Room"))
+        try:
+            _rpc("groups.create", {"room_id": found["engine_id"], "name": found["name"][:200], "members": found["members"]})
+        except Refused:
+            if _engine_state(found["engine_id"]) is None:
+                raise
+        kind = body.kind if body.kind in ("image", "pdf", "file") else "file"
+        result = _rpc("groups.attachment.upload", {"room_id": found["engine_id"], "upload_id": uuid.uuid4().hex, "kind": kind,
+                                                  "name": body.name[:255], "mime": body.mime[:255], "data_base64": body.data_base64})
+        return {key: result.get(key) for key in ATTACHMENT_FIELDS}
+    return _guard(work)
+
+
+@router.get("/rooms/{room_id}/attachments/{event_id}/{attachment_id}")
+def download_attachment(room_id: str, event_id: str, attachment_id: str) -> dict:
+    """The bytes of one attachment of a message, as base64."""
+    def work():
+        result = _rpc("groups.attachment.download", {"room_id": _engine_of(room_id), "event_id": event_id, "attachment_id": attachment_id})
+        return {"name": result.get("name"), "mime": result.get("mime"), "size": result.get("size"), "data_base64": result.get("data_base64")}
     return _guard(work)
