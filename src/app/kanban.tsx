@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BotAvatar, SheetFrame } from '@/components/bot-sheet'
@@ -32,6 +32,8 @@ export default function Kanban() {
   // The pins live in the preferences of this phone: a change draws the list again.
   useStore($preferences)
   const pinned = pinnedBoards()
+  // The pinned boards that the host still has, in the order they were pinned.
+  const tabs = boardsInOrder(boards ?? [], pinned).filter(item => pinned.includes(item.slug))
   const slug = useStore($boardSlug)
   const columns = useStore($columns)
   const bots = useStore($bots)
@@ -77,6 +79,31 @@ export default function Kanban() {
           ListEmptyComponent={<Notice icon="inbox" title={`No card in “${columnName(shownKey)}”`} />}
           ListHeaderComponent={
             <View style={styles.top}>
+              {tabs.length > 1 || (tabs.length === 1 && tabs[0].slug !== board?.slug) ? (
+                // The pinned boards, one tap away, as on the desktop. A long press unpins one.
+                <ScrollView contentContainerStyle={styles.tabs} horizontal showsHorizontalScrollIndicator={false}>
+                  {tabs.map(item => {
+                    const on = item.slug === board?.slug
+
+                    return (
+                      <Pressable
+                        accessibilityHint="Hold to unpin it"
+                        accessibilityLabel={`Board: ${item.name}`}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: on }}
+                        key={item.slug}
+                        onLongPress={() => togglePinnedBoard(item.slug)}
+                        onPress={() => (setColumn(null), showBoard(item.slug))}
+                        style={({ pressed }) => [styles.tab, { backgroundColor: on ? t.inverse : t.paper, borderColor: on ? t.inverse : t.line }, pressed && styles.dim]}
+                      >
+                        <Text numberOfLines={1} style={[type.label, { color: on ? t.onInverse : t.ink }]}>
+                          {item.name}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+              ) : null}
               <View style={styles.boardLine}>
                 <View style={styles.fill}>
                   <ChoiceRow icon="layout" label="Board" onPress={() => setChoosing('board')} value={board?.name ?? 'The board of the host'} />
@@ -311,6 +338,9 @@ function NewCardSheet({ bots, onClose }: { bots: readonly Bot[]; onClose: () => 
 
 const styles = StyleSheet.create({
   boardLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  tabs: { gap: space.sm, paddingVertical: space.xs },
+  dim: { opacity: 0.6 },
+  tab: { minHeight: 36, maxWidth: 220, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: StyleSheet.hairlineWidth },
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
