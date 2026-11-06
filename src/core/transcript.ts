@@ -11,7 +11,7 @@ import { type Arrival, arrivalOf, reviewArrival } from './arrivals'
 import { teachRequest } from './teach'
 import { type SentAttachment, splitStoredPrompt } from './attachments'
 import type { GatewayEvent } from './gateway/gateway-events'
-import { type ToolDetail, toolDetail, toolInput, toolOutput, toolPicture } from './tools'
+import { storedToolOutput, type ToolDetail, toolDetail, toolInput, toolPicture } from './tools'
 import type { TranscriptMessage } from './gateway/gateway-contract.generated'
 import { type LimitCard, limitOf } from './limits'
 
@@ -80,7 +80,7 @@ export function transcriptFromHistory(
         name,
         detail: message.context ?? '',
         state: 'done',
-        ...toolDetail({ input: toolInput(message.args), output: toolOutput(text), picture: typeof message.picture === 'string' ? message.picture : undefined })
+        ...toolDetail({ input: toolInput(message.args), output: storedToolOutput(text), picture: typeof message.picture === 'string' ? message.picture : undefined })
       }))
     }
   }
@@ -221,7 +221,7 @@ export function reduceTranscript(transcript: Transcript, event: GatewayEvent): T
                 detail: payload.summary ?? item.detail,
                 ...toolDetail({
                   input: toolInput(payload.args) ?? item.input,
-                  output: toolOutput(payload.result_text, payload.result),
+                  output: storedToolOutput(payload.result_text?.trim() ? payload.result_text : payload.result),
                   diff: payload.inline_diff ?? undefined,
                   picture: toolPicture(payload.result, payload.result_text ?? payload.summary)
                 })

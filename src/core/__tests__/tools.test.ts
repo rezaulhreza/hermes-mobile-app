@@ -123,3 +123,15 @@ describe('the progress of a long tool call', () => {
     expect(progressWords(null)).toBe('')
   })
 })
+
+describe('a tool result with nothing in it', () => {
+  it('counts an empty output field as no output', () => {
+    expect(storedToolOutput('{"output": "", "exit_code": 0, "error": null}')).toBeUndefined()
+    expect(storedToolOutput({ output: '  ', exit_code: 0, error: null })).toBeUndefined()
+  })
+
+  it('keeps the failure of an empty output', () => {
+    expect(storedToolOutput('{"output": "", "exit_code": 1, "error": null}')).toBe('exit code 1')
+  })
+})
+

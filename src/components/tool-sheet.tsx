@@ -39,6 +39,8 @@ function Sheet({ tool, storedId, profile, onClose }: { tool: ToolTarget; storedI
   // A stored row has the path of its capture only in its output.
   const picture = tool.picture ?? toolPicture(null, fetched)
   const [pictureUri, setPictureUri] = useState<string | null>(null)
+  // The shape of the capture once it loads. Until then nothing shows: a capture that fails to load leaves no empty frame.
+  const [pictureShape, setPictureShape] = useState<number | null>(null)
 
   useEffect(() => {
     if (!picture) {
@@ -89,7 +91,20 @@ function Sheet({ tool, storedId, profile, onClose }: { tool: ToolTarget; storedI
         </View>
 
         <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + space.xl }]}>
-          {pictureUri ? <Image accessibilityLabel="The capture of the screen" resizeMode="contain" source={{ uri: pictureUri }} style={[styles.picture, { backgroundColor: t.soft }]} /> : null}
+          {pictureUri ? (
+            <Image
+              accessibilityLabel="The capture of the screen"
+              onError={() => setPictureUri(null)}
+              onLoad={event => {
+                const { width, height } = event.nativeEvent.source
+
+                setPictureShape(width > 0 && height > 0 ? width / height : 16 / 10)
+              }}
+              resizeMode="contain"
+              source={{ uri: pictureUri }}
+              style={[styles.picture, pictureShape ? { aspectRatio: pictureShape } : styles.unloaded]}
+            />
+          ) : null}
           {tool.input ? <Section text={tool.input} title="Input" /> : null}
           {tool.diff ? <Section diff text={tool.diff} title="Changes" /> : null}
           {output ? (
@@ -152,7 +167,9 @@ function Section({ title, text, diff = false }: { title: string; text: string; d
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  picture: { width: '100%', aspectRatio: 16 / 10, borderRadius: radius.md },
+  picture: { width: '100%', borderRadius: radius.md },
+  // Laid out but not seen until the capture loads and gives its shape.
+  unloaded: { height: 1, opacity: 0 },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
