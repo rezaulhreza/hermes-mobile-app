@@ -15,7 +15,7 @@ import { MentionText } from '@/components/mention-text'
 import { RoomActivity } from '@/components/room-activity'
 import { RoomSettingsSheet } from '@/components/room-sheets'
 import { Button, IconButton, Notice } from '@/components/ui'
-import { type Attachment, promptWithAttachments, sentAttachment, splitStoredPrompt } from '@/core/attachments'
+import { type Attachment, promptWithAttachments, type RoomFile, roomFileKind, roomFilesOf, type SentAttachment, sentAttachment, splitStoredPrompt } from '@/core/attachments'
 import { type Bot, botsByAnyName, type RoomMessage, UNMADE_ROOM } from '@/core/bots'
 import { leadOf } from '@/core/rounds'
 import { faultWords, relativeTime } from '@/core/format'
@@ -24,7 +24,7 @@ import { roomAnswerLine, roomChoices, roomMentionParts, roomTargets, type TextPa
 import { $attachments, addAttachments, type AttachSource, removeAttachment, roomFilesKey, takeAttachments } from '@/store/attachments'
 import { $bots, $rooms, loadBots } from '@/store/bots'
 import { $linkState } from '@/store/link'
-import { $roomRound, $roomsWritable, $roomTeam, $roomWorking, answerApproval, checkRoomsWritable, continueRoom, discardTurn, forgetGroup, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
+import { $roomRound, $roomsWritable, $roomTeam, $roomWorking, answerApproval, checkRoomsWritable, continueRoom, discardTurn, forgetGroup, openRoomFile, readEarlier, readFullMessage, retryTurn, sendToRoom, stopRoom, stopTurn, unwatchRoom, watchRoom } from '@/store/rooms'
 import { radius, space, TOUCH, type } from '@/theme/tokens'
 import { useTheme } from '@/theme/use-theme'
 
@@ -45,6 +45,7 @@ import { useTheme } from '@/theme/use-theme'
  * message.
  */
 const NO_FILES: Attachment[] = []
+const NO_ROOM_FILES: RoomFile[] = []
 
 // What a person can add to a message to the group. No paste: a pasted picture has no file to send.
 const ROOM_FILE_SOURCES: { id: AttachSource; label: string; icon: 'image' | 'camera' | 'file' }[] = [
@@ -191,16 +192,19 @@ export default function RoomScreen() {
       return
     }
 
-    const text = promptWithAttachments(words, takeAttachments(filesKey))
+    const taken = takeAttachments(filesKey)
+    const text = promptWithAttachments(words, taken)
+    // The files the room holds go with the message itself, not as lines of it.
+    const files = roomFilesOf(taken)
 
-    if (!text) {
+    if (!text && !files.length) {
       return
     }
 
     setSending(true)
     setFault(null)
     setDraft('')
-    sendToRoom(id, text, thread)
+    sendToRoom(id, text, thread, files)
       // The message is in its thread now, and that thread is the newest one.
       .then(() => setChoice(null))
       .catch(error => {
@@ -313,6 +317,7 @@ export default function RoomScreen() {
                     full={full[item.message.id]}
                     marked={marked}
                     message={item.message}
+                    onFetch={file => openRoomFile(id, item.message.id, file)}
                     onOpen={setViewing}
                     onReadAll={readAll}
                     onReply={writable && item.known ? () => reply(item, true) : undefined}
@@ -463,6 +468,8 @@ interface MessageProps {
   onReadAll: (messageId: string) => Promise<void>
   /** Open a file that went with the message. */
   onOpen: (target: ViewerTarget) => void
+  /** Bring a file the room holds to the phone, for the viewer. Answers where the copy is. */
+  onFetch: (file: RoomFile) => Promise<string>
   /** Reply to the bot of this message in its thread. Absent when the room takes no reply. */
   onReply?: () => void
   /** Show the start of the message only. */
@@ -471,14 +478,34 @@ interface MessageProps {
 
 const FOLDED_LINES = 4
 
-function Message({ message, bot, marked, full, onReadAll, onOpen, onReply, folded = false }: MessageProps) {
+function Message({ message, bot, marked, full, onReadAll, onOpen, onFetch, onReply, folded = false }: MessageProps) {
   const t = useTheme()
   const [reading, setReading] = useState(false)
   const [fault, setFault] = useState<string | null>(null)
+  // The copies on the phone of the files the room holds, by their id.
+  const [fetched, setFetched] = useState<Record<string, string>>({})
   // The files of a message are lines at its end that name them. They show as files, not as those lines.
   const stored = splitStoredPrompt(full ?? message.text)
   const text = stored.text
-  const files = stored.attached
+  const held = message.files ?? NO_ROOM_FILES
+  // The files the room holds come first. Each opens after the phone has its copy.
+  const files = [...held.map((file): SentAttachment => ({ name: file.name, kind: roomFileKind(file.mime), ...(fetched[file.attachment_id] ? { uri: fetched[file.attachment_id] } : {}), ...(file.size ? { size: file.size } : {}) })), ...stored.attached]
+  const open = (index: number) => {
+    const file = held[index]
+
+    if (!file || fetched[file.attachment_id]) {
+      return onOpen({ items: files, index })
+    }
+
+    setFault(null)
+    onFetch(file).then(
+      uri => {
+        setFetched(known => ({ ...known, [file.attachment_id]: uri }))
+        onOpen({ items: files.map((item, at) => (at === index ? { ...item, uri } : item)), index })
+      },
+      error => setFault(faultWords(error))
+    )
+  }
 
   // The record of the host holds the start of a long message. The rest is one request away.
   const more =
@@ -503,7 +530,7 @@ function Message({ message, bot, marked, full, onReadAll, onOpen, onReply, folde
   if (message.mine) {
     return (
       <View style={[styles.mine, { backgroundColor: t.soft }]}>
-        {files.length ? <SentAttachments items={files} onOpen={index => onOpen({ items: files, index })} /> : null}
+        {files.length ? <SentAttachments items={files} onOpen={open} /> : null}
         {text ? (
           <Text numberOfLines={folded ? FOLDED_LINES : undefined} style={[type.body, { color: t.ink }]}>
             <MentionText parts={marked(text)} />
@@ -537,6 +564,8 @@ function Message({ message, bot, marked, full, onReadAll, onOpen, onReply, folde
         ) : (
           <Markdown mentions={marked} text={text} />
         )}
+        {held.length ? <SentAttachments items={files.slice(0, held.length)} onOpen={open} /> : null}
+        {fault && held.length ? <Text style={[type.small, { color: t.red }]}>{fault}</Text> : null}
         {more}
       </View>
     </View>

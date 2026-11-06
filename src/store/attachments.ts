@@ -21,6 +21,9 @@ import {
   needsStream,
   type PickedFile,
   pickedSize,
+  ROOM_FILE_MAX_BYTES,
+  roomFileKind,
+  roomFileOf,
   shrinkTarget,
   uploadTarget
 } from '@/core/attachments'
@@ -169,7 +172,7 @@ export async function stage(sessionId: string, file: PickedFile): Promise<void> 
   update(sessionId, list => list.map(item => (item.id === id ? { ...item, ...settled } : item)))
 }
 
-type Uploaded = Pick<Attachment, 'heldPaths' | 'promptText' | 'size'>
+type Uploaded = Pick<Attachment, 'heldPaths' | 'promptText' | 'size' | 'roomFile'>
 
 /**
  * The key of the staged files of a group chat. A group chat has no session
@@ -181,12 +184,44 @@ export const roomFilesKey = (roomId: string) => `room:${roomId}`
 
 const forRoom = (key: string) => key.startsWith('room:')
 
-/** A file for a group chat: on the host, and named in the message. Nothing holds it for a session. */
-async function uploadForRoom(file: PickedFile): Promise<Uploaded> {
+/**
+ * A file for a group chat. The room itself holds it when the host can
+ * (Hermes room attachments, through the group-rooms plugin): every bot of the
+ * room opens it, also one on another machine, and the desktop shows it as a
+ * file. A file over the limit of the room, or a host with an older plugin,
+ * takes the way below: the upload folder of the host, named in the message.
+ */
+async function uploadForRoom(key: string, file: PickedFile): Promise<Uploaded> {
   const api = currentApi()
 
   if (!api || !file.uri) {
     throw new Error(`Could not send ${file.name}.`)
+  }
+
+  const known = pickedSize(file) ?? new File(file.uri).size
+
+  if (known !== null && known <= ROOM_FILE_MAX_BYTES) {
+    const mime = file.mimeType || 'application/octet-stream'
+
+    try {
+      const base64 = file.base64 || (await new File(file.uri).base64())
+      const answer = await api.request({
+        path: `/api/plugins/group-rooms/rooms/${encodeURIComponent(key.slice('room:'.length))}/attachments`,
+        method: 'POST',
+        body: { name: file.name, mime, kind: roomFileKind(mime), data_base64: base64 },
+        timeoutMs: UPLOAD_TIMEOUT_MS
+      })
+      const roomFile = roomFileOf(answer)
+
+      if (roomFile) {
+        return { heldPaths: [], promptText: '', size: roomFile.size ?? known, roomFile }
+      }
+    } catch (error) {
+      // An older plugin has no such route: the path below still works.
+      if (!(error instanceof HttpError && error.status === 404)) {
+        throw new Error(`Could not send ${file.name} to the group chat.`)
+      }
+    }
   }
 
   const listing = await api.request<{ path?: string; locked_root?: string | null }>({ path: '/api/files' })
@@ -207,7 +242,7 @@ async function uploadForRoom(file: PickedFile): Promise<Uploaded> {
 
 async function upload(sessionId: string, entry: Attachment, file: PickedFile): Promise<Uploaded> {
   if (forRoom(sessionId)) {
-    return uploadForRoom(file)
+    return uploadForRoom(sessionId, file)
   }
 
   const known = pickedSize(file) ?? (file.uri ? new File(file.uri).size : null)

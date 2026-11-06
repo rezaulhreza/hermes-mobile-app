@@ -5,8 +5,10 @@
  * can be read and not written.
  */
 
+import { File, Paths } from 'expo-file-system'
 import { atom } from 'nanostores'
 
+import type { RoomFile } from '@/core/attachments'
 import { logMessages, type Room, type RoomMessage, roomRow, withRoom } from '@/core/bots'
 import { type HistoryPage, historyPagePath, pageMessages } from '@/core/history-page'
 import { NO_ROUND, type Round, type RoomContext, type RoomTeam, type RoundAction, roundOf, teamOf, turnWork } from '@/core/rounds'
@@ -127,13 +129,14 @@ export function unwatchRoom(): void {
 }
 
 /** Send a message to a room. `thread` is the thread it goes on with; null starts a new thread. */
-export async function sendToRoom(id: string, text: string, thread: string | null): Promise<void> {
+/** Send a message to a room. `files` are files the room holds already (uploaded when they were picked). */
+export async function sendToRoom(id: string, text: string, thread: string | null, files: readonly RoomFile[] = []): Promise<void> {
   // The key lets the host drop a second copy when the phone sends again after a lost answer.
   const key = `p${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
   // The turns on screen are of the message before this one.
   $roomRound.set(NO_ROUND)
-  take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key, ...(thread ? { thread } : { fresh: true }) }, timeoutMs: 60_000 }))
+  take(await api().request({ path: `${at(id)}/messages`, method: 'POST', body: { text: text.trim(), id: key, ...(thread ? { thread } : { fresh: true }), ...(files.length ? { attachments: files } : {}) }, timeoutMs: 60_000 }))
 
   if (watched === id) {
     again(id)
@@ -260,4 +263,27 @@ export async function closeRoom(id: string): Promise<void> {
 export async function forgetGroup(id: string, name: string): Promise<void> {
   await api().request({ path: `${ROUTE}/groups?name=${encodeURIComponent(name)}`, method: 'DELETE', timeoutMs: 60_000 })
   $rooms.set($rooms.get().filter(room => room.id !== id))
+}
+
+/**
+ * A file the room holds, on the phone: the host gives its bytes and the phone
+ * keeps a copy in its cache for the viewer. The copy is named by the file, so
+ * a second open reads it again from the host only when it is gone.
+ */
+export async function openRoomFile(id: string, messageId: string, file: RoomFile): Promise<string> {
+  const target = new File(Paths.cache, `room-${file.attachment_id}-${file.name.replace(/[^\w.-]+/g, '_')}`)
+
+  if (target.exists) {
+    return target.uri
+  }
+
+  const answer = (await api().request({ path: `${at(id)}/attachments/${encodeURIComponent(messageId)}/${encodeURIComponent(file.attachment_id)}`, timeoutMs: 60_000 })) as { data_base64?: unknown } | null
+
+  if (typeof answer?.data_base64 !== 'string') {
+    throw new Error(`The host does not have ${file.name} any more.`)
+  }
+
+  target.write(answer.data_base64, { encoding: 'base64' })
+
+  return target.uri
 }

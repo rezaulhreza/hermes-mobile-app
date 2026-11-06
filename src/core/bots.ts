@@ -9,6 +9,7 @@ import type { ProfileRow } from './gateway/gateway-contract.generated'
 import { type Look, lookOf } from './avatars'
 import { previewLine } from './format'
 import type { LiveState } from './sessions'
+import { type RoomFile, roomFileOf } from './attachments'
 
 /** The title the host gives the one long conversation of a bot. It is plumbing: a person sees the bot's name. */
 export const BOT_CHAT_TITLE = 'Bot Chat'
@@ -312,6 +313,8 @@ export interface RoomMessage {
   cut?: boolean
   /** The thread the message belongs to. Absent for a message from before threads. */
   thread?: string
+  /** The files the room holds for this message. */
+  files?: RoomFile[]
 }
 
 /** What the host and the desktop app put at the end of a message they cut. */
@@ -353,9 +356,12 @@ interface StoredRoom {
  */
 export function logMessages(log: unknown): RoomMessage[] {
   const messages = (Array.isArray(log) ? log : []).flatMap((entry, index): RoomMessage[] => {
-    const { id, from, text, at, thread } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown; thread?: unknown }
+    const { id, from, text: said, at, thread, attachments } = (entry ?? {}) as { id?: unknown; from?: { kind?: unknown; name?: unknown }; text?: unknown; at?: unknown; thread?: unknown; attachments?: unknown }
+    const files = (Array.isArray(attachments) ? attachments : []).map(roomFileOf).filter((file): file is RoomFile => file !== null)
+    const text = typeof said === 'string' ? said : ''
 
-    if (typeof text !== 'string' || !text.trim()) {
+    // A message with no words is still a message when it carries files.
+    if (!text.trim() && !files.length) {
       return []
     }
 
@@ -370,7 +376,8 @@ export function logMessages(log: unknown): RoomMessage[] {
         text: cut ? `${text.slice(0, -CUT_MARK.length).trimEnd()}…` : text,
         at: typeof at === 'number' ? at : 0,
         ...(cut ? { cut: true } : {}),
-        ...(typeof thread === 'string' && thread ? { thread } : {})
+        ...(typeof thread === 'string' && thread ? { thread } : {}),
+        ...(files.length ? { files } : {})
       }
     ]
   })

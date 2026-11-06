@@ -1,4 +1,4 @@
-import {  attachmentKind, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, messageWords, promptWithAttachments, roomFileLine, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
+import { attachmentKind, roomFileKind, roomFileOf, roomFilesOf, dataUrl, fileGlyph, jpegName, pickedSize, previewMode, previewText, messageWords, promptWithAttachments, roomFileLine, sentAttachment, shrinkTarget, splitStoredPrompt, type Attachment } from '../attachments'
 
 const ready = (kind: Attachment['kind'], name: string, promptText = ''): Attachment => ({
   id: name,
@@ -218,5 +218,29 @@ describe('a file in a message to a group chat', () => {
     expect(messageWords('@image:/up/a.png\n@image:/up/b.png')).toBe('2 pictures')
     expect(messageWords('@image:/up/a.png\n@file:/up/n.txt')).toBe('2 files')
     expect(messageWords('')).toBe('')
+  })
+})
+
+describe('files a group chat holds', () => {
+  const ready = (extra: Partial<Attachment>): Attachment => ({ id: 'a1', kind: 'file', name: 'notes.txt', state: 'ready', heldPaths: [], promptText: '', ...extra })
+
+  it('reads the answer of an upload, and nothing else', () => {
+    expect(roomFileOf({ attachment_id: 'att_1', kind: 'image', name: 'a.jpg', mime: 'image/jpeg', size: 10 })).toEqual({ attachment_id: 'att_1', kind: 'image', name: 'a.jpg', mime: 'image/jpeg', size: 10 })
+    expect(roomFileOf({ name: 'no id' })).toBeNull()
+  })
+
+  it('gives the kind the room engine takes', () => {
+    expect(roomFileKind('image/png')).toBe('image')
+    expect(roomFileKind('application/pdf')).toBe('pdf')
+    expect(roomFileKind('text/plain')).toBe('file')
+  })
+
+  it('sends a held file with the message, not as a line of it', () => {
+    const file = { attachment_id: 'att_1', kind: 'file', name: 'notes.txt', mime: 'text/plain' }
+    const staged = [ready({ roomFile: file }), ready({ id: 'a2', promptText: '[file: /tmp/x]' }), ready({ id: 'a3', state: 'uploading', roomFile: file })]
+
+    expect(roomFilesOf(staged)).toEqual([file])
+    expect(promptWithAttachments('', [ready({ roomFile: file })])).toBe('')
+    expect(promptWithAttachments('Read it', staged)).toBe('Read it\n[file: /tmp/x]')
   })
 })

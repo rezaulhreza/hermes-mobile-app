@@ -1,4 +1,4 @@
-import { botInitials, botMark, botOfBotChat, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
+import { logMessages, botInitials, botMark, botOfBotChat, botNameProblem, botRows, botSlug, filterBots, roomMembersProblem, roomRow, withRoom, groupRooms } from '../bots'
 
 const NOW = 10_000
 
@@ -240,5 +240,15 @@ describe('botOfBotChat', () => {
     expect(botOfBotChat('Fix the build', 'writer', rows)).toBeUndefined()
     expect(botOfBotChat(null, 'writer', rows)).toBeUndefined()
     expect(botOfBotChat('Bot Chat', 'gone', rows)).toBeUndefined()
+  })
+})
+
+describe('a room message with files', () => {
+  it('keeps the files the room holds, also with no words', () => {
+    const [message] = logMessages([{ id: 'm1', from: { kind: 'user' }, text: '', at: 1, attachments: [{ attachment_id: 'att_1', kind: 'pdf', name: 'brief.pdf', mime: 'application/pdf', size: 3 }, { name: 'broken' }] }])
+
+    expect(message).toMatchObject({ id: 'm1', mine: true, files: [{ attachment_id: 'att_1', name: 'brief.pdf' }] })
+    expect(message.files).toHaveLength(1)
+    expect(logMessages([{ id: 'm2', from: { kind: 'user' }, text: '  ' }])).toEqual([])
   })
 })

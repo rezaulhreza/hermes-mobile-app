@@ -35,6 +35,36 @@ export interface Attachment {
   /** Where the picker left an image on the phone. The preview reads it; nothing is downloaded. */
   uri?: string
   size?: number
+  /** A file of a group chat that the room itself holds: every bot of the room can open it. */
+  roomFile?: RoomFile
+}
+
+/** A file a group chat holds, as the room engine of Hermes describes it. No bytes: those are one request away. */
+export interface RoomFile {
+  attachment_id: string
+  kind: string
+  name: string
+  mime: string
+  size?: number
+}
+
+/** The largest file a room takes (the limit of the Hermes room engine). A larger one goes by its path on the host. */
+export const ROOM_FILE_MAX_BYTES = 15_000_000
+
+/** The kind the room engine takes for a type of file: image, pdf or file. */
+export const roomFileKind = (mime: string): AttachmentKind => (mime.startsWith('image/') ? 'image' : mime === 'application/pdf' ? 'pdf' : 'file')
+
+/** The room files of a list of staged files, ready for the message. */
+export const roomFilesOf = (attachments: readonly Attachment[]): RoomFile[] =>
+  attachments.flatMap(attachment => (attachment.state === 'ready' && attachment.roomFile ? [attachment.roomFile] : []))
+
+/** The answer of the room for an upload. Null when it is not one. */
+export function roomFileOf(answer: unknown): RoomFile | null {
+  const { attachment_id, kind, name, mime, size } = (answer ?? {}) as Record<string, unknown>
+
+  return typeof attachment_id === 'string' && attachment_id
+    ? { attachment_id, kind: typeof kind === 'string' ? kind : 'file', name: typeof name === 'string' ? name : 'File', mime: typeof mime === 'string' ? mime : '', ...(typeof size === 'number' ? { size } : {}) }
+    : null
 }
 
 /** An attachment as a sent message shows it. A message from stored history has the name only. */
@@ -223,6 +253,11 @@ export function promptWithAttachments(text: string, attachments: readonly Attach
   const ready = attachments.filter(attachment => attachment.state === 'ready')
   const extra = ready.map(attachment => attachment.promptText).filter(Boolean)
   const words = text.trim()
+
+  // A file the room holds goes with the message itself: it needs no line in the text.
+  if (!words && !extra.length && ready.every(attachment => attachment.roomFile)) {
+    return ''
+  }
 
   if (!words && !extra.length) {
     return ready.map(attachment => `[User attached image: ${attachment.name}]`).join('\n')
