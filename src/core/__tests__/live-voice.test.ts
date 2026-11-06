@@ -19,8 +19,6 @@ import {
   speakableLine,
   speakParts,
   voiceName,
-  withExpressivity,
-  withLanguage,
   speakUrl,
   spokenVerdict,
   toolLine,
@@ -68,27 +66,13 @@ describe('the socket addresses', () => {
     expect(isFluxVoice(SETTINGS)).toBe(false)
   })
 
-  it('hears the language the host or the phone chose', () => {
+  it('hears the language the host chose', () => {
     expect(listenUrl({ ...SETTINGS, listen_model: 'flux-general-multi', language_hint: 'fr' })).toContain('language_hint=fr')
     expect(listenUrl(SETTINGS)).not.toContain('language_hint')
-
-    const french = withLanguage(SETTINGS, 'fr')
-
-    expect(french.listen_model).toBe('flux-general-multi')
-    expect(french.language_hint).toBe('fr')
-    expect(withLanguage(SETTINGS, 'en-US').listen_model).toBe('flux-general-en')
-    expect(withLanguage(SETTINGS, 'en-US').language_hint).toBeNull()
-    expect(withLanguage(SETTINGS, 'multi').language_hint).toBeNull()
-    expect(withLanguage(SETTINGS, '')).toBe(SETTINGS)
   })
 
   it('sends a language Flux does not hear to Nova-3', () => {
-    const bangla = withLanguage(SETTINGS, 'bn')
-
-    expect(bangla.listen_engine).toBe('nova')
-    expect(bangla.language_hint).toBe('bn')
-
-    const url = listenUrl(bangla)
+    const url = listenUrl({ ...SETTINGS, listen_engine: 'nova', listen_model: 'nova-3', language_hint: 'bn' })
 
     expect(url).toContain('wss://api.deepgram.com/v1/listen?')
     expect(url).toContain('model=nova-3')
@@ -96,9 +80,6 @@ describe('the socket addresses', () => {
     expect(url).toContain('language_hint=bn')
     expect(url).toContain('utterance_end_ms=1000')
     expect(url).toContain('keyterm=Hermes')
-    expect(withLanguage(SETTINGS, 'multi').listen_engine).toBe('nova')
-    expect(withLanguage(SETTINGS, 'multi').language_hint).toBeNull()
-    expect(withLanguage(SETTINGS, 'fr').listen_engine).toBe('flux')
     expect(LANGUAGES.some(language => language.code === 'ko')).toBe(true)
   })
 
@@ -382,8 +363,7 @@ describe('PCM helpers', () => {
 })
 
 describe('the voice of a call', () => {
-  const { DEEPGRAM_VOICES, voiceName, withVoice, speakUrl } = jest.requireActual('../live-voice') as typeof import('../live-voice')
-  const settings = { available: true, voice: 'aura-2-thalia-en', listen_model: 'flux-general-en', eot_threshold: 0.7, eot_timeout_ms: 3000, speed: 1, keyterms: [], mip_opt_out: true }
+  const { DEEPGRAM_VOICES, voiceName } = jest.requireActual('../live-voice') as typeof import('../live-voice')
 
   it('names a voice for a person', () => {
     expect(voiceName('aura-2-thalia-en')).toBe('Thalia')
@@ -394,32 +374,11 @@ describe('the voice of a call', () => {
   it('has no voice twice', () => {
     expect(new Set(DEEPGRAM_VOICES.map(voice => voice.id)).size).toBe(DEEPGRAM_VOICES.length)
   })
-
-  it('takes the voice of the phone in the place of the voice of the host', () => {
-    expect(speakUrl(withVoice(settings, 'aura-2-orion-en'))).toContain('model=aura-2-orion-en')
-    expect(withVoice(settings, '')).toBe(settings)
-  })
 })
 
-describe('expressivity of this phone', () => {
-  it('keeps the host setting when the phone chose none', () => {
-    expect(withExpressivity(SETTINGS, null)).toBe(SETTINGS)
-  })
-
-  it('puts the chosen level in the speak address of a Flux voice', () => {
-    const lively = withExpressivity({ ...SETTINGS, voice: 'flux-kit-en', expressivity: -2 }, 1)
-
-    expect(speakUrl(lively)).toContain('expressivity=1')
-  })
-
-  it('keeps a level in range', () => {
-    expect(withExpressivity(SETTINGS, 9).expressivity).toBe(2)
-    expect(withExpressivity(SETTINGS, -9).expressivity).toBe(-2)
-  })
-
+describe('expressivity', () => {
   it('names the levels as Brah does', () => {
     expect(EXPRESSIVITY.map(level => level.name)).toEqual(['Calm', 'Quiet', 'Normal', 'Lively', 'Animated'])
     expect(expressivityName(2)).toBe('Animated')
   })
 })
-

@@ -18,6 +18,7 @@ import { requestRecordingPermissionsAsync } from 'expo-audio'
 import * as Haptics from 'expo-haptics'
 import { atom, computed } from 'nanostores'
 
+import { HttpError } from '@/core/api'
 import type { GatewayEvent } from '@/core/gateway/gateway-events'
 import {
   approvalQuestion,
@@ -34,10 +35,7 @@ import {
   stillWorkingLine,
   stillWorkingWait,
   toolLine,
-  type UserTurn,
-  withExpressivity,
-  withLanguage,
-  withVoice
+  type UserTurn
 } from '@/core/live-voice'
 import { type GptLiveStatus, liveHistory } from '@/core/gpt-live'
 import { requestSummary } from '@/core/requests'
@@ -153,6 +151,31 @@ export function hostVoice(): string | null {
 /** The expressivity the host is set to, for a Flux voice on the Deepgram engine. */
 export function hostExpressivity(): number {
   return Number(host?.deepgram?.expressivity) || 0
+}
+
+/** The words the host's listening model is told to hear right. */
+export function hostKeyterms(): string[] {
+  return host?.deepgram?.keyterms ?? []
+}
+
+/**
+ * Save voice settings on the host, so the desktop app, Brah and this phone hear and speak the
+ * same way, then read them back.
+ */
+export async function saveVoiceSettings(change: { voice?: string; language?: string; expressivity?: number; keyterms?: string[] }): Promise<void> {
+  const api = currentApi()
+
+  if (!api) {
+    throw new Error('Not connected to a Hermes workspace.')
+  }
+
+  try {
+    await api.request({ path: '/api/plugins/deepgram-live/settings', method: 'POST', body: change, timeoutMs: 10_000 })
+  } catch (error) {
+    throw error instanceof HttpError && error.status === 404 ? new Error('Update the deepgram-live plugin on your Hermes host to change this from your phone.') : error
+  }
+
+  await loadEngines()
 }
 
 /** The language the host is set to, for the Deepgram engine. */
@@ -628,7 +651,7 @@ export async function startCall(sessionId: string, options: { greeting?: string 
     const events = engineEvents(sessionId, mine)
     const next: VoiceEngine =
       name === 'deepgram' && host?.deepgram
-        ? new DeepgramEngine(api, withExpressivity(withLanguage(withVoice(host.deepgram, $preferences.get().voice), $preferences.get().language), $preferences.get().expressivity), events)
+        ? new DeepgramEngine(api, host.deepgram, events)
         : name === 'gpt-live'
           ? new GptLiveEngine(api, () => liveHistory(spokenTurns(sessionId)), events)
           : new RelayEngine(api, host?.liveStt ?? false, events)

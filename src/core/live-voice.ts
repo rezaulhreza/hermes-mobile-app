@@ -55,31 +55,9 @@ export const LANGUAGES: readonly { code: string; name: string }[] = [
   ['te', 'Telugu'], ['th', 'Thai'], ['tr', 'Turkish'], ['uk', 'Ukrainian'], ['vi', 'Vietnamese'], ['xh', 'Xhosa'], ['zu', 'Zulu']
 ].map(([code, name]) => ({ code, name }))
 
-/** The languages Flux hears, with its turn events. Every other one goes to Nova-3. */
-const FLUX_LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'hi', 'ru', 'pt', 'ja', 'it', 'nl'])
-
 /** The language name for a code, or the code itself. */
 export function languageName(code: string): string {
   return LANGUAGES.find(language => language.code === code)?.name ?? code
-}
-
-/** The host's settings with the phone's own language. English has its own listening model; any other language uses the multilingual one. Empty: the host's language. */
-export function withLanguage(settings: DeepgramSettings, chosen: string): DeepgramSettings {
-  if (!chosen) {
-    return settings
-  }
-
-  const base = chosen.split('-')[0].toLowerCase()
-
-  if (base === 'en') {
-    return { ...settings, language: chosen, listen_engine: 'flux', listen_model: 'flux-general-en', language_hint: null }
-  }
-
-  if (FLUX_LANGUAGES.has(base)) {
-    return { ...settings, language: chosen, listen_engine: 'flux', listen_model: 'flux-general-multi', language_hint: base }
-  }
-
-  return { ...settings, language: chosen, listen_engine: 'nova', listen_model: 'nova-3', language_hint: chosen === 'multi' ? null : chosen }
 }
 
 /** A Flux voice speaks on Deepgram's second speak address. */
@@ -143,11 +121,6 @@ export function voiceName(id: string): string {
   return word ? word.charAt(0).toUpperCase() + word.slice(1) : 'The voice of the host'
 }
 
-/** The settings of a call, with the voice this phone chose in the place of the host's. */
-export function withVoice(settings: DeepgramSettings, chosen: string): DeepgramSettings {
-  return chosen ? { ...settings, voice: chosen } : settings
-}
-
 /** How lively a Flux voice sounds. The same names and order as the desktop plugin and Brah. Aura voices ignore it. */
 export const EXPRESSIVITY: readonly { value: number; name: string }[] = [
   { value: -2, name: 'Calm' },
@@ -160,11 +133,6 @@ export const EXPRESSIVITY: readonly { value: number; name: string }[] = [
 /** The name of an expressivity level: "Lively" for 1. */
 export function expressivityName(value: number): string {
   return EXPRESSIVITY.find(level => level.value === value)?.name ?? 'Normal'
-}
-
-/** The settings of a call, with the expressivity this phone chose. Null: the host's. */
-export function withExpressivity(settings: DeepgramSettings, chosen: number | null): DeepgramSettings {
-  return chosen === null ? settings : { ...settings, expressivity: Math.max(-2, Math.min(2, Math.trunc(chosen))) }
 }
 
 export const INPUT_SAMPLE_RATE = 16_000
