@@ -3,6 +3,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { atom, map } from 'nanostores'
+import { type ApprovalMode, approvalModeOf } from '@/core/approvals'
 
 import { type Look, lookMeta } from '@/core/avatars'
 import { type Bot, BOT_META_KEY, botRows, type BotSection, botSlug, type Filing, FILING_META_KEY, filingOf, groupRooms, newSectionId, NO_FILING, type ReadMarks, type Room } from '@/core/bots'
@@ -304,6 +305,16 @@ export async function loadBotReasoning(name: string): Promise<string> {
 /** How hard this bot thinks. The host puts the level into the config of the bot: a chat that is open keeps its level until its next start. */
 export async function setBotReasoning(name: string, level: ReasoningLevel): Promise<void> {
   await api().request({ path: `/api/config?profile=${encodeURIComponent(name)}`, method: 'PUT', body: { config: { agent: { reasoning_effort: level } } }, timeoutMs: 60_000 })
+}
+
+/** How this bot asks before a command that may be dangerous. */
+export async function loadBotApprovals(name: string): Promise<ApprovalMode> {
+  return approvalModeOf(await rpc('config.get', { key: 'approvals.mode', profile: name }))
+}
+
+/** Change how this bot asks. It applies to its chats from their next command. */
+export async function setBotApprovals(name: string, mode: ApprovalMode): Promise<void> {
+  await rpc('config.set', { key: 'approvals.mode', value: mode, profile: name }, 60_000)
 }
 
 const PICTURE_SIDE = 256

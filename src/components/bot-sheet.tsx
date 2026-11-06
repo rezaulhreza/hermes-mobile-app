@@ -9,9 +9,10 @@ import { defaultLook } from '@/core/avatars'
 import { type Bot, botInitials, type BotSection, botSlug, knownSections, newSectionId } from '@/core/bots'
 import { type Capability, capabilityCount } from '@/core/capabilities'
 import { faultWords } from '@/core/format'
+import { APPROVAL_MODES, type ApprovalMode, approvalModeLabel } from '@/core/approvals'
 import { isReasoningLevel, modelLabel, REASONING_LABEL, REASONING_LEVELS, reasoningLabel } from '@/core/models'
 import { providerRows } from '@/core/providers'
-import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, setBotLook, deleteBot, describeBot, fileBot, loadBotReasoning, loadBotSoul, renameBot, saveBotSoul, setBotModel, setBotReasoning, setBotSection, setDefaultBot } from '@/store/bots'
+import { $botAvatars, $bots, $defaultBot, $filing, chooseBotPicture, setBotLook, deleteBot, describeBot, fileBot, loadBotApprovals, loadBotReasoning, loadBotSoul, setBotApprovals, renameBot, saveBotSoul, setBotModel, setBotReasoning, setBotSection, setDefaultBot } from '@/store/bots'
 import { readSkills } from '@/store/capabilities'
 import { $providers, loadProviders } from '@/store/providers'
 import { type Palette, radius, space, TOUCH, type } from '@/theme/tokens'
@@ -74,6 +75,8 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
   // Null until the host said it: the list of bots does not carry the level.
   const [reasoning, setReasoning] = useState<string | null>(null)
   const [choosingReasoning, setChoosingReasoning] = useState(false)
+  const [approvals, setApprovals] = useState<ApprovalMode | null>(null)
+  const [choosingApprovals, setChoosingApprovals] = useState(false)
   const [filing, setFiling] = useState(false)
   // The host counts the skills a bot has, not the skills that are on: the row reads the list for that.
   const [skills, setSkills] = useState<Capability[]>()
@@ -86,6 +89,7 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
 
   useEffect(() => {
     loadBotReasoning(bot.name).then(setReasoning, () => undefined)
+    loadBotApprovals(bot.name).then(setApprovals, () => undefined)
   }, [bot.name])
 
   useEffect(() => {
@@ -208,6 +212,37 @@ export function BotSheet({ bot, onClose, onTalk }: { bot: Bot; onClose: () => vo
             }
           }}
           title="Reasoning of this bot"
+        />
+      ) : null}
+
+      <Pressable
+        accessibilityHint="Opens the ways this bot asks before a command"
+        accessibilityLabel={`Approvals: ${approvals === null ? 'not read yet' : approvalModeLabel(approvals)}`}
+        accessibilityRole="button"
+        disabled={approvals === null}
+        onPress={() => setChoosingApprovals(true)}
+        style={({ pressed }) => [styles.setting, { backgroundColor: pressed ? t.soft : t.paper, borderColor: t.line }]}
+      >
+        <Feather color={t.muted} name="shield" size={20} />
+        <View style={styles.fill}>
+          <Text style={[type.small, { color: t.muted }]}>Before a dangerous command</Text>
+          <Text numberOfLines={1} style={[type.label, { color: approvals === 'off' ? t.red : t.ink }]}>
+            {approvals === null ? ' ' : approvalModeLabel(approvals)}
+          </Text>
+        </View>
+        {busy === 'approvals' || approvals === null ? <ActivityIndicator color={t.muted} /> : <Feather color={t.muted} name="chevron-right" size={18} />}
+      </Pressable>
+      {choosingApprovals ? (
+        <ChoiceSheet
+          choices={APPROVAL_MODES.map(mode => ({ id: mode.id, label: mode.label, detail: mode.detail }))}
+          current={approvals}
+          footer={<Text style={[type.small, { color: t.muted }]}>A change applies to the chats of this bot from their next command.</Text>}
+          onClose={() => setChoosingApprovals(false)}
+          onPick={mode => {
+            setChoosingApprovals(false)
+            run('approvals', () => setBotApprovals(bot.name, mode as ApprovalMode).then(() => setApprovals(mode as ApprovalMode)))
+          }}
+          title="Before a dangerous command"
         />
       ) : null}
 
