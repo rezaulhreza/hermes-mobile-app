@@ -248,9 +248,12 @@ def send_input(body: Input) -> dict[str, Any]:
     with _tool()._backend_for_call(SESSION) as backend:
         if (getattr(backend, "_active_pid", None), getattr(backend, "_active_window_id", None)) != (body.pid, body.window_id):
             backend.capture(mode="vision", pid=body.pid, window_id=body.window_id)  # sets the target of the input
-        # A person expects the tap to land like a real one: front the window for the action when the
-        # driver can, and fall back to background delivery when it cannot.
-        result = _act(backend, body, "foreground")
-        if not result.ok and result.code == "foreground_unsupported":
-            result = _act(backend, body, None)
+        # Background first. On macOS a left click that the driver posts as a foreground mouse event crashes
+        # the page in Chrome ("Aw, Snap!", error code 5), and the page then ignores real clicks until a
+        # reload. A background click presses the element through accessibility and does not. The driver
+        # refuses some background input (a drag; keys while the app has several windows): the foreground
+        # does those.
+        result = _act(backend, body, None)
+        if not result.ok:
+            result = _act(backend, body, "foreground")
     return {"ok": bool(result.ok), "message": result.message, "effect": result.effect}
