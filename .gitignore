@@ -48,3 +48,6 @@ example
 
 # Playwright MCP scratch output
 /.playwright-mcp
+
+# LLVM coverage output
+*.profraw
