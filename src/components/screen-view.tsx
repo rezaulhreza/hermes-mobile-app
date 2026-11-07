@@ -34,6 +34,8 @@ interface Props {
   /** The stored id: the host finds the window that this chat's agent works in. */
   storedId: string
   visible: boolean
+  /** The agent of this chat runs a turn now. Taking the screen then stops it; with no turn there is nothing to stop. */
+  working: boolean
   onClose: () => void
 }
 
@@ -45,7 +47,7 @@ type FingerMode = 'trackpad' | 'touch'
  * user can stop the agent with a reason and take the screen; taps, text and
  * keys then go to that window. "Give back" lets the agent go on.
  */
-export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
+export function ScreenView({ sessionId, storedId, visible, working, onClose }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const { frame, problem } = useStore($screen)
@@ -144,6 +146,9 @@ export function ScreenView({ sessionId, storedId, visible, onClose }: Props) {
                 <Button busy={busy} label="Give back and resume" onPress={() => run(() => handScreenBack(sessionId, true))} style={styles.fill} tone="primary" />
               </View>
             </>
+          ) : !working ? (
+            // Hermes does nothing now: there is no work to stop and no reason to give.
+            <Button busy={busy} icon="mouse-pointer" label="Take control" onPress={() => run(() => takeScreen(sessionId, ''))} tone="primary" />
           ) : (
             <>
               <TextInput

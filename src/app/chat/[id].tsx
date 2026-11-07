@@ -727,7 +727,7 @@ export function ChatScreen({ params, embedded }: { params: ChatParams; embedded?
           <AttachmentViewer onClose={() => setViewing(null)} target={viewing} />
           {teaching ? <TeachSheet bot={teachName} hasWork={(transcript?.items.length ?? 0) > 0} onClose={() => setTeaching(false)} onTeach={teach} /> : null}
           <ToolSheet onClose={() => setTool(null)} storedId={conversation?.storedId} tool={tool} />
-          {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} /> : null}
+          {sessionId ? <ScreenView onClose={() => setWatching(false)} sessionId={sessionId} storedId={params.id} visible={watching} working={running} /> : null}
       {bot && botOpen ? <BotSheet bot={bot} onClose={() => setBotOpen(false)} /> : null}
       {sessionId && sideOpen ? (
         <SideChatSheet
